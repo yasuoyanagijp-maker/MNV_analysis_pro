@@ -482,14 +482,14 @@ def filter_mnv_files_for_roi_selection(
 def find_fd_pair_image(
     current_filename: str,
     folder_path: Path,
-    fd_suffixes: tuple = ("3.tif", "3.tiff", "3.png", "3.jpg", "3.jpeg"),
+    fd_suffixes: tuple = ("4.tif", "4.tiff", "4.png", "4.jpg", "4.jpeg"),
 ) -> Optional[str]:
     """
-    現在のMNV画像ファイル名から対応するFD用画像（3.*）を見つける
+    現在のMNV画像ファイル名から対応するFD用画像（4.*）を見つける
 
     VD解析の `_find_file_pairs()` ロジックを参考に実装。
     ファイル名からpatient_idを抽出し、同じフォルダー内で
-    patient_id + "3.*" のパターンでファイルを探す。
+    patient_id + "4.*" のパターンでファイルを探す。
 
     Parameters
     ----------
@@ -498,7 +498,7 @@ def find_fd_pair_image(
     folder_path : Path
         画像が存在するフォルダーパス
     fd_suffixes : tuple
-        FD画像のサフィックス候補（デフォルト: 3.tif, 3.tiff, 3.png, 3.jpg, 3.jpeg）
+        FD画像のサフィックス候補（デフォルト: 4.tif, 4.tiff, 4.png, 4.jpg, 4.jpeg）
 
     Returns
     -------
@@ -512,42 +512,41 @@ def find_fd_pair_image(
     filename_ext = Path(current_filename).suffix
 
     # パターン1: image3/image4 を含むファイル名の場合（例: Reg-Avg-Stack_Visit1_image3.tif）
-    # image3 の場合は image3.tif を、image4 の場合は image3.tif を探す
+    # FD用画像は4.*のため、image4 に置き換えたファイル名を優先して探す
     image3_match = re.search(r"image3", filename_stem, re.IGNORECASE)
     image4_match = re.search(r"image4", filename_stem, re.IGNORECASE)
     
     if image3_match or image4_match:
-        # image3 または image4 を含む場合、image3 に置き換えたファイル名を探す
-        base_name = re.sub(r"image[34]", "image3", filename_stem, flags=re.IGNORECASE)
-        candidate_image3 = folder_path / f"{base_name}{filename_ext}"
-        if candidate_image3.exists() and candidate_image3.is_file():
-            return str(candidate_image3)
-        
-        # image4 に置き換えたファイル名も探す（image4 がFD画像の場合）
+        # FD用画像（4.*）を優先: image4 に置き換えたファイル名を探す
         base_name_image4 = re.sub(r"image[34]", "image4", filename_stem, flags=re.IGNORECASE)
         candidate_image4 = folder_path / f"{base_name_image4}{filename_ext}"
         if candidate_image4.exists() and candidate_image4.is_file():
             return str(candidate_image4)
+        # 見つからない場合のみ image3 を探す（フォールバック）
+        base_name = re.sub(r"image[34]", "image3", filename_stem, flags=re.IGNORECASE)
+        candidate_image3 = folder_path / f"{base_name}{filename_ext}"
+        if candidate_image3.exists() and candidate_image3.is_file():
+            return str(candidate_image3)
 
     # パターン2: 通常のpatient_idベースの探索（VD解析と同様）
     patient_id = extract_patient_id_from_filename(current_filename)
 
-    # サフィックスを最長一致優先でソート（3.tiff を 3.tif より先に判定）
+    # サフィックスを最長一致優先でソート（4.tiff を 4.tif より先に判定）
     fd_suffixes_sorted = sorted(fd_suffixes, key=len, reverse=True)
 
     # 各サフィックスでファイルを探索
     for suffix in fd_suffixes_sorted:
-        # パターン2-1: {patient_id}_{suffix} (例: patient_001_3.tif)
+        # パターン2-1: {patient_id}_{suffix} (例: patient_001_4.tif)
         candidate1 = folder_path / f"{patient_id}_{suffix}"
         if candidate1.exists() and candidate1.is_file():
             return str(candidate1)
 
-        # パターン2-2: {patient_id}{suffix} (例: patient_0013.tif)
+        # パターン2-2: {patient_id}{suffix} (例: patient_0014.tif)
         candidate2 = folder_path / f"{patient_id}{suffix}"
         if candidate2.exists() and candidate2.is_file():
             return str(candidate2)
 
-        # パターン2-3: {patient_id}_FD_{suffix} (例: patient_001_FD_3.tif)
+        # パターン2-3: {patient_id}_FD_{suffix} (例: patient_001_FD_4.tif)
         candidate3 = folder_path / f"{patient_id}_FD_{suffix}"
         if candidate3.exists() and candidate3.is_file():
             return str(candidate3)
@@ -686,7 +685,7 @@ def run_mnv_analysis(
     scale_mm : float
         画像の実寸法（mm）
     flow_deficit_image_path : Optional[str]
-        Flow Deficit用画像パス（Folder Batchモードで3.*画像が見つかった場合）
+        Flow Deficit用画像パス（Folder Batchモードで4.*画像が見つかった場合）
 
     Returns
     -------
@@ -1705,7 +1704,7 @@ def show_scrollfree_mnv_roi_screen():
         ):
             if roi_mask is not None:
                 scale_mm = st.session_state.get("scale_mm", 6.0)
-                # Folder Batchモードの場合、FD用画像（3.*）を探索
+                # Folder Batchモードの場合、FD用画像（4.*）を探索
                 fd_image_path = None
                 if st.session_state.get("processing_mode") == "Folder Batch":
                     input_folder = st.session_state.get("input_path", "")
