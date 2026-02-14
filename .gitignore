@@ -9,3 +9,4 @@ build/
 dist/
 .cursor/
 .vscode/
+output/exports/logs/

@@ -1,3 +1,0 @@
-{"timestamp": "2026-02-14T13:01:33+09:00", "event_type": "auth_attempt", "session_id": "20260214_130133_1fb5b9e5", "analyst_name": "Y", "analysis_type": "MNV", "success": true}
-{"timestamp": "2026-02-14T13:04:24+09:00", "event_type": "folder_selected", "session_id": "20260214_130424_38e9c852", "analyst_name": "Y", "analysis_type": "VD", "target": "input", "path": "/Users/yy/Desktop/Registered_Stacks", "exists": true}
-{"timestamp": "2026-02-14T13:04:33+09:00", "event_type": "folder_selected", "session_id": "20260214_130424_38e9c852", "analyst_name": "Y", "analysis_type": "VD", "target": "output", "path": "/Users/yy/Desktop/名称未設定フォルダ", "exists": true}
