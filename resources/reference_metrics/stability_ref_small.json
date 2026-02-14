@@ -1,0 +1,20 @@
+{
+  "size_class": "small",
+  "n_cases": 26,
+  "stab_cv": {
+    "mu": 19.93374283756806,
+    "sigma": 9.511328840932372
+  },
+  "stab_mean_adjacent_change": {
+    "mu": 21.540610206087596,
+    "sigma": 26.237363574452203
+  },
+  "stab_residual_cv": {
+    "mu": 16.116093589815755,
+    "sigma": 7.04290750594196
+  },
+  "stab_range_percent": {
+    "mu": 69.65900847968382,
+    "sigma": 33.206784529756
+  }
+}

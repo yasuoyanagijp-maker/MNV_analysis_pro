@@ -1,0 +1,66 @@
+# =============================================================================
+# ARIAKE_MNV requirements.txt
+# Generated: 2026-02-04
+# Tested with: Python 3.9+ (recommended: 3.10-3.12)
+# =============================================================================
+# CRITICAL: Do not upgrade these versions without testing!
+# streamlit-drawable-canvas requires streamlit<1.29.0 due to image_to_url API
+# numpy<2.0 is required for compatibility with scikit-image and opencv
+# =============================================================================
+
+# ------------------
+# Core Scientific Stack
+# ------------------
+numpy==1.26.4
+scipy==1.13.1
+pandas==2.0.3
+
+# ------------------
+# Image Processing
+# ------------------
+scikit-image==0.24.0
+opencv-python==4.9.0.80
+Pillow==10.4.0
+tifffile==2024.8.30
+imageio==2.37.2
+imagecodecs>=2023.1.0  # LZW/compressed TIFF support for tifffile
+
+# ------------------
+# Streamlit & UI
+# ------------------
+streamlit==1.28.0
+streamlit-drawable-canvas==0.9.3
+# NOTE: pin blinker for stability with Streamlit 1.28 runtime event loop
+blinker==1.8.2
+
+# ------------------
+# Graph & Spatial Analysis
+# ------------------
+networkx==3.2.1
+sknw==0.15
+shapely==2.0.7
+
+# ------------------
+# Visualization
+# ------------------
+matplotlib==3.9.4
+
+# ------------------
+# System & Utilities
+# ------------------
+psutil==7.2.2
+
+# ------------------
+# Development & Testing
+# ------------------
+pytest>=7.0.0
+black>=22.0.0
+isort>=5.10.0
+flake8>=5.0.0
+
+# ------------------
+# Optional: Numba acceleration (if needed)
+# ------------------
+# numba==0.60.0
+# llvmlite==0.43.0
+

@@ -1,0 +1,338 @@
+import React, { useState, useRef, useEffect } from ‘react’;
+import { Upload, Download, Pencil, Square, Circle, Trash2, Play } from ‘lucide-react’;
+
+const ROISelector = () => {
+const [image, setImage] = useState(null);
+const [imageData, setImageData] = useState(null);
+const [points, setPoints] = useState([]);
+const [isDrawing, setIsDrawing] = useState(false);
+const [tool, setTool] = useState(‘freehand’); // ‘freehand’, ‘rectangle’, ‘ellipse’
+const canvasRef = useRef(null);
+const [scale, setScale] = useState(1);
+
+useEffect(() => {
+if (image && canvasRef.current) {
+const canvas = canvasRef.current;
+const ctx = canvas.getContext(‘2d’);
+const img = new Image();
+img.onload = () => {
+canvas.width = img.width;
+canvas.height = img.height;
+ctx.drawImage(img, 0, 0);
+setImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
+};
+img.src = image;
+}
+}, [image]);
+
+useEffect(() => {
+if (canvasRef.current && imageData) {
+redrawCanvas();
+}
+}, [points, imageData]);
+
+const handleImageUpload = (e) => {
+const file = e.target.files[0];
+if (file) {
+const reader = new FileReader();
+reader.onload = (event) => {
+setImage(event.target.result);
+setPoints([]);
+};
+reader.readAsDataURL(file);
+}
+};
+
+const redrawCanvas = () => {
+const canvas = canvasRef.current;
+const ctx = canvas.getContext(‘2d’);
+
+```
+// 元の画像を描画
+if (imageData) {
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// ROIを描画
+if (points.length > 0) {
+  ctx.strokeStyle = '#00ff00';
+  ctx.lineWidth = 2;
+  ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+  
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  
+  if (tool === 'freehand' && points.length > 2) {
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.stroke();
+  
+  // 点を表示
+  points.forEach(point => {
+    ctx.fillStyle = '#00ff00';
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+```
+
+};
+
+const getMousePos = (e) => {
+const canvas = canvasRef.current;
+const rect = canvas.getBoundingClientRect();
+return {
+x: (e.clientX - rect.left) * (canvas.width / rect.width),
+y: (e.clientY - rect.top) * (canvas.height / rect.height)
+};
+};
+
+const handleMouseDown = (e) => {
+if (!image) return;
+setIsDrawing(true);
+const pos = getMousePos(e);
+
+```
+if (tool === 'freehand') {
+  setPoints([pos]);
+}
+```
+
+};
+
+const handleMouseMove = (e) => {
+if (!isDrawing || !image) return;
+const pos = getMousePos(e);
+
+```
+if (tool === 'freehand') {
+  setPoints(prev => [...prev, pos]);
+}
+```
+
+};
+
+const handleMouseUp = () => {
+setIsDrawing(false);
+};
+
+const clearROI = () => {
+setPoints([]);
+};
+
+const exportROI = () => {
+if (points.length === 0) {
+alert(‘Please draw an ROI first’);
+return;
+}
+
+```
+const roiData = {
+  points: points,
+  imageWidth: canvasRef.current.width,
+  imageHeight: canvasRef.current.height,
+  tool: tool
+};
+
+const blob = new Blob([JSON.stringify(roiData, null, 2)], { type: 'application/json' });
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'roi_coordinates.json';
+a.click();
+```
+
+};
+
+const runAnalysis = async () => {
+if (!image || points.length === 0) {
+alert(‘Please upload an image and draw an ROI’);
+return;
+}
+
+```
+alert(`Analysis would start with ROI containing ${points.length} points.\n\nIn the actual implementation, this would:\n1. Send the image and ROI coordinates to the backend\n2. Run the MNV analysis pipeline\n3. Display results`);
+```
+
+};
+
+return (
+<div style={{ maxWidth: ‘1200px’, margin: ‘0 auto’, padding: ‘20px’, fontFamily: ‘system-ui, -apple-system, sans-serif’ }}>
+<div style={{ marginBottom: ‘20px’, padding: ‘20px’, background: ‘linear-gradient(135deg, #667eea 0%, #764ba2 100%)’, borderRadius: ‘12px’, color: ‘white’ }}>
+<h1 style={{ margin: ‘0 0 10px 0’, fontSize: ‘28px’, fontWeight: ‘bold’ }}>🔬 MNV ROI Selector</h1>
+<p style={{ margin: 0, opacity: 0.9 }}>Upload your MNV image and draw a region of interest for analysis</p>
+</div>
+
+```
+  {/* Toolbar */}
+  <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+    <label style={{ 
+      padding: '10px 20px', 
+      background: '#4CAF50', 
+      color: 'white', 
+      borderRadius: '8px', 
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      fontWeight: '500'
+    }}>
+      <Upload size={18} />
+      Upload Image
+      <input 
+        type="file" 
+        accept="image/*" 
+        onChange={handleImageUpload}
+        style={{ display: 'none' }}
+      />
+    </label>
+
+    <button
+      onClick={() => setTool('freehand')}
+      style={{
+        padding: '10px 20px',
+        background: tool === 'freehand' ? '#2196F3' : '#e0e0e0',
+        color: tool === 'freehand' ? 'white' : '#333',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontWeight: '500'
+      }}
+    >
+      <Pencil size={18} />
+      Freehand
+    </button>
+
+    <button
+      onClick={clearROI}
+      disabled={!image}
+      style={{
+        padding: '10px 20px',
+        background: image ? '#ff5722' : '#ccc',
+        color: 'white',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: image ? 'pointer' : 'not-allowed',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontWeight: '500'
+      }}
+    >
+      <Trash2 size={18} />
+      Clear ROI
+    </button>
+
+    <button
+      onClick={exportROI}
+      disabled={points.length === 0}
+      style={{
+        padding: '10px 20px',
+        background: points.length > 0 ? '#9C27B0' : '#ccc',
+        color: 'white',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: points.length > 0 ? 'pointer' : 'not-allowed',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontWeight: '500'
+      }}
+    >
+      <Download size={18} />
+      Export ROI
+    </button>
+
+    <button
+      onClick={runAnalysis}
+      disabled={!image || points.length === 0}
+      style={{
+        padding: '10px 20px',
+        background: (image && points.length > 0) ? '#FF9800' : '#ccc',
+        color: 'white',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: (image && points.length > 0) ? 'pointer' : 'not-allowed',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontWeight: '500',
+        marginLeft: 'auto'
+      }}
+    >
+      <Play size={18} />
+      Run Analysis
+    </button>
+  </div>
+
+  {/* Canvas Area */}
+  <div style={{ 
+    border: '2px solid #ddd', 
+    borderRadius: '12px', 
+    overflow: 'hidden',
+    background: '#f5f5f5',
+    minHeight: '400px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  }}>
+    {image ? (
+      <canvas
+        ref={canvasRef}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        style={{ 
+          maxWidth: '100%', 
+          maxHeight: '600px',
+          cursor: tool === 'freehand' ? 'crosshair' : 'default',
+          display: 'block'
+        }}
+      />
+    ) : (
+      <div style={{ textAlign: 'center', padding: '60px', color: '#999' }}>
+        <Upload size={64} style={{ marginBottom: '20px', opacity: 0.3 }} />
+        <p style={{ fontSize: '18px', margin: 0 }}>Upload an image to begin</p>
+      </div>
+    )}
+  </div>
+
+  {/* Info Panel */}
+  <div style={{ 
+    marginTop: '20px', 
+    padding: '15px', 
+    background: '#f8f9fa', 
+    borderRadius: '8px',
+    border: '1px solid #dee2e6'
+  }}>
+    <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: '600' }}>📝 Instructions:</h3>
+    <ol style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8' }}>
+      <li>Upload your MNV OCTA image</li>
+      <li>Select the <strong>Freehand</strong> tool</li>
+      <li>Click and drag to draw around the MNV lesion</li>
+      <li>Click <strong>Run Analysis</strong> to start processing</li>
+    </ol>
+    
+    {points.length > 0 && (
+      <div style={{ marginTop: '15px', padding: '10px', background: '#e3f2fd', borderRadius: '6px' }}>
+        <strong style={{ color: '#1976d2' }}>✓ ROI Status:</strong> {points.length} points drawn
+      </div>
+    )}
+  </div>
+</div>
+```
+
+);
+};
+
+export default ROISelector;

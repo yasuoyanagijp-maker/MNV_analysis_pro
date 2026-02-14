@@ -1,0 +1,53 @@
+{
+  "size_class": "small",
+  "n_cases": 26,
+  "metrics": [
+    "euler_total",
+    "loop_total",
+    "junction_density",
+    "tortuosity_center",
+    "tortuosity_periphery",
+    "FD_global"
+  ],
+  "mu": {
+    "euler_total": -73.6923076923077,
+    "loop_total": 25.18305177502082,
+    "junction_density": 164.19230769230768,
+    "tortuosity_center": 1.0375574228057238,
+    "tortuosity_periphery": 1.1611810462257919,
+    "FD_global": 1.28275439135746
+  },
+  "sigma": {
+    "euler_total": 58.55101654507408,
+    "loop_total": 1.6680658150752463,
+    "junction_density": 150.83395353321984,
+    "tortuosity_center": 0.06670705801749904,
+    "tortuosity_periphery": 0.04419395949568236,
+    "FD_global": 0.0905341866810097
+  },
+  "pc1_weights": {
+    "euler_total": -0.491593086221874,
+    "loop_total": -0.41117009833790663,
+    "junction_density": 0.45595709374329885,
+    "tortuosity_center": -0.11250230280960843,
+    "tortuosity_periphery": 0.3457553053197855,
+    "FD_global": 0.49917433546064044
+  },
+  "pc2_weights": {
+    "euler_total": -0.19682956648499894,
+    "loop_total": -0.12604247375921576,
+    "junction_density": 0.37313789206509973,
+    "tortuosity_center": 0.7645812552618375,
+    "tortuosity_periphery": -0.44288006016608295,
+    "FD_global": -0.1594123159630973
+  },
+  "explained_variance_ratio": [
+    0.5577022569793124,
+    0.23246134393027457
+  ],
+  "final_weights": {
+    "PC1": 0.6,
+    "PC2": 0.3,
+    "TrunkDist": 0.1
+  }
+}

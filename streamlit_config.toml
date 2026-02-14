@@ -1,0 +1,34 @@
+# Streamlit Configuration for Scroll-Free UI
+# Place this file in: .streamlit/config.toml
+
+[theme]
+primaryColor = "#667eea"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f7f9fc"
+textColor = "#1a202c"
+font = "sans serif"
+
+[server]
+# パフォーマンス最適化
+maxUploadSize = 200
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+# スクロール関連の設定
+gatherUsageStats = false
+
+[runner]
+# 再実行の最適化
+fastReruns = true
+magicEnabled = false
+
+[client]
+# ツールバーの設定
+showErrorDetails = true
+toolbarMode = "minimal"
+
+[ui]
+# UI関連の最適化
+hideTopBar = false
+hideSidebarNav = false
