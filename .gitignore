@@ -10,3 +10,4 @@ dist/
 .cursor/
 .vscode/
 output/exports/logs/
+output/
