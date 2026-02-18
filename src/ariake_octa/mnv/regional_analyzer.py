@@ -380,12 +380,8 @@ class RegionalAnalyzer:
             threshold = 0.5 * max_dist if max_dist > 0 else 0.0
 
         center_mask = (dist >= threshold) & roi_binary
-        # center が空になる場合（境界付近・細長いROI・浮動小数点）はフォールバック
+        # center が空のときのみ、距離最大のピクセルを少なくとも1つ含める
         if not np.any(center_mask):
-            threshold = 0.5 * max_dist if max_dist > 0 else 0.0
-            center_mask = (dist >= threshold) & roi_binary
-        if not np.any(center_mask):
-            # 少なくとも距離最大のピクセルを center に含める
             center_mask = (dist >= max_dist) & roi_binary
 
         periphery_mask = roi_binary & ~center_mask
