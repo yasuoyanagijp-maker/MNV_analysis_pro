@@ -13,11 +13,13 @@
 set -e  # エラー時に即座に終了
 
 # -----------------------------------------------------------------------------
-# 設定
+# 設定（requirements.txt の "Python 3.9+ (recommended: 3.10-3.12)" に合わせる）
 # -----------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${SCRIPT_DIR}/.venv"
 PYTHON_MIN_VERSION="3.9"
+# 推奨: 3.10-3.12。venv はこのいずれかで作成する（優先順）
+PYTHON_RECOMMENDED_VERSIONS="3.12 3.11 3.10"
 
 # 環境変数のデフォルト値
 export PYTHONPATH="${PYTHONPATH:+${PYTHONPATH}:}${SCRIPT_DIR}/src"
@@ -70,6 +72,39 @@ check_python_version() {
     return 0
 }
 
+# 指定バージョンが推奨リストに含まれるか
+is_recommended_version() {
+    local v="$1"
+    local r
+    for r in $PYTHON_RECOMMENDED_VERSIONS; do
+        if [[ "$v" == "$r" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# requirements.txt に合わせて使用する Python コマンドを探す（推奨 3.12→3.11→3.10、可 3.9）
+find_python_for_venv() {
+    local cmd
+    for ver in $PYTHON_RECOMMENDED_VERSIONS 3.9; do
+        cmd="python${ver}"
+        if command -v "$cmd" &> /dev/null && check_python_version "$cmd" > /dev/null; then
+            echo "$cmd"
+            return 0
+        fi
+    done
+    if command -v python3 &> /dev/null && check_python_version python3 > /dev/null; then
+        echo "python3"
+        return 0
+    fi
+    if command -v python &> /dev/null && check_python_version python > /dev/null; then
+        echo "python"
+        return 0
+    fi
+    return 1
+}
+
 # -----------------------------------------------------------------------------
 # メイン処理
 # -----------------------------------------------------------------------------
@@ -100,6 +135,9 @@ for arg in "$@"; do
             echo "  ARIAKE_SAVE_STAGES            処理ステージを保存 (default: false)"
             echo "  ARIAKE_ENABLE_ROI_REFINEMENT  ROI精緻化を有効化 (default: false)"
             echo "  STREAMLIT_SERVER_PORT         Streamlitポート (default: 8501)"
+            echo ""
+            echo "Python: requirements.txt に合わせ 3.9+ 対応、推奨 3.10-3.12。"
+            echo "  既存の .venv が推奨外の場合は推奨バージョンで作り直します。"
             exit 0
             ;;
     esac
@@ -109,28 +147,41 @@ log_info "ARIAKE_MNV 環境セットアップを開始します..."
 log_info "作業ディレクトリ: ${SCRIPT_DIR}"
 
 # -----------------------------------------------------------------------------
-# Step 1: 仮想環境の確認・作成
+# Step 1: 仮想環境の確認・作成（requirements.txt 推奨: 3.10-3.12 で作成し直す）
 # -----------------------------------------------------------------------------
-if [[ ! -d "$VENV_DIR" ]]; then
-    log_info "仮想環境が見つかりません。作成します..."
-    
-    # 適切なPythonを探す
-    PYTHON_CMD=""
-    for cmd in python3.12 python3.11 python3.10 python3.9 python3; do
-        if command -v "$cmd" &> /dev/null; then
-            if check_python_version "$cmd" > /dev/null; then
-                PYTHON_CMD="$cmd"
-                break
+VENV_PYTHON="${VENV_DIR}/bin/python"
+if [[ -d "$VENV_DIR" ]]; then
+    # 壊れた venv（別マシン／別 Python 向け）は削除
+    if [[ ! -x "$VENV_PYTHON" ]] || ! "$VENV_PYTHON" -c "import sys" &>/dev/null; then
+        log_warn "既存の仮想環境の Python が使えません。作り直します..."
+        rm -rf "$VENV_DIR"
+    else
+        # 動作する venv が推奨バージョンでない場合、推奨が使えれば作り直す
+        CURRENT_VER=$("$VENV_PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
+        if [[ -n "$CURRENT_VER" ]] && ! is_recommended_version "$CURRENT_VER"; then
+            PYTHON_CMD=$(find_python_for_venv)
+            if [[ -n "$PYTHON_CMD" ]]; then
+                WANT_VER=$(check_python_version "$PYTHON_CMD")
+                if is_recommended_version "$WANT_VER"; then
+                    log_warn "既存の仮想環境は Python ${CURRENT_VER} です。推奨 ${WANT_VER} で作り直します..."
+                    rm -rf "$VENV_DIR"
+                fi
             fi
         fi
-    done
+    fi
+fi
+
+if [[ ! -d "$VENV_DIR" ]]; then
+    log_info "仮想環境を作成します（requirements.txt 推奨: ${PYTHON_RECOMMENDED_VERSIONS}）..."
     
+    PYTHON_CMD=$(find_python_for_venv)
     if [[ -z "$PYTHON_CMD" ]]; then
-        log_error "Python ${PYTHON_MIN_VERSION}+ が見つかりません"
+        log_error "Python ${PYTHON_MIN_VERSION}+ が見つかりません（推奨: ${PYTHON_RECOMMENDED_VERSIONS}）"
         exit 1
     fi
-    
-    log_info "使用するPython: $PYTHON_CMD ($(check_python_version "$PYTHON_CMD"))"
+
+    PYTHON_VER=$(check_python_version "$PYTHON_CMD")
+    log_info "使用するPython: $PYTHON_CMD (${PYTHON_VER})"
     $PYTHON_CMD -m venv "$VENV_DIR"
     log_info "仮想環境を作成しました: ${VENV_DIR}"
 fi
