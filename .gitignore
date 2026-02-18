@@ -13,6 +13,7 @@ output/exports/logs/
 output/
 
 # Test
+tests/
 .pytest_cache/
 tests/output/
 tests/local_fixtures/
