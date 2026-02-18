@@ -200,6 +200,7 @@ class SpatialDistributionAnalyzer:
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         中心部と周辺部のマスクを作成 (ImageJ互換: ROIの縮小 + XOR).
+        center は元のROIの形を変えずに内側へ縮小した領域（距離変換による erosion）。
 
         ImageJ: center = Enlarge(ROI, -shrinkPixels), periphery = XOR(ROI, center)
         shrinkPixels = estimatedRadius - centerRadius = (2/3)*radius

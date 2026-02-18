@@ -6,6 +6,7 @@
 # CRITICAL: Do not upgrade these versions without testing!
 # streamlit-drawable-canvas requires streamlit<1.29.0 due to image_to_url API
 # numpy<2.0 is required for compatibility with scikit-image and opencv
+# pandas>=2.1.x needed for Python 3.12 wheels (2.0.x has no cp312 wheel)
 # =============================================================================
 
 # ------------------
@@ -13,7 +14,7 @@
 # ------------------
 numpy==1.26.4
 scipy==1.13.1
-pandas==2.0.3
+pandas==2.1.4
 
 # ------------------
 # Image Processing

@@ -329,7 +329,11 @@ class RegionalAnalyzer:
         effective_center_radius: float,
     ) -> tuple:
         """
-        Create center and periphery masks based on ROI polygon and effective center radius.
+        Create center and periphery masks from ROI: center = ROI shrunk inward
+        (shape preserved), periphery = ROI minus center.
+
+        Uses distance transform so center is the same polygon shape as the ROI,
+        just reduced in size (pixels at least effective_center_radius from boundary).
 
         Parameters
         ----------
@@ -338,36 +342,49 @@ class RegionalAnalyzer:
         roi_mask : np.ndarray
             Boolean mask of the MNV ROI
         center : tuple
-            (center_y, center_x) in pixel coordinates
+            (center_y, center_x) in pixel coordinates (unused; kept for API compatibility)
         effective_center_radius : float
-            Radius in pixels for the center region
+            Shrink distance in pixels: center = ROI pixels >= this distance from boundary
 
         Returns
         -------
         (center_mask, periphery_mask)
-            center_mask: boolean mask of a circular center region intersected with roi_mask
+            center_mask: boolean mask of ROI shrunk inward (same shape as ROI)
             periphery_mask: boolean mask of roi_mask minus center_mask
         """
+        from scipy.ndimage import distance_transform_edt
+
         # Validate inputs
         if roi_mask is None or roi_mask.size == 0:
             center_mask = np.zeros(image_shape, dtype=bool)
             periphery_mask = np.zeros(image_shape, dtype=bool)
             return center_mask, periphery_mask
 
-        # Create circular mask for center
-        center_y, center_x = center
-        circle_mask = self._create_circular_mask(
-            image_shape, center_y, center_x, effective_center_radius
-        )
+        roi_binary = np.asarray(roi_mask, dtype=bool)
+        shrink_pixels = max(0.0, float(effective_center_radius))
 
-        # Intersect with roi_mask to ensure center is within lesion
-        center_mask = np.logical_and(roi_mask.astype(bool), circle_mask)
+        if shrink_pixels <= 0:
+            center_mask = roi_binary.copy()
+            periphery_mask = np.zeros_like(roi_binary)
+            return center_mask, periphery_mask
 
-        # Periphery is ROI minus center
-        periphery_mask = np.logical_and(
-            roi_mask.astype(bool), np.logical_not(center_mask)
-        )
+        # Distance transform: distance from each pixel to nearest background.
+        # Center = pixels at least shrink_pixels from boundary (ROI shape preserved).
+        dist = distance_transform_edt(roi_binary.astype(np.uint8))
+        max_dist = float(np.max(dist))
 
+        if max_dist >= shrink_pixels:
+            threshold = shrink_pixels
+        else:
+            # 細長いROI: 最初から dist.max() の 50% を閾値に
+            threshold = 0.5 * max_dist if max_dist > 0 else 0.0
+
+        center_mask = (dist >= threshold) & roi_binary
+        # center が空のときのみ、距離最大のピクセルを少なくとも1つ含める
+        if not np.any(center_mask):
+            center_mask = (dist >= max_dist) & roi_binary
+
+        periphery_mask = roi_binary & ~center_mask
         return center_mask, periphery_mask
 
     def extract_trunk_skeleton(
