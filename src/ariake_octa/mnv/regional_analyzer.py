@@ -701,33 +701,100 @@ class RegionalAnalyzer:
         num_bins: int = 10,
     ) -> tuple:
         """
-        Compute radial diameter profile and stability score.
+        ROI を境界からの距離で縮めた層ごとの径プロファイルと安定性スコアを計算する。
 
-        Returns (radial_means (µm), gradient (µm/bin), stability_score)
+        領域の指定は「ROI を縮める」方法を用いる。距離変換（境界から各ピクセルまでの
+        距離）により ROI を num_bins 層に分割し、各層内の distance_map 平均から
+        径（µm）を算出する。円形ではなく ROI の形状を保ったまま内側に縮めた
+        層になる。空の層が出ないよう、create_adaptive_masks と同様に「空なら
+        その距離帯に最も近いピクセルを少なくとも1つ含める」工夫をし、
+        fd_ring_analyzer と同様に層面積 0 のときは平均を計算せず前ビン or 0 で補完する。
+
+        Parameters
+        ----------
+        distance_map : np.ndarray
+            径（または距離）マップ。各ピクセルで平均し、µm に換算する。
+        roi_mask : np.ndarray
+            MNV の ROI マスク（bool または 0/1）。
+        center : tuple
+            (center_y, center_x)。API 互換用（本実装では距離変換のため未使用）。
+        estimated_radius : float
+            推定病変半径（ピクセル）。API 互換用（本実装では距離変換のため未使用）。
+        mm_per_pixel : float
+            1 ピクセルあたりの mm。µm 換算に使用。
+        num_bins : int, optional
+            層数（デフォルト 10）。bin 0 = 中心側、bin num_bins-1 = 辺縁側。
+
+        Returns
+        -------
+        tuple
+            (radial_means, gradient, stability_score)
+            - radial_means : np.ndarray of float, shape (num_bins,)
+                各層の径の平均（µm）。
+            - gradient : float
+                径の層方向の線形回帰勾配（µm/bin）。
+            - stability_score : float
+                calculate_stability_metrics による安定性スコア。
+
+        Notes
+        -----
+        - 層の定義: 境界からの距離 d について、bin b は
+          (num_bins-1-b)/num_bins * max_d <= d < (num_bins-b)/num_bins * max_d。
+        - 空の層対策: 層にピクセルが1つもない場合、その層の距離帯の中点に
+          最も近い ROI 内ピクセルを少なくとも1つ含める。
         """
-        h, w = distance_map.shape
-        cy, cx = center
-        bin_width = float(estimated_radius) / float(num_bins) if num_bins > 0 else 0.0
-
-        # Precompute distances
-        y_idx, x_idx = np.indices(distance_map.shape)
-        distances_from_center = np.sqrt((y_idx - cy) ** 2 + (x_idx - cx) ** 2)
+        from scipy.ndimage import distance_transform_edt
 
         radial_means = np.zeros(num_bins, dtype=float)
+        roi_binary = np.asarray(roi_mask, dtype=bool)
 
-        for b in range(num_bins):
-            inner_r = b * bin_width
-            outer_r = (b + 1) * bin_width
-            ring_mask = (
-                (roi_mask.astype(bool))
-                & (distances_from_center >= inner_r)
-                & (distances_from_center < outer_r)
+        if not np.any(roi_binary) or num_bins <= 0:
+            return (
+                radial_means,
+                0.0,
+                float(self.calculate_stability_metrics(radial_means)),
             )
-            if np.any(ring_mask):
-                mean_val = float(np.mean(distance_map[ring_mask]))
+
+        # Distance from each ROI pixel to nearest boundary (ROI shape preserved)
+        dist = distance_transform_edt(roi_binary.astype(np.uint8))
+        max_d = float(np.max(dist))
+
+        if max_d <= 0:
+            # Single-pixel or degenerate ROI: assign same pixel to all bins
+            single = roi_binary
+            if np.any(single):
+                mean_val = float(np.mean(distance_map[single]))
+                radial_means[:] = mean_val * 2.0 * mm_per_pixel * 1000.0
+            return (
+                radial_means,
+                0.0,
+                float(self.calculate_stability_metrics(radial_means)),
+            )
+
+        # 10 layers by distance from boundary: bin 0 = center (largest dist), bin 9 = periphery
+        for b in range(num_bins):
+            inner_d = (num_bins - 1 - b) / float(num_bins) * max_d
+            outer_d = (num_bins - b) / float(num_bins) * max_d
+            layer_mask = (
+                (dist >= inner_d)
+                & (dist < outer_d)
+                & roi_binary
+            )
+
+            # Empty handling (same idea as create_adaptive_masks: ensure at least one pixel)
+            if not np.any(layer_mask):
+                mid = (inner_d + outer_d) * 0.5
+                diff = np.abs(dist - mid)
+                diff = np.where(roi_binary, diff, np.inf)
+                if np.any(np.isfinite(diff)):
+                    min_diff = np.min(diff[roi_binary])
+                    layer_mask = roi_binary & (np.abs(dist - mid) <= min_diff + 1e-9)
+
+            # fd_ring_analyzer-style: only compute mean when layer has pixels; avoid 0-division
+            if np.any(layer_mask):
+                mean_val = float(np.mean(distance_map[layer_mask]))
                 radial_means[b] = mean_val * 2.0 * mm_per_pixel * 1000.0
             else:
-                # fallback: use previous bin's value if available, else 0
                 radial_means[b] = radial_means[b - 1] if b > 0 else 0.0
 
         # Linear regression for gradient
