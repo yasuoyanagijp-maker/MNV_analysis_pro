@@ -11,3 +11,9 @@ dist/
 .vscode/
 output/exports/logs/
 output/
+
+# Test
+.pytest_cache/
+tests/output/
+tests/local_fixtures/
+*_ColorMask.png
