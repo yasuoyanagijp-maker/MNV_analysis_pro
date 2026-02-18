@@ -162,7 +162,8 @@ if [[ -d "$VENV_DIR" ]]; then
             PYTHON_CMD=$(find_python_for_venv)
             if [[ -n "$PYTHON_CMD" ]]; then
                 WANT_VER=$(check_python_version "$PYTHON_CMD")
-                if is_recommended_version "$WANT_VER"; then
+                # 防御: check_python_version が空を返す理論上のケースでは作り直ししない
+                if [[ -n "$WANT_VER" ]] && is_recommended_version "$WANT_VER"; then
                     log_warn "既存の仮想環境は Python ${CURRENT_VER} です。推奨 ${WANT_VER} で作り直します..."
                     rm -rf "$VENV_DIR"
                 fi
