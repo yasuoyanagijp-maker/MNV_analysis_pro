@@ -76,8 +76,10 @@ class VisualizationRGB:
         metrics : dict, optional
             表示する統計情報
         highskew_mask : np.ndarray, optional
-            dilated_highSkew_for_visualization (ImageJ互換の拡張血管マスク)
-            指定時は赤チャンネルに使用。未指定時は簡易版 _detect_dilated_vessels を使用
+            dilated_highSkew_for_visualization (ImageJ互換の拡張血管マスク)。
+            指定時は G 減算に使用。Blur で「中心濃・周囲薄」の勾配を保ったまま、
+            最大値を 255 にスケールしてから減算するため赤がはっきり出る。
+            未指定時は簡易版 _detect_dilated_vessels を使用。
 
         Returns
         -------
@@ -102,12 +104,18 @@ class VisualizationRGB:
         r_ch = np.clip(orig, 0, 255).astype(np.uint8)
 
         # G channel: ROI 内のみ orig - Dilated_HighSkew
+        # Blur は「中心が濃く・周りが薄い」勾配用にそのまま。減算で赤を出すため、
+        # マスクを「最大値を 255 にスケール」してから減算する（勾配は維持）。
         if highskew_mask is not None and np.any(highskew_mask > 0):
             hsk = (
                 highskew_mask.astype(np.float32)
                 if highskew_mask.dtype != np.float32
                 else highskew_mask.copy()
             )
+            hsk = np.clip(hsk, 0, None)
+            hsk_max = float(np.max(hsk))
+            if hsk_max > 0:
+                hsk = (hsk * (255.0 / hsk_max)).astype(np.float32)
             hsk = np.clip(hsk, 0, 255)
             g_sub = np.clip(orig - hsk, 0, 255).astype(np.uint8)
         else:
