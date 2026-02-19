@@ -978,13 +978,18 @@ class FractalAnalyzer:
     """
     フラクタル次元解析
     calculateFractalDimensionBoxCounting に対応
+    Phase3: 症例間でスケール範囲を統一するため固定リスト [2,4,8,16,32,64] をデフォルトで使用。
     """
+
+    # Phase3: 全症例で共通のスケール候補（上限64）。crop に収まるものだけ使用。
+    FIXED_BOX_SIZES = [2, 4, 8, 16, 32, 64]
 
     @staticmethod
     def box_counting(
         binary: np.ndarray,
         min_box_size: int = 2,
         max_box_size: Optional[int] = None,
+        use_fixed_scale: bool = True,
     ) -> Tuple[List[int], List[int]]:
         """
         Box-counting法によるフラクタル次元計算の準備
@@ -994,9 +999,12 @@ class FractalAnalyzer:
         binary : np.ndarray
             二値画像
         min_box_size : int
-            最小ボックスサイズ
+            最小ボックスサイズ（use_fixed_scale=False のときのみ使用）
         max_box_size : int, optional
-            最大ボックスサイズ
+            最大ボックスサイズ（use_fixed_scale=False のときのみ使用）
+        use_fixed_scale : bool, optional
+            True のとき全症例で共通の FIXED_BOX_SIZES を使用（crop に収まるものだけ）。
+            False のとき従来どおり ROI に依存した動的スケール。
 
         Returns:
         --------
@@ -1016,21 +1024,30 @@ class FractalAnalyzer:
         h, w = crop.shape
         max_dim = max(h, w)
 
-        if max_box_size is None:
-            max_box_size = 2 ** int(np.log2(max_dim / 4))
-
         box_sizes = []
         box_counts = []
 
-        box_size = min_box_size
-        while box_size <= max_box_size:
-            count = FractalAnalyzer._count_boxes(crop, box_size)
-
-            if count > 0:
-                box_sizes.append(box_size)
-                box_counts.append(count)
-
-            box_size *= 2
+        if use_fixed_scale:
+            # Phase3: 固定スケール。crop に収まるものだけ使用（box_size <= max_dim/4）
+            max_allowed = max(min_box_size, int(max_dim / 4))
+            for box_size in FractalAnalyzer.FIXED_BOX_SIZES:
+                if box_size > max_allowed:
+                    continue
+                count = FractalAnalyzer._count_boxes(crop, box_size)
+                if count > 0:
+                    box_sizes.append(box_size)
+                    box_counts.append(count)
+        else:
+            # 従来: ROI に依存した動的スケール
+            if max_box_size is None:
+                max_box_size = 2 ** int(np.log2(max_dim / 4))
+            box_size = min_box_size
+            while box_size <= max_box_size:
+                count = FractalAnalyzer._count_boxes(crop, box_size)
+                if count > 0:
+                    box_sizes.append(box_size)
+                    box_counts.append(count)
+                box_size *= 2
 
         # Diagnostic log for debugging FD issues
         try:
@@ -1900,9 +1917,11 @@ class RegionalBranchAnalyzer:
         else:
             avg_tortuosity = 0.0
 
-        # Fractal dimension
+        # Fractal dimension（Phase3: 固定スケールで症例間比較可能に）
         if np.sum(region_skeleton > 0) >= 50:
-            box_sizes, box_counts = self.fractal_analyzer.box_counting(region_skeleton)
+            box_sizes, box_counts = self.fractal_analyzer.box_counting(
+                region_skeleton, use_fixed_scale=True
+            )
             fractal_dim, r_squared = self.fractal_analyzer.calculate_fractal_dimension(
                 box_sizes, box_counts
             )

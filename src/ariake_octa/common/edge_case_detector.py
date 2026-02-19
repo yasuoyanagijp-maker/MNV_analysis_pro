@@ -89,7 +89,7 @@ class EdgeCaseDetector:
         "max_num_branches": 500,
         "min_tortuosity": 1.0,
         "max_tortuosity": 3.0,
-        "min_fractal_dimension": 1.0,
+        "min_fractal_dimension": 0.9,
         "max_fractal_dimension": 2.0,
     }
 

@@ -259,6 +259,13 @@ class SpatialDistributionAnalyzer:
                 # erosion(disk(r)) <=> dist >= r (pixel kept if >= r from boundary).
                 dist = distance_transform_edt(roi_crop)
                 center_crop = (dist >= shrink_pixels).astype(np.uint8)
+                # Fallback (same as regional_analyzer.create_adaptive_masks): center が空なら
+                # 境界から最も遠いピクセルを少なくとも1つ含める。
+                if not np.any(center_crop):
+                    max_d = float(np.max(dist))
+                    center_crop = (
+                        (dist >= max_d) & roi_crop.astype(bool)
+                    ).astype(np.uint8)
                 periphery_crop = (
                     (roi_crop.astype(bool) & ~center_crop.astype(bool))
                 ).astype(np.uint8)
