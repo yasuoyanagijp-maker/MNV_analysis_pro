@@ -1235,31 +1235,33 @@ def _metrics_to_imagej_row(
         row["Center Euler Number"] = euler_number // 2
         row["Periphery Euler Number"] = euler_number - (euler_number // 2)
 
-    # Phase1/2/3 品質フラグ（異常時も値はそのまま出力）
+    # Phase1/2/3 品質フラグ（0/False もそのまま出力するため None の場合のみ ""）
+    def _csv_val(val):
+        v = _to_csv_value(val)
+        return v if v is not None else ""
+
     if "fd_quality_flag" in metrics:
-        row["FD quality flag (0=OK 1=abnormal)"] = _to_csv_value(
-            metrics["fd_quality_flag"]
-        ) or ""
+        row["FD quality flag (0=OK 1=abnormal)"] = _csv_val(metrics["fd_quality_flag"])
     if "exclude_from_fd_analysis" in metrics:
-        row["Exclude from FD analysis"] = _to_csv_value(
+        row["Exclude from FD analysis"] = _csv_val(
             metrics["exclude_from_fd_analysis"]
-        ) or ""
-    if "fd_quality_reason" in metrics and metrics["fd_quality_reason"]:
+        )
+    if "fd_quality_reason" in metrics:
         row["FD quality reason"] = str(metrics["fd_quality_reason"])
     if "roi_coverage" in metrics:
-        row["ROI coverage (%)"] = _to_csv_value(metrics["roi_coverage"]) or ""
+        row["ROI coverage (%)"] = _csv_val(metrics["roi_coverage"])
     if "roi_coverage_low_quality" in metrics:
-        row["ROI coverage low quality (0=OK 1=low)"] = _to_csv_value(
+        row["ROI coverage low quality (0=OK 1=low)"] = _csv_val(
             metrics["roi_coverage_low_quality"]
-        ) or ""
-    if "fd_box_sizes" in metrics and metrics["fd_box_sizes"]:
+        )
+    if "fd_box_sizes" in metrics:
         row["FD box sizes"] = str(metrics["fd_box_sizes"])
     if "n_fd_box_sizes" in metrics:
-        row["N FD box sizes"] = _to_csv_value(metrics["n_fd_box_sizes"]) or ""
+        row["N FD box sizes"] = _csv_val(metrics["n_fd_box_sizes"])
     if "fd_scale_insufficient" in metrics:
-        row["FD scale insufficient (0=OK 1=insufficient)"] = _to_csv_value(
+        row["FD scale insufficient (0=OK 1=insufficient)"] = _csv_val(
             metrics["fd_scale_insufficient"]
-        ) or ""
+        )
 
     return row
 

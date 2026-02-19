@@ -572,7 +572,9 @@ class MNVPipeline:
             self.logger.debug(f"  Processing time: {step_time:.2f}s")
 
             # フラクタル次元の妥当性チェック（Step 3 の refined_skeleton FD）
-            # Phase1: 異常FDの品質フラグ（0.9–2.0 外は fd_quality_flag=1、理由記録）
+            # Phase1: FD quality flag — 1 if FD < 0.9 or FD > 2.0 (expected range), else 0.
+            # CSV "FD quality flag (0=OK 1=abnormal)" / "Exclude from FD analysis" / "FD quality reason" に対応。
+            # 範囲外は box-counting の前提が満たされていない可能性があるため FD 解釈からの除外を推奨。
             fd = skeleton_results.get("fractal_dimension", 0)
             fd_abnormal = fd < 0.9 or fd > 2.0
             fd_quality_flag = 1 if fd_abnormal else 0
