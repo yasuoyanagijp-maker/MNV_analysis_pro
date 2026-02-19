@@ -18,3 +18,7 @@ tests/
 tests/output/
 tests/local_fixtures/
 *_ColorMask.png
+
+# Local / one-off (not needed for main functionality, do not push)
+.Rhistory
+docs/.Rhistory
