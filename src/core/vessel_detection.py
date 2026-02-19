@@ -12,6 +12,10 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# Phase4: denoise_improved(method="iterative") のときの最大反復数。1箇所で変更可能。
+MAX_DESPECKLE_ITERATIONS = 15
+TUBENESS_DENOISE_WEAK_ITERATIONS = 3
+
 from .preprocessing import AdaptiveThresholder, BinaryPostProcessor, FilterBank
 
 
@@ -117,7 +121,9 @@ class MNVPreprocessor:
                 image_for_mex, sigma=self.mexican_hat_sigma, **_mh_params
             )
         mex_hat_binary = self.postprocessor.denoise_improved(
-            mex_hat_binary, max_iterations=15, remove_small_particles=True
+            mex_hat_binary,
+            max_iterations=MAX_DESPECKLE_ITERATIONS,
+            remove_small_particles=True,
         )
         print(f"[{time.time() - filter_start:.2f}s]")
 
@@ -150,11 +156,15 @@ class MNVPreprocessor:
             pass
         elif denoise_mode == "weak":
             tubeness_binary = self.postprocessor.denoise_improved(
-                tubeness_binary, max_iterations=3, remove_small_particles=False
+                tubeness_binary,
+                max_iterations=TUBENESS_DENOISE_WEAK_ITERATIONS,
+                remove_small_particles=False,
             )
         else:
             tubeness_binary = self.postprocessor.denoise_improved(
-                tubeness_binary, max_iterations=15, remove_small_particles=True
+                tubeness_binary,
+                max_iterations=MAX_DESPECKLE_ITERATIONS,
+                remove_small_particles=True,
             )
         print(f"[{time.time() - filter_start:.2f}s]")
 
@@ -188,7 +198,9 @@ class MNVPreprocessor:
         _, binary = cv2.threshold(mex_hat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         # Denoise Improved
         binary = self.postprocessor.denoise_improved(
-            binary, max_iterations=15, remove_small_particles=True
+            binary,
+            max_iterations=MAX_DESPECKLE_ITERATIONS,
+            remove_small_particles=True,
         )
         return mex_hat, binary
 
@@ -200,7 +212,9 @@ class MNVPreprocessor:
             tubeness, radius=15, k=0.0, white_objects=True
         )
         binary = self.postprocessor.denoise_improved(
-            binary, max_iterations=15, remove_small_particles=True
+            binary,
+            max_iterations=MAX_DESPECKLE_ITERATIONS,
+            remove_small_particles=True,
         )
         return tubeness, binary
 
@@ -216,7 +230,9 @@ class MNVPreprocessor:
             tubeness, radius=15, k=0.0, white_objects=True
         )
         binary = self.postprocessor.denoise_improved(
-            binary, max_iterations=15, remove_small_particles=True
+            binary,
+            max_iterations=MAX_DESPECKLE_ITERATIONS,
+            remove_small_particles=True,
         )
         return tubeness, binary
 
@@ -241,7 +257,9 @@ class MNVPreprocessor:
         # ImageJ: denoiseImproved(removeSmallParticles=1)
         # max_iterations=15（ImageJのMAX_DESPECKLE_ITERATIONS）
         binary = self.postprocessor.denoise_improved(
-            binary, max_iterations=15, remove_small_particles=True
+            binary,
+            max_iterations=MAX_DESPECKLE_ITERATIONS,
+            remove_small_particles=True,
         )
 
         return binary
@@ -268,7 +286,9 @@ class MNVPreprocessor:
         # ImageJ: denoiseImproved(removeSmallParticles=1)
         # max_iterations=15（ImageJのMAX_DESPECKLE_ITERATIONS）
         binary = self.postprocessor.denoise_improved(
-            binary, max_iterations=15, remove_small_particles=True
+            binary,
+            max_iterations=MAX_DESPECKLE_ITERATIONS,
+            remove_small_particles=True,
         )
 
         return binary
@@ -296,7 +316,9 @@ class MNVPreprocessor:
         # ImageJ: denoiseImproved(removeSmallParticles=1)
         # max_iterations=15（ImageJのMAX_DESPECKLE_ITERATIONS）
         binary = self.postprocessor.denoise_improved(
-            binary, max_iterations=15, remove_small_particles=True
+            binary,
+            max_iterations=MAX_DESPECKLE_ITERATIONS,
+            remove_small_particles=True,
         )
 
         return binary
@@ -318,7 +340,9 @@ class MNVPreprocessor:
         # ImageJ: denoiseImproved(removeSmallParticles=0)
         # Despeckleのみ、removeSmallParticlesは実行しない
         combined = self.postprocessor.denoise_improved(
-            combined, max_iterations=15, remove_small_particles=False
+            combined,
+            max_iterations=MAX_DESPECKLE_ITERATIONS,
+            remove_small_particles=False,
         )
 
         return combined

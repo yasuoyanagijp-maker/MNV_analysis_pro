@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 from scipy import ndimage
 from skimage import exposure
+from skimage.morphology import reconstruction
 
 
 class ImagePreprocessor:
@@ -686,23 +687,59 @@ class BinaryPostProcessor:
         return result
 
     @staticmethod
+    def _despeckle_morphological(
+        binary_img: np.ndarray, erosion_size: int = 3
+    ) -> np.ndarray:
+        """
+        1回の erosion + morphological reconstruction でスぺックル除去。
+        反復なし・タイムアウトなし。Phase4 用。
+
+        Parameters:
+        -----------
+        binary_img : np.ndarray
+            二値画像（0/255）
+        erosion_size : int
+            エロージョン用カーネル一辺
+
+        Returns:
+        --------
+        result : np.ndarray
+            処理後の画像
+        """
+        if binary_img is None or binary_img.size == 0:
+            return binary_img
+        kernel = np.ones((erosion_size, erosion_size), np.uint8)
+        seed = cv2.erode(binary_img, kernel, iterations=1)
+        seed_f = seed.astype(np.float64)
+        mask_f = binary_img.astype(np.float64)
+        result = reconstruction(seed_f, mask_f, method="dilation")
+        return result.astype(np.uint8)
+
+    @staticmethod
     def denoise_improved(
         binary_img: np.ndarray,
         max_iterations: int = 5,
         remove_small_particles: bool = True,
+        method: str = "morphological",
+        erosion_size: int = 3,
     ) -> np.ndarray:
         """
         ImageJマクロの denoiseImproved に相当
-        ImageJ Despeckle（外れ値除去）を反復適用し、面積が変化しなくなるまで処理
+        method="morphological"（デフォルト）: 1回 erosion + reconstruction。反復なし・タイムアウトなし。
+        method="iterative": 従来の反復 Despeckle（面積が変化しなくなるまで、max_iterations で打ち切り）。
 
         Parameters:
         -----------
         binary_img : np.ndarray
             二値化画像
         max_iterations : int
-            最大反復回数（ImageJ: MAX_DESPECKLE_ITERATIONS）
+            最大反復回数（method="iterative" のときのみ使用）
         remove_small_particles : bool
             小粒子除去を実行するか
+        method : str
+            "morphological"（デフォルト）または "iterative"
+        erosion_size : int
+            method="morphological" のときのエロージョンカーネル一辺
 
         Returns:
         --------
@@ -712,34 +749,24 @@ class BinaryPostProcessor:
         if binary_img is None or binary_img.size == 0:
             return binary_img
 
-        result = binary_img.copy()
+        if method == "morphological":
+            result = BinaryPostProcessor._despeckle_morphological(
+                binary_img, erosion_size=erosion_size
+            )
+        else:
+            result = binary_img.copy()
+            for iteration in range(max_iterations):
+                area1 = np.sum(result > 0)
+                if len(result.shape) == 2:
+                    result = cv2.medianBlur(result, 3)
+                area2 = np.sum(result > 0)
+                if area1 == area2:
+                    break
+                if iteration == max_iterations - 1:
+                    print(
+                        f"Warning: Despeckle timeout (fixed limit: {max_iterations})"
+                    )
 
-        # 反復Despeckle処理（面積が変化しなくなるまで）
-        for iteration in range(max_iterations):
-            # 現在の面積を取得
-            area1 = np.sum(result > 0)
-
-            # ImageJ Despeckle相当: Rank filter (outlier removal)
-            # ImageJのDespeckleは3x3近傍の中央値ではなく、外れ値を除去
-            # 白ピクセル(255)が周囲8ピクセル中5個以上なら保持、それ以外は削除
-            if len(result.shape) == 2:
-                # Morphological opening (erosion + dilation) がImageJ Despeckleに近い
-                # ただし、より正確にはRank filterを使用
-                # 各ピクセルの3x3近傍の中央値を使用
-                result = cv2.medianBlur(result, 3)
-
-            # 処理後の面積を取得
-            area2 = np.sum(result > 0)
-
-            # 面積が変化しなければ終了
-            if area1 == area2:
-                break
-
-            # 最終反復でタイムアウト警告
-            if iteration == max_iterations - 1:
-                print(f"Warning: Despeckle timeout (fixed limit: {max_iterations})")
-
-        # 小粒子除去（オプション）
         if remove_small_particles:
             result = BinaryPostProcessor.remove_small_particles_improved(result)
 

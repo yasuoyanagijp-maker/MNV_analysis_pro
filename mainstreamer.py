@@ -1054,6 +1054,15 @@ IMAGEJ_CSV_COLUMNS = [
     "FD Avg Area µm² (R3)",
     "FD number (R3)",
     "FD density /mm² (R3)",
+    # Phase1/2/3 品質フラグ（異常時も値はそのまま出力し、フラグで注釈）
+    "FD quality flag (0=OK 1=abnormal)",
+    "Exclude from FD analysis",
+    "FD quality reason",
+    "ROI coverage (%)",
+    "ROI coverage low quality (0=OK 1=low)",
+    "FD box sizes",
+    "N FD box sizes",
+    "FD scale insufficient (0=OK 1=insufficient)",
 ]
 
 MNV_EXPORT_META_COLUMNS = [
@@ -1225,6 +1234,34 @@ def _metrics_to_imagej_row(
     if euler_number is not None and row["Center Euler Number"] == "":
         row["Center Euler Number"] = euler_number // 2
         row["Periphery Euler Number"] = euler_number - (euler_number // 2)
+
+    # Phase1/2/3 品質フラグ（0/False もそのまま出力するため None の場合のみ ""）
+    def _csv_val(val):
+        v = _to_csv_value(val)
+        return v if v is not None else ""
+
+    if "fd_quality_flag" in metrics:
+        row["FD quality flag (0=OK 1=abnormal)"] = _csv_val(metrics["fd_quality_flag"])
+    if "exclude_from_fd_analysis" in metrics:
+        row["Exclude from FD analysis"] = _csv_val(
+            metrics["exclude_from_fd_analysis"]
+        )
+    if "fd_quality_reason" in metrics:
+        row["FD quality reason"] = str(metrics["fd_quality_reason"])
+    if "roi_coverage" in metrics:
+        row["ROI coverage (%)"] = _csv_val(metrics["roi_coverage"])
+    if "roi_coverage_low_quality" in metrics:
+        row["ROI coverage low quality (0=OK 1=low)"] = _csv_val(
+            metrics["roi_coverage_low_quality"]
+        )
+    if "fd_box_sizes" in metrics:
+        row["FD box sizes"] = str(metrics["fd_box_sizes"])
+    if "n_fd_box_sizes" in metrics:
+        row["N FD box sizes"] = _csv_val(metrics["n_fd_box_sizes"])
+    if "fd_scale_insufficient" in metrics:
+        row["FD scale insufficient (0=OK 1=insufficient)"] = _csv_val(
+            metrics["fd_scale_insufficient"]
+        )
 
     return row
 

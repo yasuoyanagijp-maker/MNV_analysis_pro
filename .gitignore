@@ -21,6 +21,8 @@ tests/local_fixtures/
 
 # Docs (do not push)
 docs/
+# Handover MDs for phase-by-phase work (do not push)
+docs/handover/
 
 # Local / one-off (not needed for main functionality, do not push)
 .Rhistory

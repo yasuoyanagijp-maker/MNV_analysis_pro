@@ -380,10 +380,14 @@ class MNVPipeline:
             self.logger.info(f"  ROI Coverage: {roi_coverage:.1f}% of image")
             self.logger.debug(f"  Processing time: {step_time:.2f}s")
 
-            # 警告チェック
+            # 警告チェック（Phase2: ROI coverage 極端に小さい場合の品質フラグ）
+            roi_coverage_low_quality = 1 if roi_coverage < 5 else 0
             if roi_coverage < 5:
                 self.logger.warning(
                     f"⚠ ROI coverage is very small ({roi_coverage:.1f}%)"
+                )
+                self.logger.warning(
+                    "  FD等の解釈に注意。症例間比較時は慎重に。"
                 )
             elif roi_coverage > 80:
                 self.logger.warning(
@@ -568,10 +572,20 @@ class MNVPipeline:
             self.logger.debug(f"  Processing time: {step_time:.2f}s")
 
             # フラクタル次元の妥当性チェック（Step 3 の refined_skeleton FD）
+            # Phase1: FD quality flag — 1 if FD < 0.9 or FD > 2.0 (expected range), else 0.
+            # CSV "FD quality flag (0=OK 1=abnormal)" / "Exclude from FD analysis" / "FD quality reason" に対応。
+            # 範囲外は box-counting の前提が満たされていない可能性があるため FD 解釈からの除外を推奨。
             fd = skeleton_results.get("fractal_dimension", 0)
-            if fd < 0.9 or fd > 2.0:
+            fd_abnormal = fd < 0.9 or fd > 2.0
+            fd_quality_flag = 1 if fd_abnormal else 0
+            exclude_from_fd_analysis = bool(fd_quality_flag)
+            fd_quality_reason = "fd_out_of_range" if fd_abnormal else ""
+            if fd_abnormal:
                 self.logger.warning(
                     f"⚠ Unusual fractal dimension ({fd:.3f}), expected range: 0.9-2.0"
+                )
+                self.logger.warning(
+                    "  この症例は FD 解釈から除外すべきです。"
                 )
 
             # Step 5: Flow Deficit解析
@@ -776,6 +790,11 @@ class MNVPipeline:
                 **fd_results,
                 **classification_results,
                 **image_stats,  # 画像統計を追加
+                "fd_quality_flag": fd_quality_flag,
+                "exclude_from_fd_analysis": exclude_from_fd_analysis,
+                "fd_quality_reason": fd_quality_reason,
+                "roi_coverage": roi_coverage,
+                "roi_coverage_low_quality": roi_coverage_low_quality,
                 "binary": binary,
                 "roi_mask": roi_mask,
                 "mex_hat": mex_hat,
@@ -876,10 +895,20 @@ class MNVPipeline:
                 "  ⚠ Refined skeleton is empty, using original skeleton for fractal analysis"
             )
         fractal_analyzer = FractalAnalyzer()
-        box_sizes, box_counts = fractal_analyzer.box_counting(skeleton_for_fractal)
+        box_sizes, box_counts = fractal_analyzer.box_counting(
+            skeleton_for_fractal, use_fixed_scale=True
+        )
         fractal_dim, r_squared = fractal_analyzer.calculate_fractal_dimension(
             box_sizes, box_counts
         )
+        fd_box_sizes_str = ",".join(map(str, box_sizes)) if box_sizes else ""
+        n_fd_box_sizes = len(box_sizes)
+        fd_scale_insufficient = 1 if n_fd_box_sizes < 4 else 0
+        if fd_scale_insufficient:
+            self.logger.warning(
+                f"  FD scale insufficient: only {n_fd_box_sizes} box sizes. "
+                "症例間比較時は慎重に。"
+            )
         self.logger.debug(
             f"  Box counting: {len(box_sizes)} sizes, Fractal dim: {fractal_dim:.3f}"
         )
@@ -1012,6 +1041,9 @@ class MNVPipeline:
             "fractal_dimension": fractal_dim,
             "euler_number": euler_number,
             "num_loops": num_loops,
+            "fd_box_sizes": fd_box_sizes_str,
+            "n_fd_box_sizes": n_fd_box_sizes,
+            "fd_scale_insufficient": fd_scale_insufficient,
             **densities,
             **arteriolarization_results,
         }
@@ -1666,6 +1698,14 @@ class MNVBatchAnalyzer:
             "arteriolarization_densities": [],
             "arteriolarization_connectivity_indices": [],
             "arteriolarization_high_skew_percentages": [],
+            "fd_quality_flags": [],
+            "exclude_from_fd_analysis": [],
+            "fd_quality_reasons": [],
+            "roi_coverages": [],
+            "roi_coverage_low_quality": [],
+            "fd_box_sizes": [],
+            "n_fd_box_sizes": [],
+            "fd_scale_insufficient": [],
             "quality_control": [],
         }
 
@@ -1730,6 +1770,25 @@ class MNVBatchAnalyzer:
         )
         results["arteriolarization_high_skew_percentages"].append(
             result.get("high_skew_percentage", 0)
+        )
+
+        results["fd_quality_flags"].append(result.get("fd_quality_flag", 0))
+        results["exclude_from_fd_analysis"].append(
+            result.get("exclude_from_fd_analysis", False)
+        )
+        results["fd_quality_reasons"].append(
+            result.get("fd_quality_reason", "")
+        )
+
+        results["roi_coverages"].append(result.get("roi_coverage", 0.0))
+        results["roi_coverage_low_quality"].append(
+            result.get("roi_coverage_low_quality", 0)
+        )
+
+        results["fd_box_sizes"].append(result.get("fd_box_sizes", ""))
+        results["n_fd_box_sizes"].append(result.get("n_fd_box_sizes", 0))
+        results["fd_scale_insufficient"].append(
+            result.get("fd_scale_insufficient", 0)
         )
 
         results["quality_control"].append("Pass")
@@ -1904,6 +1963,14 @@ class MNVBatchAnalyzer:
         results["FD_percent_R1"].append(0)
         results["FD_percent_R2"].append(0)
         results["FD_percent_R3"].append(0)
+        results["fd_quality_flags"].append(0)
+        results["exclude_from_fd_analysis"].append(False)
+        results["fd_quality_reasons"].append("")
+        results["roi_coverages"].append(0.0)
+        results["roi_coverage_low_quality"].append(0)
+        results["fd_box_sizes"].append("")
+        results["n_fd_box_sizes"].append(0)
+        results["fd_scale_insufficient"].append(0)
         results["quality_control"].append("Fail")
 
     def _save_results_csv(self, results: Dict) -> Path:
@@ -2022,6 +2089,14 @@ class MNVBatchAnalyzer:
             "raw_vessel_length": [0] * len(results.get("patient_ids", [])),
             "raw_vessel_diameter": [0] * len(results.get("patient_ids", [])),
             "quality_control": results.get("quality_control", []),
+            "fd_quality_flag": results.get("fd_quality_flags", []),
+            "exclude_from_fd_analysis": results.get("exclude_from_fd_analysis", []),
+            "fd_quality_reason": results.get("fd_quality_reasons", []),
+            "roi_coverage": results.get("roi_coverages", []),
+            "roi_coverage_low_quality": results.get("roi_coverage_low_quality", []),
+            "fd_box_sizes": results.get("fd_box_sizes", []),
+            "n_fd_box_sizes": results.get("n_fd_box_sizes", []),
+            "fd_scale_insufficient": results.get("fd_scale_insufficient", []),
         }
 
         return formatted
