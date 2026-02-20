@@ -714,16 +714,31 @@ def calculate_complexity_pca(
     pc2_w: Dict[str, float] = ref.get("pc2_weights", {})
     final_w: Dict[str, float] = ref.get("final_weights", {})
 
-    # Construct feature dict in the same metric space as the reference.
+    # All possible features (from pipeline args). Ref may use a subset via ref["metrics"].
     euler_total = float(euler_center + euler_periphery)
-    features = {
+    euler_total_inv = float(-(euler_center + euler_periphery))
+    all_features = {
         "euler_total": euler_total,
+        "euler_total_inv": euler_total_inv,
         "loop_total": float(loop_total),
         "junction_density": float(junction_density),
         "tortuosity_center": float(tortuosity_center),
         "tortuosity_periphery": float(tortuosity_periphery),
         "FD_global": float(fd_global),
     }
+    metric_names = ref.get("metrics")
+    if isinstance(metric_names, (list, tuple)) and len(metric_names) > 0:
+        features = {k: all_features[k] for k in metric_names if k in all_features}
+    else:
+        # Legacy: no "metrics" key -> use original 6-variable set
+        features = {
+            "euler_total": all_features["euler_total"],
+            "loop_total": all_features["loop_total"],
+            "junction_density": all_features["junction_density"],
+            "tortuosity_center": all_features["tortuosity_center"],
+            "tortuosity_periphery": all_features["tortuosity_periphery"],
+            "FD_global": all_features["FD_global"],
+        }
 
     def _z(name: str, value: float) -> float:
         m = float(mu.get(name, 0.0))
