@@ -1,43 +1,45 @@
 {
   "size_class": "small_3mm",
-  "n_cases": 23,
+  "n_cases": 30,
+  "n_before": 23,
+  "n_after": 7,
   "metrics": [
     "euler_total_inv",
     "loop_total",
     "junction_density",
     "FD_global"
   ],
-  "note": "euler_total_inv = -(Center Euler + Periphery Euler). tortuosity_periphery excluded (consistent with large/small ref). Rebuilt from actual data 2026-02-20.",
+  "note": "Combined before+after PCA for treatment comparison. euler_total_inv = -(Center Euler + Periphery Euler). Rebuilt 2026-02-20.",
   "mu": {
-    "euler_total_inv": 136.2173913043478,
-    "loop_total": 167.82608695652175,
-    "junction_density": 10.896649998077521,
-    "FD_global": 1.3797646302163045
+    "euler_total_inv": 132.2,
+    "loop_total": 162.83333333333334,
+    "junction_density": 21.960218392754314,
+    "FD_global": 1.3778962928905478
   },
   "sigma": {
-    "euler_total_inv": 103.88285899605722,
-    "loop_total": 126.95142932014284,
-    "junction_density": 2.006729646399658,
-    "FD_global": 0.07342357569270219
+    "euler_total_inv": 99.33894838715912,
+    "loop_total": 119.56897126298647,
+    "junction_density": 3.608865423976063,
+    "FD_global": 0.07461965771735642
   },
   "pc1_weights": {
-    "euler_total_inv": 0.582699470560987,
-    "loop_total": 0.5737389941547023,
-    "junction_density": 0.2322601524746871,
-    "FD_global": 0.5266309098094514
+    "euler_total_inv": 0.5740753717431044,
+    "loop_total": 0.565733522908452,
+    "junction_density": 0.2559700798082146,
+    "FD_global": 0.533724991787516
   },
   "pc2_weights": {
-    "euler_total_inv": -0.011482915745920658,
-    "loop_total": -0.08690194787966989,
-    "junction_density": 0.9466478569721669,
-    "FD_global": -0.3101193786120027
+    "euler_total_inv": -0.06873651567954539,
+    "loop_total": -0.13633565352455004,
+    "junction_density": 0.9583916162022281,
+    "FD_global": -0.24119160637043374
   },
   "explained_variance_ratio": [
-    0.7211567567898257,
-    0.23337597551401076
+    0.7393981131137759,
+    0.21886929214447753
   ],
-  "score_min": -2.5712574478044075,
-  "score_max": 3.659224744906525,
+  "score_min": -2.4616132054936988,
+  "score_max": 4.230919003483628,
   "final_weights": {
     "PC1": 0.7,
     "PC2": 0.2,
