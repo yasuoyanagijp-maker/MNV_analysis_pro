@@ -73,7 +73,7 @@ st.set_page_config(
     page_title=APP_NAME,
     page_icon="🔬",
     layout="wide",  # 重要
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",  # ログイン後はメイン画面を広く表示
 )
 
 # CSSインジェクション
@@ -2899,7 +2899,65 @@ def main():
 
     if is_auth_enabled() and not st.session_state.get("authenticated", False):
         st.title(f"🔐 {APP_NAME} Login")
-        st.caption("Please enter your access key.")
+        st.caption("Please enter your access key and analysis settings.")
+
+        # サイドメニューで入力する内容をログイン画面に表示
+        st.markdown("#### Analysis Setup")
+        login_analysis_type = st.selectbox(
+            "Analysis Type",
+            ["MNV", "VD"],
+            key="login_analysis_type",
+            help="MNV: lesion ROI + metrics. VD: superficial/deep pairs (1.tif + 2.tif)",
+        )
+        login_scale_mm = st.number_input(
+            "Scale (mm)",
+            min_value=1.0,
+            max_value=20.0,
+            value=float(st.session_state.get("scale_mm", 6.0)),
+            step=0.5,
+            key="login_scale_mm",
+        )
+        if login_analysis_type == "VD":
+            with st.expander("VD Settings", expanded=True):
+                login_vd_side = st.selectbox("Eye Side", ["right", "left"], key="login_vd_side")
+                login_sup_suffix = st.text_input(
+                    "Superficial suffix",
+                    st.session_state.get("sup_suffix", "1.tif"),
+                    key="login_sup_suffix",
+                    help="1つの場合: 1.tif。複数ペア(visit1/visit2など): 1.tif, 1.tiff のようにカンマ区切り",
+                )
+                login_deep_suffix = st.text_input(
+                    "Deep suffix",
+                    st.session_state.get("deep_suffix", "2.tif"),
+                    key="login_deep_suffix",
+                    help="1つの場合: 2.tif。複数ペア時: 2.tif, 2.tiff のようにSuperficialと対応付けて指定",
+                )
+                login_vd_use_intref = st.checkbox(
+                    "Enable IntRef (optional tuning mode)",
+                    value=st.session_state.get("vd_use_intref", False),
+                    key="login_vd_use_intref",
+                    help="OFF: baseline (recommended). ON: apply intensity refinement.",
+                )
+                login_vd_intref_percentile = st.slider(
+                    "IntRef percentile",
+                    min_value=10.0,
+                    max_value=60.0,
+                    value=float(st.session_state.get("vd_intref_percentile", 40.0)),
+                    step=1.0,
+                    disabled=not login_vd_use_intref,
+                    key="login_vd_intref_percentile",
+                )
+                login_vd_intref_center_ratio = st.slider(
+                    "IntRef center ROI ratio",
+                    min_value=0.3,
+                    max_value=0.7,
+                    value=float(st.session_state.get("vd_intref_center_ratio", 0.5)),
+                    step=0.05,
+                    disabled=not login_vd_use_intref,
+                    key="login_vd_intref_center_ratio",
+                )
+
+        st.markdown("#### Operator")
         login_analyst = st.text_input(
             "Operator / Analyst",
             key="login_analyst_name",
@@ -2924,6 +2982,17 @@ def main():
             )
             if is_success:
                 st.session_state.authenticated = True
+                st.session_state.analysis_type = login_analysis_type
+                st.session_state.scale_mm = login_scale_mm
+                if login_analysis_type == "VD":
+                    st.session_state.vd_side = login_vd_side
+                    st.session_state.sup_suffix = login_sup_suffix
+                    st.session_state.deep_suffix = login_deep_suffix
+                    st.session_state.vd_use_intref = login_vd_use_intref
+                    st.session_state.vd_intref_percentile = login_vd_intref_percentile
+                    st.session_state.vd_intref_center_ratio = login_vd_intref_center_ratio
+                # サイドバー用の表示名を同期
+                st.session_state.sidebar_analyst_name = login_analyst
                 st.rerun()
             else:
                 st.error("Invalid access key.")
