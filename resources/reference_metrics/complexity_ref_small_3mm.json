@@ -1,0 +1,46 @@
+{
+  "size_class": "small_3mm",
+  "n_cases": 23,
+  "metrics": [
+    "euler_total_inv",
+    "loop_total",
+    "junction_density",
+    "FD_global"
+  ],
+  "note": "euler_total_inv = -(Center Euler + Periphery Euler). tortuosity_periphery excluded (consistent with large/small ref). Rebuilt from actual data 2026-02-20.",
+  "mu": {
+    "euler_total_inv": 136.2173913043478,
+    "loop_total": 167.82608695652175,
+    "junction_density": 10.896649998077521,
+    "FD_global": 1.3797646302163045
+  },
+  "sigma": {
+    "euler_total_inv": 103.88285899605722,
+    "loop_total": 126.95142932014284,
+    "junction_density": 2.006729646399658,
+    "FD_global": 0.07342357569270219
+  },
+  "pc1_weights": {
+    "euler_total_inv": 0.582699470560987,
+    "loop_total": 0.5737389941547023,
+    "junction_density": 0.2322601524746871,
+    "FD_global": 0.5266309098094514
+  },
+  "pc2_weights": {
+    "euler_total_inv": -0.011482915745920658,
+    "loop_total": -0.08690194787966989,
+    "junction_density": 0.9466478569721669,
+    "FD_global": -0.3101193786120027
+  },
+  "explained_variance_ratio": [
+    0.7211567567898257,
+    0.23337597551401076
+  ],
+  "score_min": -2.5712574478044075,
+  "score_max": 3.659224744906525,
+  "final_weights": {
+    "PC1": 0.7,
+    "PC2": 0.2,
+    "TrunkDist": 0.1
+  }
+}

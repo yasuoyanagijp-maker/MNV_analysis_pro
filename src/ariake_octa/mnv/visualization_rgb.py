@@ -323,12 +323,6 @@ class VisualizationRGB:
         if "vessel_density_percent" in metrics:
             lines.append(f"VD: {metrics['vessel_density_percent']:.1f}%")
 
-        if "skeleton_num_junctions" in metrics:
-            lines.append(f"Junctions: {metrics['skeleton_num_junctions']}")
-
-        if "overall_fd_ratio_percent" in metrics:
-            lines.append(f"FD: {metrics['overall_fd_ratio_percent']:.1f}%")
-
         # テキスト描画
         margin = 10
         line_height = 25

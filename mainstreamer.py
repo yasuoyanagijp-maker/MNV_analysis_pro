@@ -996,6 +996,7 @@ IMAGEJ_CSV_COLUMNS = [
     "ID",
     "File",
     "Subtype",
+    "Pathophysiology",
     "MNV Area (mm2)",
     "Vsl Area (mm2)",
     "Vsl Density (Vessel Area/MNV (%))",
@@ -1078,6 +1079,7 @@ MNV_EXPORT_META_COLUMNS = [
 #       vessel_length_mm = full skeleton length (Vsl Length / Raw Vsl Length).
 _PIPELINE_TO_IMAGEJ = {
     "mnv_subtype": "Subtype",
+    "pathophysiology": "Pathophysiology",
     "mnv_area_mm2": "MNV Area (mm2)",
     "vessel_area_mm2": "Vsl Area (mm2)",
     "vessel_density": "Vsl Density (Vessel Area/MNV (%))",
@@ -1925,15 +1927,7 @@ def show_scrollfree_qc_screen():
             # 【詳細なエラー情報】fd_visualizationがNoneの場合の原因を特定
             if fd_vis is None:
                 # パイプライン内で生成に失敗した可能性
-                error_msg = (
-                    "FD visualization not available.\n\n"
-                    "**Possible causes:**\n"
-                    "- flow_deficit_image_path (4.tif) not provided\n"
-                    "- ROI転写失敗（3.tifと4.tifのサイズ不一致）\n"
-                    "- 4.tifの読み込み失敗\n"
-                    "- FlowDeficitVisualizerの生成エラー\n"
-                    "- FD領域が検出されなかった（fd_maskが空）"
-                )
+                error_msg = "FD visualization not available."
                 st.warning(error_msg)
                 
                 # デバッグモード時は詳細情報を表示
@@ -3004,9 +2998,13 @@ def main():
         st.caption("Configure analysis parameters and monitor session status.")
         st.markdown('<div class="sidebar-section-title">Analysis Setup</div>', unsafe_allow_html=True)
 
+        _analysis_options = ["MNV", "VD"]
+        _current_analysis = st.session_state.get("analysis_type", "MNV")
+        _analysis_index = _analysis_options.index(_current_analysis) if _current_analysis in _analysis_options else 0
         analysis_type = st.selectbox(
             "Analysis Type",
-            ["MNV", "VD"],
+            _analysis_options,
+            index=_analysis_index,
             help="MNV: lesion ROI + metrics. VD: superficial/deep pairs (1.tif + 2.tif)",
         )
         st.session_state.analysis_type = analysis_type
@@ -3015,22 +3013,25 @@ def main():
             "Scale (mm)",
             min_value=1.0,
             max_value=20.0,
-            value=6.0,
+            value=float(st.session_state.get("scale_mm", 6.0)),
             step=0.5,
         )
         st.session_state.scale_mm = scale_mm
 
         if analysis_type == "VD":
             with st.expander("VD Settings", expanded=True):
-                vd_side = st.selectbox("Eye Side", ["right", "left"])
+                _side_options = ["right", "left"]
+                _current_side = st.session_state.get("vd_side", "right")
+                _side_index = _side_options.index(_current_side) if _current_side in _side_options else 0
+                vd_side = st.selectbox("Eye Side", _side_options, index=_side_index)
                 sup_suffix = st.text_input(
                     "Superficial suffix",
-                    "1.tif",
+                    value=st.session_state.get("sup_suffix", "1.tif"),
                     help="1つの場合: 1.tif。複数ペア(visit1/visit2など): 1.tif, 1.tiff のようにカンマ区切り",
                 )
                 deep_suffix = st.text_input(
                     "Deep suffix",
-                    "2.tif",
+                    value=st.session_state.get("deep_suffix", "2.tif"),
                     help="1つの場合: 2.tif。複数ペア時: 2.tif, 2.tiff のようにSuperficialと対応付けて指定",
                 )
                 vd_use_intref = st.checkbox(
