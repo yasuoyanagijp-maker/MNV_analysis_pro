@@ -996,6 +996,7 @@ IMAGEJ_CSV_COLUMNS = [
     "ID",
     "File",
     "Subtype",
+    "Pathophysiology",
     "MNV Area (mm2)",
     "Vsl Area (mm2)",
     "Vsl Density (Vessel Area/MNV (%))",
@@ -1078,6 +1079,7 @@ MNV_EXPORT_META_COLUMNS = [
 #       vessel_length_mm = full skeleton length (Vsl Length / Raw Vsl Length).
 _PIPELINE_TO_IMAGEJ = {
     "mnv_subtype": "Subtype",
+    "pathophysiology": "Pathophysiology",
     "mnv_area_mm2": "MNV Area (mm2)",
     "vessel_area_mm2": "Vsl Area (mm2)",
     "vessel_density": "Vsl Density (Vessel Area/MNV (%))",
@@ -1925,15 +1927,7 @@ def show_scrollfree_qc_screen():
             # 【詳細なエラー情報】fd_visualizationがNoneの場合の原因を特定
             if fd_vis is None:
                 # パイプライン内で生成に失敗した可能性
-                error_msg = (
-                    "FD visualization not available.\n\n"
-                    "**Possible causes:**\n"
-                    "- flow_deficit_image_path (4.tif) not provided\n"
-                    "- ROI転写失敗（3.tifと4.tifのサイズ不一致）\n"
-                    "- 4.tifの読み込み失敗\n"
-                    "- FlowDeficitVisualizerの生成エラー\n"
-                    "- FD領域が検出されなかった（fd_maskが空）"
-                )
+                error_msg = "FD visualization not available."
                 st.warning(error_msg)
                 
                 # デバッグモード時は詳細情報を表示
