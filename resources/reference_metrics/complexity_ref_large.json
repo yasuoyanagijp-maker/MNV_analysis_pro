@@ -1,1 +1,48 @@
-{"size_class":"large","n_cases":30,"metrics":["euler_total_inv","loop_total","junction_density","FD_global"],"note":"euler_total_inv = -(Center Euler + Periphery Euler). tortuosity_periphery excluded (negative PC1 loading). Rebuilt from actual data 2026-02-20.","mu":{"euler_total_inv":115.63333333333334,"loop_total":264.8333333333333,"junction_density":25.41188275804208,"FD_global":1.359448182976436},"sigma":{"euler_total_inv":99.3718549467381,"loop_total":179.85551299739345,"junction_density":1.6797280866643398,"FD_global":0.07790188396866661},"pc1_weights":{"euler_total_inv":0.6203859429004923,"loop_total":0.6113531092200342,"junction_density":0.11357380555980501,"FD_global":0.47798498761899244},"pc2_weights":{"euler_total_inv":0.06606342207220815,"loop_total":-0.06388348249465145,"junction_density":0.9678800935073566,"FD_global":-0.23401420794613506},"explained_variance_ratio":[0.6058164260889745,0.25261895124757505],"score_min":-2.750074105392918,"score_max":4.384642505317863,"final_weights":{"PC1":0.7,"PC2":0.2,"TrunkDist":0.1}}
+{
+  "size_class": "large",
+  "n_cases": 49,
+  "n_before": 30,
+  "n_after": 19,
+  "metrics": [
+    "euler_total_inv",
+    "loop_total",
+    "junction_density",
+    "FD_global"
+  ],
+  "note": "Combined before+after PCA for treatment comparison. euler_total_inv = -(Center Euler + Periphery Euler). junction_density included (positive loading in combined cohort). Rebuilt 2026-02-20.",
+  "mu": {
+    "euler_total_inv": 169.85714285714286,
+    "loop_total": 308.0408163265306,
+    "junction_density": 25.878097988338567,
+    "FD_global": 1.3974922975025055
+  },
+  "sigma": {
+    "euler_total_inv": 144.33888694913193,
+    "loop_total": 199.47972728909974,
+    "junction_density": 1.8010464704191846,
+    "FD_global": 0.08668025258643301
+  },
+  "pc1_weights": {
+    "euler_total_inv": 0.6046712434239322,
+    "loop_total": 0.5834786582566701,
+    "junction_density": 0.14419998663207406,
+    "FD_global": 0.5226200403643753
+  },
+  "pc2_weights": {
+    "euler_total_inv": -0.0900387583625975,
+    "loop_total": -0.21820770305927306,
+    "junction_density": 0.9683917788900257,
+    "FD_global": 0.08059641987290404
+  },
+  "explained_variance_ratio": [
+    0.6373576517663176,
+    0.24846510162486718
+  ],
+  "score_min": -2.9880658027566915,
+  "score_max": 4.59975962652249,
+  "final_weights": {
+    "PC1": 0.7,
+    "PC2": 0.2,
+    "TrunkDist": 0.1
+  }
+}
