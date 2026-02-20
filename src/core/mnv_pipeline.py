@@ -1060,16 +1060,19 @@ class MNVPipeline:
             scale_manager.mm_per_pixel, scale_manager.pixel_size_um
         )
 
-        # 画像サイズに応じて安定性スコアの参照クラスを切り替え
-        try:
-            image_width = scale_manager.image_width
-        except AttributeError:
-            image_width = 0
-
-        if image_width > SMALL_IMAGE_THRESHOLD or self.scale_mm >= 6.0:
-            spatial_analyzer.size_class = "large"
+        # 画像サイズに応じて参照クラスを切り替え（ユーザー入力の scale_mm を優先）
+        # 3mm の場合は small_3mm 用 JSON を使用
+        if self.scale_mm is not None and abs(float(self.scale_mm) - 3.0) < 0.01:
+            spatial_analyzer.size_class = "small_3mm"
         else:
-            spatial_analyzer.size_class = "small"
+            try:
+                image_width = scale_manager.image_width
+            except AttributeError:
+                image_width = 0
+            if image_width > SMALL_IMAGE_THRESHOLD or self.scale_mm >= 6.0:
+                spatial_analyzer.size_class = "large"
+            else:
+                spatial_analyzer.size_class = "small"
 
         spatial_results = spatial_analyzer.analyze(
             distance_map, thick_vessel_map, roi_mask

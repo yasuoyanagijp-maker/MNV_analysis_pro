@@ -28,6 +28,13 @@ _MNV_CLASSIFICATION_REF_SMALL: Optional[Dict[str, object]] = None
 _MNV_CLASSIFICATION_REF_SMALL_LOADED: bool = False
 _MNV_CLASSIFICATION_REF_LARGE: Optional[Dict[str, object]] = None
 _MNV_CLASSIFICATION_REF_LARGE_LOADED: bool = False
+_MNV_CLASSIFICATION_REF_SMALL_3MM: Optional[Dict[str, object]] = None
+_MNV_CLASSIFICATION_REF_SMALL_3MM_LOADED: bool = False
+
+_STABILITY_REF_SMALL_3MM: Optional[Dict[str, Dict[str, float]]] = None
+_STABILITY_REF_SMALL_3MM_LOADED: bool = False
+_COMPLEXITY_REF_SMALL_3MM: Optional[Dict[str, object]] = None
+_COMPLEXITY_REF_SMALL_3MM_LOADED: bool = False
 
 
 def _iter_reference_json_candidates(filename: str):
@@ -126,6 +133,42 @@ def _load_stability_ref_large() -> Optional[Dict[str, Dict[str, float]]]:
     return _STABILITY_REF_LARGE
 
 
+def _load_stability_ref_small_3mm() -> Optional[Dict[str, Dict[str, float]]]:
+    """Load stability reference for 3mm images from JSON if available."""
+    global _STABILITY_REF_SMALL_3MM, _STABILITY_REF_SMALL_3MM_LOADED
+
+    if _STABILITY_REF_SMALL_3MM_LOADED:
+        return _STABILITY_REF_SMALL_3MM
+
+    _STABILITY_REF_SMALL_3MM_LOADED = True
+    try:
+        data = _load_reference_json("stability_ref_small_3mm.json")
+        if data is None:
+            _STABILITY_REF_SMALL_3MM = None
+            return None
+
+        mapping: Dict[str, Dict[str, float]] = {}
+        key_map = {
+            "stab_cv": "cv",
+            "stab_mean_adjacent_change": "mean_adjacent_change",
+            "stab_residual_cv": "residual_cv",
+            "stab_range_percent": "range_percent",
+        }
+        for json_key, metric_key in key_map.items():
+            if json_key not in data:
+                continue
+            entry = data[json_key]
+            mu = float(entry.get("mu", 0.0))
+            sigma = float(entry.get("sigma", 0.0))
+            mapping[metric_key] = {"mu": mu, "sigma": sigma}
+
+        _STABILITY_REF_SMALL_3MM = mapping if mapping else None
+    except Exception:
+        _STABILITY_REF_SMALL_3MM = None
+
+    return _STABILITY_REF_SMALL_3MM
+
+
 def _load_complexity_ref_small() -> Optional[Dict[str, object]]:
     """Load PCA reference for complexity metrics (small images) from JSON."""
     global _COMPLEXITY_REF_SMALL, _COMPLEXITY_REF_SMALL_LOADED
@@ -168,6 +211,23 @@ def _load_complexity_ref_large() -> Optional[Dict[str, object]]:
     return _COMPLEXITY_REF_LARGE
 
 
+def _load_complexity_ref_small_3mm() -> Optional[Dict[str, object]]:
+    """Load PCA reference for complexity (3mm images) from JSON."""
+    global _COMPLEXITY_REF_SMALL_3MM, _COMPLEXITY_REF_SMALL_3MM_LOADED
+
+    if _COMPLEXITY_REF_SMALL_3MM_LOADED:
+        return _COMPLEXITY_REF_SMALL_3MM
+
+    _COMPLEXITY_REF_SMALL_3MM_LOADED = True
+    try:
+        data = _load_reference_json("complexity_ref_small_3mm.json")
+        _COMPLEXITY_REF_SMALL_3MM = data
+    except Exception:
+        _COMPLEXITY_REF_SMALL_3MM = None
+
+    return _COMPLEXITY_REF_SMALL_3MM
+
+
 def load_mnv_classification_ref(size_class: str) -> Optional[Dict[str, object]]:
     """Load MNV classification reference (percentiles) for Level 1/2/3 classification.
 
@@ -175,7 +235,7 @@ def load_mnv_classification_ref(size_class: str) -> Optional[Dict[str, object]]:
     Used by classifyMorphology_Final and classifyPathophysiology_Final.
 
     Args:
-        size_class: "small" (image width < 800px) or "large" (>= 800px)
+        size_class: "small_3mm" (user scale 3mm), "small" (image width < 800px), or "large" (>= 800px)
 
     Returns:
         Dict with keys: size_class, n_cases, percentiles, plus per-metric
@@ -184,6 +244,18 @@ def load_mnv_classification_ref(size_class: str) -> Optional[Dict[str, object]]:
     """
     global _MNV_CLASSIFICATION_REF_SMALL, _MNV_CLASSIFICATION_REF_SMALL_LOADED
     global _MNV_CLASSIFICATION_REF_LARGE, _MNV_CLASSIFICATION_REF_LARGE_LOADED
+    global _MNV_CLASSIFICATION_REF_SMALL_3MM, _MNV_CLASSIFICATION_REF_SMALL_3MM_LOADED
+
+    if size_class == "small_3mm":
+        if _MNV_CLASSIFICATION_REF_SMALL_3MM_LOADED:
+            return _MNV_CLASSIFICATION_REF_SMALL_3MM
+        _MNV_CLASSIFICATION_REF_SMALL_3MM_LOADED = True
+        try:
+            data = _load_reference_json("mnv_classification_ref_small_3mm.json")
+            _MNV_CLASSIFICATION_REF_SMALL_3MM = data
+        except Exception:
+            _MNV_CLASSIFICATION_REF_SMALL_3MM = None
+        return _MNV_CLASSIFICATION_REF_SMALL_3MM
 
     if size_class == "small":
         if _MNV_CLASSIFICATION_REF_SMALL_LOADED:
@@ -343,7 +415,9 @@ def calculate_stability_metrics(
 
     # Z-score + sigmoid mapping when reference stats are available.
     ref = None
-    if size_class == "small":
+    if size_class == "small_3mm":
+        ref = _load_stability_ref_small_3mm()
+    elif size_class == "small":
         ref = _load_stability_ref_small()
     elif size_class == "large":
         ref = _load_stability_ref_large()
@@ -696,7 +770,9 @@ def calculate_complexity_pca(
       - Sigmoid mapping of PC1/PC2 to 0-100
       - Linear combination of PC1 score, PC2 score, and trunk score
     """
-    if size_class == "small":
+    if size_class == "small_3mm":
+        ref = _load_complexity_ref_small_3mm()
+    elif size_class == "small":
         ref = _load_complexity_ref_small()
     elif size_class == "large":
         ref = _load_complexity_ref_large()
