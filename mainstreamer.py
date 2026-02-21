@@ -1065,7 +1065,7 @@ IMAGEJ_CSV_COLUMNS = [
     "FD scale insufficient (0=OK 1=insufficient)",
 ]
 
-# 上記13列がすべて0の場合にCSV/フォルダ出力から行を除外するための列名
+# FD関連13列（行除外は現在行わず全行出力するため未使用・参照用）
 FD_ZERO_EXCLUDE_COLUMNS = [
     "FD% (R1)",
     "FD Avg Area µm² (R1)",
@@ -1285,11 +1285,14 @@ def _metrics_to_imagej_row(
 
 
 def _is_fd_row_all_zero(row: dict) -> bool:
-    """FD_ZERO_EXCLUDE_COLUMNSの13列がすべて0または"0"（空含む）ならTrue→当該行は出力しない"""
+    """
+    FD_ZERO_EXCLUDE_COLUMNSの13列がすべて明示的に0または"0"ならTrue。
+    現在は行除外に使っておらず全行出力のため未使用（将来のオプション用）。
+    """
     for col in FD_ZERO_EXCLUDE_COLUMNS:
         v = row.get(col, "")
         if v is None or v == "":
-            continue
+            return False
         try:
             if float(v) != 0:
                 return False
@@ -1301,12 +1304,12 @@ def _is_fd_row_all_zero(row: dict) -> bool:
 def export_mnv_results_to_csv() -> tuple:
     """
     per_file_resultsからMNV全メトリクスをImageJ形式CSVで出力。
-    FD% (R1)〜FD quality flagの13列がすべて0の行は出力しない。
+    解析した全ファイル分の行を出力する（行の除外は行わない）。
 
     Returns
     -------
     tuple[Optional[bytes], str]
-        (CSVバイト列, 推奨ファイル名)。出力行が0件の場合は (None, "").
+        (CSVバイト列, 推奨ファイル名)。解析対象が0件の場合は (None, "").
     """
     qc_status = st.session_state.get("qc_status", {})
     per_file_results = st.session_state.get("per_file_results", {})
@@ -1331,8 +1334,8 @@ def export_mnv_results_to_csv() -> tuple:
         )
         rows.append(row)
 
-    # FD関連13列がすべて0の行はCSVに出力しない
-    rows = [r for r in rows if not _is_fd_row_all_zero(r)]
+    # 解析した全行を出力する（FDの13列がすべて0でも行は除外しない）。
+    # 0件になるのは解析対象ファイルが存在しない場合のみ。
     if not rows:
         return None, ""
 
