@@ -991,26 +991,26 @@ def run_vd_batch(
 # MNV全メトリクスCSV出力（ImageJ createMeasurementsTable形式互換）
 # ============================================================================
 
-# ImageJ createMeasurementsTable() のカラム順・名称と完全一致
+# MNV結果CSV・結果テーブルの列順（指定順）
 IMAGEJ_CSV_COLUMNS = [
     "ID",
     "File",
     "Subtype",
     "Pathophysiology",
+    "Maturity Index",
+    "Caliber Uniformity Score",
+    "Network Complexity Score",
     "MNV Area (mm2)",
     "Vsl Area (mm2)",
     "Vsl Density (Vessel Area/MNV (%))",
     "Vessel density index adjusted by signal intensity (aVDI)",
     "MNV Area adjusted by signal intensity (aMNV)",
     "Vsl Length (mm)",
-    "Dilated vessel (%)",
-    "Maturity Index",
-    "Caliber Uniformity Score",
-    "Network Complexity Score",
     "Junction Density (n/mm)",
     "End Pts Density (n/mm)",
     "Multi-Branch Pts Density (n/mm)",
     "Branch Density (n/mm)",
+    "Dilated vessel (%)",
     "Arteriolarization Segment Count",
     "Arteriolarization Total Length (mm)",
     "Arteriolarization Max Segment Length (mm)",
@@ -1055,7 +1055,6 @@ IMAGEJ_CSV_COLUMNS = [
     "FD Avg Area µm² (R3)",
     "FD number (R3)",
     "FD density /mm² (R3)",
-    # Phase1/2/3 品質フラグ（異常時も値はそのまま出力し、フラグで注釈）
     "FD quality flag (0=OK 1=abnormal)",
     "Exclude from FD analysis",
     "FD quality reason",
@@ -1064,6 +1063,23 @@ IMAGEJ_CSV_COLUMNS = [
     "FD box sizes",
     "N FD box sizes",
     "FD scale insufficient (0=OK 1=insufficient)",
+]
+
+# 上記13列がすべて0の場合にCSV/フォルダ出力から行を除外するための列名
+FD_ZERO_EXCLUDE_COLUMNS = [
+    "FD% (R1)",
+    "FD Avg Area µm² (R1)",
+    "FD number (R1)",
+    "FD density /mm² (R1)",
+    "FD% (R2)",
+    "FD Avg Area µm² (R2)",
+    "FD number (R2)",
+    "FD density /mm² (R2)",
+    "FD% (R3)",
+    "FD Avg Area µm² (R3)",
+    "FD number (R3)",
+    "FD density /mm² (R3)",
+    "FD quality flag (0=OK 1=abnormal)",
 ]
 
 MNV_EXPORT_META_COLUMNS = [
@@ -1268,14 +1284,29 @@ def _metrics_to_imagej_row(
     return row
 
 
+def _is_fd_row_all_zero(row: dict) -> bool:
+    """FD_ZERO_EXCLUDE_COLUMNSの13列がすべて0または"0"（空含む）ならTrue→当該行は出力しない"""
+    for col in FD_ZERO_EXCLUDE_COLUMNS:
+        v = row.get(col, "")
+        if v is None or v == "":
+            continue
+        try:
+            if float(v) != 0:
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
 def export_mnv_results_to_csv() -> tuple:
     """
-    per_file_resultsからMNV全メトリクスをImageJ形式CSVで出力
+    per_file_resultsからMNV全メトリクスをImageJ形式CSVで出力。
+    FD% (R1)〜FD quality flagの13列がすべて0の行は出力しない。
 
     Returns
     -------
-    tuple[bytes, str]
-        (CSVバイト列, 推奨ファイル名)
+    tuple[Optional[bytes], str]
+        (CSVバイト列, 推奨ファイル名)。出力行が0件の場合は (None, "").
     """
     qc_status = st.session_state.get("qc_status", {})
     per_file_results = st.session_state.get("per_file_results", {})
@@ -1299,6 +1330,11 @@ def export_mnv_results_to_csv() -> tuple:
             metrics=metrics,
         )
         rows.append(row)
+
+    # FD関連13列がすべて0の行はCSVに出力しない
+    rows = [r for r in rows if not _is_fd_row_all_zero(r)]
+    if not rows:
+        return None, ""
 
     export_columns = IMAGEJ_CSV_COLUMNS + MNV_EXPORT_META_COLUMNS
     meta = get_analysis_metadata()
@@ -2699,6 +2735,11 @@ def show_summary_screen():
     vd_csv_bytes, vd_csv_name = build_vd_results_csv()
     # VD解析は Folder Batch のみ対応のため、vd_csv_bytes の存在で判定可能（シンプル化）
     has_vd = bool(vd_csv_bytes and vd_csv_name)
+    # MNV CSVは1回だけ取得（FD全0行除外後、出力行がなければ None,""）
+    mnv_csv_bytes, mnv_csv_name = None, ""
+    if has_mnv_result:
+        mnv_csv_bytes, mnv_csv_name = export_mnv_results_to_csv()
+    has_mnv_csv = bool(mnv_csv_bytes and mnv_csv_name)
 
     # Folder Batch: 保存は1回だけ。ensure で export_root 確定 → folder_exports_saved で二重実行防止
     is_folder_batch = st.session_state.get("processing_mode") == "Folder Batch"
@@ -2708,8 +2749,7 @@ def show_summary_screen():
             export_root = session_dir / "exports"
             export_root.mkdir(parents=True, exist_ok=True)
             saved_files = []
-            if has_mnv_result:
-                mnv_csv_bytes, mnv_csv_name = export_mnv_results_to_csv()
+            if has_mnv_csv:
                 (export_root / mnv_csv_name).write_bytes(mnv_csv_bytes)
                 saved_files.append(str(export_root / mnv_csv_name))
             if vd_csv_bytes and vd_csv_name:
@@ -2727,9 +2767,9 @@ def show_summary_screen():
                     force_session=True,
                 )
 
-    # アクション（メイン行: MNV結果が無い場合はMNV列を出さない）
+    # アクション（メイン行: MNV結果が無い／CSV出力行0の場合はMNV列を出さない）
     st.markdown('<div class="action-buttons">', unsafe_allow_html=True)
-    n_main = 1 + (1 if has_mnv_result else 0) + (1 if (vd_csv_bytes and vd_csv_name) else 0)
+    n_main = 1 + (1 if has_mnv_csv else 0) + (1 if (vd_csv_bytes and vd_csv_name) else 0)
     main_cols = st.columns(max(n_main, 1))
     idx = 0
     with main_cols[idx]:
@@ -2758,13 +2798,12 @@ def show_summary_screen():
             st.session_state.pop("summary_type_filter", None)
             st.rerun()
         idx += 1
-    if has_mnv_result:
+    if has_mnv_csv:
         with main_cols[idx]:
-            csv_bytes, csv_name = export_mnv_results_to_csv()
             st.download_button(
                 "📥 MNV CSV",
-                data=csv_bytes,
-                file_name=csv_name,
+                data=mnv_csv_bytes,
+                file_name=mnv_csv_name,
                 mime="text/csv",
                 use_container_width=True,
             )
