@@ -764,11 +764,12 @@ def calculate_complexity_pca(
 ) -> float:
     """Compute PCA-based vascular complexity score (0-100).
 
-    This uses:
+    Matches CSV script formula (update_complexity_maturity_from_csv.py):
       - Z-score normalization based on `complexity_ref_*.json`
-      - PCA weights (PC1/PC2) estimated from reference data
-      - Sigmoid mapping of PC1/PC2 to 0-100
-      - Linear combination of PC1 score, PC2 score, and trunk score
+      - PC1_raw / PC2_raw = linear combination of Z-scores
+      - PC1_score = clip(100 * (PC1_raw - score_min) / (score_max - score_min), 0, 100)
+      - PC2_score = clip(100 * (PC2_raw - PC2_min) / (PC2_max - PC2_min), 0, 100)
+      - complexity = PC1_score * evr[0] + PC2_score * evr[1] + trunk_score * (1 - evr[0] - evr[1])
     """
     if size_class == "small_3mm":
         ref = _load_complexity_ref_small_3mm()
@@ -788,7 +789,14 @@ def calculate_complexity_pca(
     sigma: Dict[str, float] = ref.get("sigma", {})
     pc1_w: Dict[str, float] = ref.get("pc1_weights", {})
     pc2_w: Dict[str, float] = ref.get("pc2_weights", {})
-    final_w: Dict[str, float] = ref.get("final_weights", {})
+    score_min = float(ref.get("score_min", -3.0))
+    score_max = float(ref.get("score_max", 4.0))
+    pc2_min = ref.get("PC2_min")
+    pc2_max = ref.get("PC2_max")
+    evr = ref.get("explained_variance_ratio", [0.7, 0.2])
+    w_pc1 = float(evr[0])
+    w_pc2 = float(evr[1])
+    w_trunk = max(0.0, 1.0 - w_pc1 - w_pc2)
 
     # All possible features (from pipeline args). Ref may use a subset via ref["metrics"].
     euler_total = float(euler_center + euler_periphery)
@@ -826,25 +834,24 @@ def calculate_complexity_pca(
     # Z-scores for each metric
     z_vals: Dict[str, float] = {name: _z(name, val) for name, val in features.items()}
 
-    # Principal component scores: linear combination of z-scores.
-    pc1 = 0.0
-    pc2 = 0.0
-    for name, z_val in z_vals.items():
-        w1 = float(pc1_w.get(name, 0.0))
-        w2 = float(pc2_w.get(name, 0.0))
-        pc1 += w1 * z_val
-        pc2 += w2 * z_val
+    # Principal component scores: linear combination of z-scores
+    pc1_raw = sum(float(pc1_w.get(name, 0.0)) * z for name, z in z_vals.items())
+    pc2_raw = sum(float(pc2_w.get(name, 0.0)) * z for name, z in z_vals.items())
 
-    def _sigmoid(x: float) -> float:
-        # Standard logistic mapped to 0-100; higher PC => higher complexity.
-        return 100.0 / (1.0 + float(np.exp(-x)))
+    # PC1/PC2 scores: linear min-max (same as CSV script)
+    score_span = score_max - score_min
+    if score_span <= 0:
+        score_span = 1.0
+    pc1_score = float(np.clip(100.0 * (pc1_raw - score_min) / score_span, 0.0, 100.0))
 
-    pc1_score = _sigmoid(pc1)
-    pc2_score = _sigmoid(pc2)
-
-    w_pc1 = float(final_w.get("PC1", 0.6))
-    w_pc2 = float(final_w.get("PC2", 0.3))
-    w_trunk = float(final_w.get("TrunkDist", 0.1))
+    if pc2_min is not None and pc2_max is not None:
+        pc2_span = float(pc2_max) - float(pc2_min)
+        if pc2_span <= 0:
+            pc2_span = 1.0
+        pc2_score = float(np.clip(100.0 * (pc2_raw - float(pc2_min)) / pc2_span, 0.0, 100.0))
+    else:
+        # Fallback when PC2_min/PC2_max not in ref (legacy)
+        pc2_score = 100.0 / (1.0 + float(np.exp(-pc2_raw)))
 
     final = w_pc1 * pc1_score + w_pc2 * pc2_score + w_trunk * float(trunk_score)
 

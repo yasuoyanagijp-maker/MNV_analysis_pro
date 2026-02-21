@@ -1,46 +1,50 @@
 {
   "size_class": "small",
-  "n_cases": 12,
+  "n_cases": 33,
+  "n_before": 12,
+  "n_after": 21,
   "metrics": [
     "euler_total_inv",
     "loop_total",
     "junction_density",
     "FD_global"
   ],
-  "note": "euler_total_inv = -(Center Euler + Periphery Euler). tortuosity_periphery excluded (consistent with large ref). Rebuilt from actual data 2026-02-20.",
+  "note": "Combined before+after PCA. euler_total_inv = -(Center Euler + Periphery Euler). tortuosity_periphery excluded. Rebuilt from MNV_batch_20260220_083448small合同.csv.",
   "mu": {
-    "euler_total_inv": 53.333333333333336,
-    "loop_total": 72.58333333333333,
-    "junction_density": 13.419050343184344,
-    "FD_global": 1.307872831366478
+    "euler_total_inv": 61.60606060606061,
+    "loop_total": 89.45454545454545,
+    "junction_density": 15.89132595818182,
+    "FD_global": 1.3095476752727273
   },
   "sigma": {
-    "euler_total_inv": 30.359878494852747,
-    "loop_total": 33.53221916638119,
-    "junction_density": 1.7084273801352128,
-    "FD_global": 0.07604399476782912
+    "euler_total_inv": 48.24303334471576,
+    "loop_total": 53.350238367642724,
+    "junction_density": 2.884353445597374,
+    "FD_global": 0.11013022670114042
   },
   "pc1_weights": {
-    "euler_total_inv": 0.5399059924274539,
-    "loop_total": 0.5404883669003449,
-    "junction_density": 0.36091390113352645,
-    "FD_global": 0.5348971869012804
+    "euler_total_inv": 0.5756384093717843,
+    "loop_total": 0.5678142676810249,
+    "junction_density": 0.24506309394392659,
+    "FD_global": 0.5349499593984599
   },
   "pc2_weights": {
-    "euler_total_inv": -0.20915929976806835,
-    "loop_total": -0.19850955416206337,
-    "junction_density": 0.9324949224627229,
-    "FD_global": -0.21748462890087542
+    "euler_total_inv": -0.06613437617305262,
+    "loop_total": -0.15646694184022855,
+    "junction_density": 0.9640386062826838,
+    "FD_global": -0.2043866580672742
   },
   "explained_variance_ratio": [
-    0.8252151188728746,
-    0.16388652605804846
+    0.7020761575658521,
+    0.22316372127510187
   ],
-  "score_min": -3.142258237397008,
-  "score_max": 2.7815876081935067,
+  "score_min": -4.98655662849712,
+  "score_max": 4.3535394228239275,
   "final_weights": {
     "PC1": 0.7,
     "PC2": 0.2,
     "TrunkDist": 0.1
-  }
+  },
+  "PC2_min": -1.7716789736173812,
+  "PC2_max": 2.1370309480693934
 }
