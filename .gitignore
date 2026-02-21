@@ -27,3 +27,8 @@ docs/handover/
 # Local / one-off (not needed for main functionality, do not push)
 .Rhistory
 docs/.Rhistory
+
+# Test run / ref update (not used by mainstreamer.py at runtime)
+csv/
+scripts/
+resources/reference_metrics/REF_JSON_INTEGRITY.md

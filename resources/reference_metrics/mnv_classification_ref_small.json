@@ -3,7 +3,7 @@
   "n_cases": 33,
   "n_before": 12,
   "n_after": 21,
-  "note": "Combined before+after cohort. Rebuilt from MNV_batch_20260220_083448small合同.csv. stability_score = Caliber Uniformity Score. complexity_score uses 4-variable combined PCA. Re-computed with sigmoid PCA pipeline (PC1×0.7+PC2×0.2+Trunk×0.1). maturity_index = clip(50+(stability-complexity)/2, 0, 100).",
+  "note": "Combined before+after cohort. Rebuilt from MNV_batch_20260220_083448small合同.csv. stability_score = Caliber Uniformity Score. complexity_score: linear min-max PCA (evr weights, trunk_score). maturity_index = clip(50+(stability-complexity)/2, 0, 100).",
   "percentiles": [
     10,
     25,

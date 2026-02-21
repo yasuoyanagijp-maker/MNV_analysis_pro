@@ -3,7 +3,7 @@
   "n_cases": 49,
   "n_before": 30,
   "n_after": 19,
-  "note": "Combined before(n=30)+after(n=19). Sigmoid PCA. maturity=clip(50+(stability-complexity)/2,0,100).",
+  "note": "Combined before(n=30)+after(n=19). complexity_score: linear min-max PCA (evr weights, trunk_score). maturity=clip(50+(stability-complexity)/2,0,100).",
   "percentiles": [
     10,
     25,

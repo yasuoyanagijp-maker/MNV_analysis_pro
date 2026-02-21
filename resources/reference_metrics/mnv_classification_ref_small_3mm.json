@@ -3,7 +3,7 @@
   "n_cases": 30,
   "n_before": 23,
   "n_after": 7,
-  "note": "Combined before+after cohort. Rebuilt 2026-02-20. stability_score = Caliber Uniformity Score. complexity_score uses 4-variable combined PCA. Re-computed with sigmoid PCA pipeline (PC1×0.7+PC2×0.2+Trunk×0.1). maturity_index = clip(50+(stability-complexity)/2, 0, 100).",
+  "note": "Combined before+after cohort. Rebuilt 2026-02-20. stability_score = Caliber Uniformity Score. complexity_score: linear min-max PCA (evr weights, trunk_score). maturity_index = clip(50+(stability-complexity)/2, 0, 100).",
   "percentiles": [
     10,
     25,
