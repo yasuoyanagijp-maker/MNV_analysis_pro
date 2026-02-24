@@ -2738,7 +2738,7 @@ def show_summary_screen():
     vd_csv_bytes, vd_csv_name = build_vd_results_csv()
     # VD解析は Folder Batch のみ対応のため、vd_csv_bytes の存在で判定可能（シンプル化）
     has_vd = bool(vd_csv_bytes and vd_csv_name)
-    # MNV CSVは1回だけ取得（FD全0行除外後、出力行がなければ None,""）
+    # MNV CSVは1回だけ取得（解析対象0件のときのみ None,""）
     mnv_csv_bytes, mnv_csv_name = None, ""
     if has_mnv_result:
         mnv_csv_bytes, mnv_csv_name = export_mnv_results_to_csv()
