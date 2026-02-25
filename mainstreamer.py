@@ -54,6 +54,15 @@ except ImportError:
     VDAnalyzer = None
     HAS_VD_ANALYZER = False
 
+# Stability raw metrics for CSV export (MNV pipeline の radial_profile から算出)
+try:
+    from core.pattern_metrics import _compute_stability_raw
+
+    HAS_STABILITY_RAW = True
+except ImportError:
+    _compute_stability_raw = None
+    HAS_STABILITY_RAW = False
+
 # VD display helpers (utils is under src/)
 try:
     from utils.vd_display_helpers import get_vd_metrics_for_file, get_vd_summary_value
@@ -1460,6 +1469,89 @@ def build_vd_results_csv() -> tuple[Optional[bytes], Optional[str]]:
         return vd_csv, f"VD_batch_{timestamp_suffix}.csv"
 
 
+STABILITY_CSV_COLUMNS = [
+    "File",
+    "size_class",
+    "stab_cv",
+    "stab_mean_adjacent_change",
+    "stab_residual_cv",
+    "stab_range_percent",
+]
+
+
+def build_stability_csv() -> Tuple[Optional[bytes], str]:
+    """
+    Stability関連4指標のCSVを構築（MNV解析済みファイルのみ）。
+    per_file_results から size_class と radial_profile を取得し、
+    stab_cv, stab_mean_adjacent_change, stab_residual_cv, stab_range_percent を算出して出力。
+
+    Returns
+    -------
+    tuple[Optional[bytes], str]
+        (CSVバイト列, 推奨ファイル名)。対象0件の場合は (None, "").
+    """
+    if not HAS_STABILITY_RAW or _compute_stability_raw is None:
+        return None, ""
+    qc_status = st.session_state.get("qc_status", {})
+    per_file_results = st.session_state.get("per_file_results", {})
+    file_queue = st.session_state.get("file_queue", [])
+    names_from_queue = set()
+    for f in file_queue:
+        n = f.get("name") if isinstance(f, dict) else (f if isinstance(f, str) else None)
+        if n:
+            names_from_queue.add(str(n))
+    all_filenames = sorted(set(qc_status.keys()) | names_from_queue)
+    rows = []
+    for filename in all_filenames:
+        res = per_file_results.get(filename, {})
+        if (res.get("type") != "MNV") or not res.get("success", False):
+            continue
+        metrics = res.get("metrics", {})
+        size_class = metrics.get("size_class", "")
+        radial_profile = metrics.get("radial_profile")
+        diameters = None
+        if isinstance(radial_profile, dict):
+            diameters = radial_profile.get("diameters")
+        if diameters is not None:
+            diameters = np.asarray(diameters, dtype=float)
+        if diameters is None or (hasattr(diameters, "size") and diameters.size == 0):
+            row = {
+                "File": filename,
+                "size_class": size_class,
+                "stab_cv": "",
+                "stab_mean_adjacent_change": "",
+                "stab_residual_cv": "",
+                "stab_range_percent": "",
+            }
+        else:
+            raw = _compute_stability_raw(diameters)
+            row = {
+                "File": filename,
+                "size_class": size_class,
+                "stab_cv": raw.get("cv", ""),
+                "stab_mean_adjacent_change": raw.get("mean_adjacent_change", ""),
+                "stab_residual_cv": raw.get("residual_cv", ""),
+                "stab_range_percent": raw.get("range_percent", ""),
+            }
+        rows.append(row)
+    if not rows:
+        return None, ""
+    session_id = st.session_state.get("session_id", "")
+    if not session_id:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp_suffix = ts
+    else:
+        parts = session_id.split("_")
+        timestamp_suffix = f"{parts[0]}_{parts[1]}" if len(parts) >= 2 else session_id
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=STABILITY_CSV_COLUMNS, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({k: row.get(k, "") for k in STABILITY_CSV_COLUMNS})
+    suggested_name = f"Stability_{timestamp_suffix}.csv"
+    return buf.getvalue().encode("utf-8-sig"), suggested_name
+
+
 def save_mnv_rgb_images(export_root: Path, file_list: list[str]) -> list[str]:
     """MNV結果のRGB画像を保存"""
     saved_paths: list[str] = []
@@ -2743,6 +2835,11 @@ def show_summary_screen():
     if has_mnv_result:
         mnv_csv_bytes, mnv_csv_name = export_mnv_results_to_csv()
     has_mnv_csv = bool(mnv_csv_bytes and mnv_csv_name)
+    # Stability CSV（MNV解析済みのときのみ、4指標: stab_cv, stab_mean_adjacent_change, stab_residual_cv, stab_range_percent）
+    stability_csv_bytes, stability_csv_name = None, ""
+    if has_mnv_result:
+        stability_csv_bytes, stability_csv_name = build_stability_csv()
+    has_stability_csv = bool(stability_csv_bytes and stability_csv_name)
 
     # Folder Batch: 保存は1回だけ。ensure で export_root 確定 → folder_exports_saved で二重実行防止
     is_folder_batch = st.session_state.get("processing_mode") == "Folder Batch"
@@ -2755,6 +2852,9 @@ def show_summary_screen():
             if has_mnv_csv:
                 (export_root / mnv_csv_name).write_bytes(mnv_csv_bytes)
                 saved_files.append(str(export_root / mnv_csv_name))
+            if has_stability_csv:
+                (export_root / stability_csv_name).write_bytes(stability_csv_bytes)
+                saved_files.append(str(export_root / stability_csv_name))
             if vd_csv_bytes and vd_csv_name:
                 (export_root / vd_csv_name).write_bytes(vd_csv_bytes)
                 saved_files.append(str(export_root / vd_csv_name))
@@ -2772,7 +2872,12 @@ def show_summary_screen():
 
     # アクション（メイン行: MNV結果が無い／CSV出力行0の場合はMNV列を出さない）
     st.markdown('<div class="action-buttons">', unsafe_allow_html=True)
-    n_main = 1 + (1 if has_mnv_csv else 0) + (1 if (vd_csv_bytes and vd_csv_name) else 0)
+    n_main = (
+        1
+        + (1 if has_mnv_csv else 0)
+        + (1 if has_stability_csv else 0)
+        + (1 if (vd_csv_bytes and vd_csv_name) else 0)
+    )
     main_cols = st.columns(max(n_main, 1))
     idx = 0
     with main_cols[idx]:
@@ -2809,6 +2914,17 @@ def show_summary_screen():
                 file_name=mnv_csv_name,
                 mime="text/csv",
                 use_container_width=True,
+            )
+        idx += 1
+    if has_stability_csv:
+        with main_cols[idx]:
+            st.download_button(
+                "📥 Stability",
+                data=stability_csv_bytes,
+                file_name=stability_csv_name,
+                mime="text/csv",
+                use_container_width=True,
+                key="dl_stability_csv",
             )
         idx += 1
     if vd_csv_bytes and vd_csv_name:

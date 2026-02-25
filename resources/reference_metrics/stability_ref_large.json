@@ -1,20 +1,60 @@
 {
   "size_class": "large",
-  "n_cases": 19,
-  "stab_cv": {
-    "mu": 22.62870394158782,
-    "sigma": 17.38227702617941
+  "n_cases": 49,
+  "metrics": [
+    "stab_cv",
+    "stab_mean_adjacent_change",
+    "stab_residual_cv",
+    "stab_range_percent"
+  ],
+  "description": "Size-specific PCA-based stability reference for large (n=49). PC1=instability (all weights positive, inverted for stability). Piecewise linear correction: median\u219250. Rebuilt 2026-02-25.",
+  "mu": {
+    "stab_cv": 14.65177584267664,
+    "stab_mean_adjacent_change": 12.995940305660323,
+    "stab_residual_cv": 11.059721698596036,
+    "stab_range_percent": 50.374157838924134
   },
-  "stab_mean_adjacent_change": {
-    "mu": 36.74783452944732,
-    "sigma": 46.31660231117409
+  "sigma": {
+    "stab_cv": 6.752958436624374,
+    "stab_mean_adjacent_change": 9.824361629151133,
+    "stab_residual_cv": 6.115044684329091,
+    "stab_range_percent": 25.51390794138375
   },
-  "stab_residual_cv": {
-    "mu": 19.19578585629376,
-    "sigma": 13.785138842863487
+  "pc1_weights": {
+    "stab_cv": 0.5026232232538287,
+    "stab_mean_adjacent_change": 0.48280993151537954,
+    "stab_residual_cv": 0.5013209536311612,
+    "stab_range_percent": 0.5127784774406875
   },
-  "stab_range_percent": {
-    "mu": 74.50133067511346,
-    "sigma": 54.18998813228441
+  "pc2_weights": {
+    "stab_cv": -0.5481913549659125,
+    "stab_mean_adjacent_change": 0.6811053485035696,
+    "stab_residual_cv": 0.29099833508923356,
+    "stab_range_percent": -0.3884606949946956
+  },
+  "explained_variance_ratio": [
+    0.895578585159524,
+    0.07101470415569598,
+    0.028493084784739896,
+    0.004913625900040107
+  ],
+  "note_pc1": "PC1=instability (all weights positive). stability_score uses -PC1.",
+  "scale_correction": {
+    "method": "piecewise_linear_per_pc",
+    "pc1_inv": {
+      "min": -6.877066772673984,
+      "median": 0.64679074119226,
+      "max": 2.681582057290229
+    },
+    "pc2": {
+      "min": -1.3799914489951586,
+      "median": 0.03336572999294286,
+      "max": 1.6402126242079
+    }
+  },
+  "final_weights": {
+    "PC1": 0.7,
+    "PC2": 0.2,
+    "TrunkDist": 0.1
   }
 }

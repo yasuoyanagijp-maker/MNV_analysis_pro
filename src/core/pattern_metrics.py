@@ -14,9 +14,9 @@ from typing import Dict, Optional, Tuple
 
 import numpy as np
 
-_STABILITY_REF_SMALL: Optional[Dict[str, Dict[str, float]]] = None
+_STABILITY_REF_SMALL: Optional[Dict[str, object]] = None
 _STABILITY_REF_SMALL_LOADED: bool = False
-_STABILITY_REF_LARGE: Optional[Dict[str, Dict[str, float]]] = None
+_STABILITY_REF_LARGE: Optional[Dict[str, object]] = None
 _STABILITY_REF_LARGE_LOADED: bool = False
 
 _COMPLEXITY_REF_SMALL: Optional[Dict[str, object]] = None
@@ -31,7 +31,7 @@ _MNV_CLASSIFICATION_REF_LARGE_LOADED: bool = False
 _MNV_CLASSIFICATION_REF_SMALL_3MM: Optional[Dict[str, object]] = None
 _MNV_CLASSIFICATION_REF_SMALL_3MM_LOADED: bool = False
 
-_STABILITY_REF_SMALL_3MM: Optional[Dict[str, Dict[str, float]]] = None
+_STABILITY_REF_SMALL_3MM: Optional[Dict[str, object]] = None
 _STABILITY_REF_SMALL_3MM_LOADED: bool = False
 _COMPLEXITY_REF_SMALL_3MM: Optional[Dict[str, object]] = None
 _COMPLEXITY_REF_SMALL_3MM_LOADED: bool = False
@@ -61,111 +61,42 @@ def _load_reference_json(filename: str) -> Optional[Dict[str, object]]:
     return None
 
 
-def _load_stability_ref_small() -> Optional[Dict[str, Dict[str, float]]]:
-    """Load stability reference (mu/sigma) for small images from JSON if available."""
+def _load_stability_ref_small() -> Optional[Dict[str, object]]:
+    """Load stability reference (v3: size-specific PCA) for small images from JSON."""
     global _STABILITY_REF_SMALL, _STABILITY_REF_SMALL_LOADED
 
     if _STABILITY_REF_SMALL_LOADED:
         return _STABILITY_REF_SMALL
 
     _STABILITY_REF_SMALL_LOADED = True
-    try:
-        data = _load_reference_json("stability_ref_small.json")
-        if data is None:
-            _STABILITY_REF_SMALL = None
-            return None
-
-        mapping: Dict[str, Dict[str, float]] = {}
-        key_map = {
-            "stab_cv": "cv",
-            "stab_mean_adjacent_change": "mean_adjacent_change",
-            "stab_residual_cv": "residual_cv",
-            "stab_range_percent": "range_percent",
-        }
-        for json_key, metric_key in key_map.items():
-            if json_key not in data:
-                continue
-            entry = data[json_key]
-            mu = float(entry.get("mu", 0.0))
-            sigma = float(entry.get("sigma", 0.0))
-            mapping[metric_key] = {"mu": mu, "sigma": sigma}
-
-        _STABILITY_REF_SMALL = mapping if mapping else None
-    except Exception:
-        _STABILITY_REF_SMALL = None
-
+    data = _load_reference_json("stability_ref_small.json")
+    _STABILITY_REF_SMALL = data
     return _STABILITY_REF_SMALL
 
 
-def _load_stability_ref_large() -> Optional[Dict[str, Dict[str, float]]]:
-    """Load stability reference (mu/sigma) for large images from JSON if available."""
+def _load_stability_ref_large() -> Optional[Dict[str, object]]:
+    """Load stability reference (v3: size-specific PCA) for large images from JSON."""
     global _STABILITY_REF_LARGE, _STABILITY_REF_LARGE_LOADED
 
     if _STABILITY_REF_LARGE_LOADED:
         return _STABILITY_REF_LARGE
 
     _STABILITY_REF_LARGE_LOADED = True
-    try:
-        data = _load_reference_json("stability_ref_large.json")
-        if data is None:
-            _STABILITY_REF_LARGE = None
-            return None
-
-        mapping: Dict[str, Dict[str, float]] = {}
-        key_map = {
-            "stab_cv": "cv",
-            "stab_mean_adjacent_change": "mean_adjacent_change",
-            "stab_residual_cv": "residual_cv",
-            "stab_range_percent": "range_percent",
-        }
-        for json_key, metric_key in key_map.items():
-            if json_key not in data:
-                continue
-            entry = data[json_key]
-            mu = float(entry.get("mu", 0.0))
-            sigma = float(entry.get("sigma", 0.0))
-            mapping[metric_key] = {"mu": mu, "sigma": sigma}
-
-        _STABILITY_REF_LARGE = mapping if mapping else None
-    except Exception:
-        _STABILITY_REF_LARGE = None
-
+    data = _load_reference_json("stability_ref_large.json")
+    _STABILITY_REF_LARGE = data
     return _STABILITY_REF_LARGE
 
 
-def _load_stability_ref_small_3mm() -> Optional[Dict[str, Dict[str, float]]]:
-    """Load stability reference for 3mm images from JSON if available."""
+def _load_stability_ref_small_3mm() -> Optional[Dict[str, object]]:
+    """Load stability reference (v3: size-specific PCA) for small_3mm images from JSON."""
     global _STABILITY_REF_SMALL_3MM, _STABILITY_REF_SMALL_3MM_LOADED
 
     if _STABILITY_REF_SMALL_3MM_LOADED:
         return _STABILITY_REF_SMALL_3MM
 
     _STABILITY_REF_SMALL_3MM_LOADED = True
-    try:
-        data = _load_reference_json("stability_ref_small_3mm.json")
-        if data is None:
-            _STABILITY_REF_SMALL_3MM = None
-            return None
-
-        mapping: Dict[str, Dict[str, float]] = {}
-        key_map = {
-            "stab_cv": "cv",
-            "stab_mean_adjacent_change": "mean_adjacent_change",
-            "stab_residual_cv": "residual_cv",
-            "stab_range_percent": "range_percent",
-        }
-        for json_key, metric_key in key_map.items():
-            if json_key not in data:
-                continue
-            entry = data[json_key]
-            mu = float(entry.get("mu", 0.0))
-            sigma = float(entry.get("sigma", 0.0))
-            mapping[metric_key] = {"mu": mu, "sigma": sigma}
-
-        _STABILITY_REF_SMALL_3MM = mapping if mapping else None
-    except Exception:
-        _STABILITY_REF_SMALL_3MM = None
-
+    data = _load_reference_json("stability_ref_small_3mm.json")
+    _STABILITY_REF_SMALL_3MM = data
     return _STABILITY_REF_SMALL_3MM
 
 
@@ -286,6 +217,108 @@ def load_mnv_classification_ref(size_class: str) -> Optional[Dict[str, object]]:
 _MAX_ADJACENT_CHANGE_PERCENT = 1000.0
 
 
+def _piecewise_scale(
+    x: np.ndarray,
+    x_min: float,
+    x_median: float,
+    x_max: float,
+) -> np.ndarray:
+    """中央値を50に固定する区分線形変換（0–100）。stability_score method v3."""
+    x = np.asarray(x, dtype=float)
+    result = np.zeros_like(x)
+    low = x <= x_median
+    high = x > x_median
+    if x_median > x_min:
+        result[low] = 50.0 * (x[low] - x_min) / (x_median - x_min)
+    if x_max > x_median:
+        result[high] = 50.0 + 50.0 * (x[high] - x_median) / (x_max - x_median)
+    return np.clip(result, 0.0, 100.0)
+
+
+def calculate_stability_score(
+    stab_cv: object,
+    stab_mean_adjacent_change: object,
+    stab_residual_cv: object,
+    stab_range_percent: object,
+    ref: Dict[str, object],
+    trunk_score: float = 50.0,
+) -> np.ndarray:
+    """
+    Stability Score (Caliber Uniformity Score) を算出する。方式3: サイズ別独立PCA。
+
+    Parameters
+    ----------
+    stab_cv, stab_mean_adjacent_change, stab_residual_cv, stab_range_percent
+        径プロファイルから算出した4指標（float or array-like）
+    ref
+        stability_ref_{size_class}.json を読み込んだ辞書（metrics, mu, sigma,
+        pc1_weights, pc2_weights, scale_correction, final_weights 必須）
+    trunk_score
+        TrunkDist スコア（デフォルト 50.0 = 中立値）
+
+    Returns
+    -------
+    np.ndarray or float
+        0–100 の Stability Score（高いほど安定）
+    """
+    metrics = ref["metrics"]
+    mu = ref["mu"]
+    sigma = ref["sigma"]
+    w1 = ref["pc1_weights"]
+    w2 = ref["pc2_weights"]
+    fw = ref["final_weights"]
+    sc = ref["scale_correction"]
+
+    values = {
+        "stab_cv": np.asarray(stab_cv, dtype=float),
+        "stab_mean_adjacent_change": np.asarray(stab_mean_adjacent_change, dtype=float),
+        "stab_residual_cv": np.asarray(stab_residual_cv, dtype=float),
+        "stab_range_percent": np.asarray(stab_range_percent, dtype=float),
+    }
+
+    # Step 1: Z-score 正規化（参照コホートの mu/sigma を使用）
+    Z = {}
+    for m in metrics:
+        m_str = str(m)
+        sig = float(sigma.get(m_str, 1.0))
+        if sig <= 0.0:
+            sig = 1.0
+        Z[m_str] = (values[m_str] - float(mu.get(m_str, 0.0))) / sig
+
+    # Step 2: PC1・PC2 の線形結合
+    pc1_raw = sum(Z[m] * float(w1.get(m, 0.0)) for m in metrics)
+    pc2_raw = sum(Z[m] * float(w2.get(m, 0.0)) for m in metrics)
+
+    # Step 3: PC1 を反転（PC1 = 不安定性 → -PC1 = 安定性方向）
+    pc1_inv = -pc1_raw
+
+    # Step 4: 区分線形補正（各PC の median → 50）
+    p1 = sc["pc1_inv"]
+    pc1_score = _piecewise_scale(
+        pc1_inv,
+        float(p1["min"]),
+        float(p1["median"]),
+        float(p1["max"]),
+    )
+    p2 = sc["pc2"]
+    pc2_score = _piecewise_scale(
+        pc2_raw,
+        float(p2["min"]),
+        float(p2["median"]),
+        float(p2["max"]),
+    )
+
+    # Step 5: 最終スコア合成
+    stability_score = np.clip(
+        float(fw.get("PC1", 0.7)) * pc1_score
+        + float(fw.get("PC2", 0.2)) * pc2_score
+        + float(fw.get("TrunkDist", 0.1)) * float(trunk_score),
+        0.0,
+        100.0,
+    )
+    return stability_score
+
+
 def _compute_stability_raw(diameters: np.ndarray) -> Dict[str, float]:
     """Compute raw stability-related metrics from a radial diameter profile."""
     diameters = np.asarray(diameters, dtype=float)
@@ -400,8 +433,12 @@ def calculate_trunk_distribution_score(
 def calculate_stability_metrics(
     diameters: np.ndarray,
     size_class: str = "small",
+    trunk_score: float = 50.0,
 ) -> float:
-    """Compute stability score (0-100) for diameter profile."""
+    """
+    Compute stability score (0-100) for diameter profile.
+    Uses method v3: size-specific PCA + piecewise linear correction (see docs/stability_score_method_v3.md).
+    """
     diameters = np.asarray(diameters, dtype=float)
     if diameters.size == 0:
         return 0.0
@@ -409,11 +446,9 @@ def calculate_stability_metrics(
     raw = _compute_stability_raw(diameters)
 
     # Preserve legacy behavior for perfectly constant arrays (existing tests rely on this).
-    # For a truly constant profile, the standard deviation is exactly zero.
     if raw.get("sd", 0.0) == 0.0:
         return 100.0
 
-    # Z-score + sigmoid mapping when reference stats are available.
     ref = None
     if size_class == "small_3mm":
         ref = _load_stability_ref_small_3mm()
@@ -422,45 +457,25 @@ def calculate_stability_metrics(
     elif size_class == "large":
         ref = _load_stability_ref_large()
 
-    if ref is not None:
-
-        def _z(x: float, mu: float, sigma: float) -> float:
-            if sigma <= 0.0:
-                return 0.0
-            return (x - mu) / sigma
-
-        def _sigmoid_score(z_val: float, alpha: float = 1.0, z0: float = 0.0) -> float:
-            # Larger z (worse than mean) should reduce the score.
-            return 100.0 / (1.0 + float(np.exp(alpha * (z_val - z0))))
-
-        z_cv = _z(
-            raw["cv"],
-            ref.get("cv", {}).get("mu", 0.0),
-            ref.get("cv", {}).get("sigma", 0.0),
-        )
-        z_adj = _z(
-            raw["mean_adjacent_change"],
-            ref.get("mean_adjacent_change", {}).get("mu", 0.0),
-            ref.get("mean_adjacent_change", {}).get("sigma", 0.0),
-        )
-        z_res = _z(
-            raw["residual_cv"],
-            ref.get("residual_cv", {}).get("mu", 0.0),
-            ref.get("residual_cv", {}).get("sigma", 0.0),
-        )
-        z_rng = _z(
-            raw["range_percent"],
-            ref.get("range_percent", {}).get("mu", 0.0),
-            ref.get("range_percent", {}).get("sigma", 0.0),
-        )
-
-        cvScore = _sigmoid_score(z_cv)
-        adjacentScore = _sigmoid_score(z_adj)
-        residualScore = _sigmoid_score(z_res)
-        rangeScore = _sigmoid_score(z_rng)
-
-        compositeScore = 0.25 * (cvScore + adjacentScore + residualScore + rangeScore)
-        return float(np.clip(compositeScore, 0.0, 100.0))
+    # v3: ref に metrics, pc1_weights, scale_correction があれば新方式で算出
+    if ref is not None and isinstance(ref, dict):
+        if (
+            "metrics" in ref
+            and "pc1_weights" in ref
+            and "scale_correction" in ref
+            and "mu" in ref
+            and "sigma" in ref
+        ):
+            score = calculate_stability_score(
+                raw["cv"],
+                raw["mean_adjacent_change"],
+                raw["residual_cv"],
+                raw["range_percent"],
+                ref,
+                trunk_score=trunk_score,
+            )
+            out = float(score) if score.ndim == 0 else float(score.flat[0])
+            return float(np.clip(out, 0.0, 100.0))
 
     # Fallback: legacy composite score (when reference stats are not available).
     mean = raw["mean"]
