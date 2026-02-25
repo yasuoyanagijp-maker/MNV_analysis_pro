@@ -1,13 +1,8 @@
 {
   "size_class": "large",
   "n_cases": 49,
-  "metrics": [
-    "stab_cv",
-    "stab_mean_adjacent_change",
-    "stab_residual_cv",
-    "stab_range_percent"
-  ],
-  "description": "Size-specific PCA-based stability reference for large (n=49). PC1=instability (all weights positive, inverted for stability). Piecewise linear correction: median\u219250. Rebuilt 2026-02-25.",
+  "metrics": ["stab_cv", "stab_mean_adjacent_change", "stab_residual_cv", "stab_range_percent"],
+  "description": "Size-specific PCA-based stability reference for large (n=49). PC1=instability (all weights positive, inverted for stability). Piecewise linear correction: median→50. Rebuilt 2026-02-25.",
   "mu": {
     "stab_cv": 14.65177584267664,
     "stab_mean_adjacent_change": 12.995940305660323,
@@ -32,12 +27,7 @@
     "stab_residual_cv": 0.29099833508923356,
     "stab_range_percent": -0.3884606949946956
   },
-  "explained_variance_ratio": [
-    0.895578585159524,
-    0.07101470415569598,
-    0.028493084784739896,
-    0.004913625900040107
-  ],
+  "explained_variance_ratio": [0.895578585159524, 0.07101470415569598, 0.028493084784739896, 0.004913625900040107],
   "note_pc1": "PC1=instability (all weights positive). stability_score uses -PC1.",
   "scale_correction": {
     "method": "piecewise_linear_per_pc",

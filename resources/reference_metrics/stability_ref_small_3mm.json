@@ -1,13 +1,8 @@
 {
   "size_class": "small_3mm",
   "n_cases": 30,
-  "metrics": [
-    "stab_cv",
-    "stab_mean_adjacent_change",
-    "stab_residual_cv",
-    "stab_range_percent"
-  ],
-  "description": "Size-specific PCA-based stability reference for small_3mm (n=30). PC1=instability (all weights positive, inverted for stability). Piecewise linear correction: median\u219250. Rebuilt 2026-02-25.",
+  "metrics": ["stab_cv", "stab_mean_adjacent_change", "stab_residual_cv", "stab_range_percent"],
+  "description": "Size-specific PCA-based stability reference for small_3mm (n=30). PC1=instability (all weights positive, inverted for stability). Piecewise linear correction: median→50. Rebuilt 2026-02-25.",
   "mu": {
     "stab_cv": 16.787036388955176,
     "stab_mean_adjacent_change": 15.557665374393292,
@@ -32,12 +27,7 @@
     "stab_residual_cv": -0.05943903668538334,
     "stab_range_percent": -0.2387380620466784
   },
-  "explained_variance_ratio": [
-    0.8107638872305823,
-    0.18291985067733038,
-    0.005108697508627314,
-    0.0012075645834598253
-  ],
+  "explained_variance_ratio": [0.8107638872305823, 0.18291985067733038, 0.005108697508627314, 0.0012075645834598253],
   "note_pc1": "PC1=instability (all weights positive). stability_score uses -PC1.",
   "scale_correction": {
     "method": "piecewise_linear_per_pc",
