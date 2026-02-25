@@ -1,20 +1,50 @@
 {
-  "size_class": "small",
-  "n_cases": 19,
-  "stab_cv": {
-    "mu": 21.28122339,
-    "sigma": 13.44680293
+  "size_class": "small_3mm",
+  "n_cases": 30,
+  "metrics": ["stab_cv", "stab_mean_adjacent_change", "stab_residual_cv", "stab_range_percent"],
+  "description": "Size-specific PCA-based stability reference for small_3mm (n=30). PC1=instability (all weights positive, inverted for stability). Piecewise linear correction: median→50. Rebuilt 2026-02-25.",
+  "mu": {
+    "stab_cv": 16.787036388955176,
+    "stab_mean_adjacent_change": 15.557665374393292,
+    "stab_residual_cv": 14.643735850627525,
+    "stab_range_percent": 55.26979107139054
   },
-  "stab_mean_adjacent_change": {
-    "mu": 21.540610206087596,
-    "sigma": 36.27698294
+  "sigma": {
+    "stab_cv": 10.878901326461381,
+    "stab_mean_adjacent_change": 5.744501211038508,
+    "stab_residual_cv": 6.716194684006174,
+    "stab_range_percent": 35.12421399796246
   },
-  "stab_residual_cv": {
-    "mu": 17.65593972,
-    "sigma": 17.3065926
+  "pc1_weights": {
+    "stab_cv": 0.5379593989368798,
+    "stab_mean_adjacent_change": 0.33780273207975825,
+    "stab_residual_cv": 0.5508325745447579,
+    "stab_range_percent": 0.541361685119399
   },
-  "stab_range_percent": {
-    "mu": 72.08016958,
-    "sigma": 43.69838633
+  "pc2_weights": {
+    "stab_cv": -0.28132337957339815,
+    "stab_mean_adjacent_change": 0.9275388373289346,
+    "stab_residual_cv": -0.05943903668538334,
+    "stab_range_percent": -0.2387380620466784
+  },
+  "explained_variance_ratio": [0.8107638872305823, 0.18291985067733038, 0.005108697508627314, 0.0012075645834598253],
+  "note_pc1": "PC1=instability (all weights positive). stability_score uses -PC1.",
+  "scale_correction": {
+    "method": "piecewise_linear_per_pc",
+    "pc1_inv": {
+      "min": -8.212251112598347,
+      "median": 0.5666959643697481,
+      "max": 1.7720856503285718
+    },
+    "pc2": {
+      "min": -2.180722819780096,
+      "median": -0.13398445292250127,
+      "max": 2.569936911266827
+    }
+  },
+  "final_weights": {
+    "PC1": 0.7,
+    "PC2": 0.2,
+    "TrunkDist": 0.1
   }
 }
