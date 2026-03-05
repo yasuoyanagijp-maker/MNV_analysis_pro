@@ -2097,7 +2097,11 @@ def show_scrollfree_qc_screen():
     with col3:
         st.metric("Subtype", metrics.get("mnv_subtype", "N/A"))
     with col4:
-        st.metric("Status", "OK" if success else "Error")
+        maturity_val = metrics.get("maturity_index", "N/A")
+        st.metric(
+            "Maturity Score",
+            f"{maturity_val:.2f}" if isinstance(maturity_val, (int, float)) else str(maturity_val),
+        )
 
     st.divider()
     st.caption("Accept and go to the next image, or reject to redraw ROI.")
