@@ -478,12 +478,14 @@ def filter_mnv_files_for_roi_selection(
         if should_exclude:
             continue
 
-        # 3.tif で終わる、または image3 を含むファイルを含める
-        if (
-            re.search(r"3\.(tif|tiff|png|jpg|jpeg)$", filename, re.IGNORECASE)
-            or re.search(r"image3", filename, re.IGNORECASE)
-        ):
-            filtered_files.append(file_path)
+        # 明示的な除外に引っ掛からなければ、基本的にはリストに加える
+        # （以前は 3.tif や image3 のみに限定していたが、ジェネリックなファイル名も許容する）
+        filtered_files.append(file_path)
+
+    # 万が一すべて除外されてしまった場合（例: ユーザーが意図的に image1.jpg のみをフォルダに入れた場合など）、
+    # 解析ができなくなるのを防ぐため、元のリストをそのまま返す（フォールバック）
+    if not filtered_files and len(image_files) > 0:
+        return image_files
 
     return filtered_files
 

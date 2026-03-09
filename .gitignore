@@ -32,3 +32,8 @@ docs/.Rhistory
 csv/
 scripts/
 resources/reference_metrics/REF_JSON_INTEGRITY.md
+
+# macOS Build artifacts
+*.zip
+*.dmg
+*.app
