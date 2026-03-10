@@ -1,16 +1,25 @@
 .venv/
 venv/
+env/
 __pycache__/
 *.pyc
 .DS_Store
 *.bak
-*.spec
+# *.spec
 build/
 dist/
 .cursor/
 .vscode/
-output/exports/logs/
+
+# Windows specifics
+Thumbs.db
+desktop.ini
+
+# Application data & outputs
 output/
+output/exports/logs/
+temp_data/
+*.tmp
 
 # Test
 tests/
