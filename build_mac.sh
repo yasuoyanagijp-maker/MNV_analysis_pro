@@ -15,7 +15,9 @@
 #        --password "xxxx-xxxx-xxxx-xxxx"  # App-specific password
 #
 # 使い方:
-#   ./build_mac.sh                   # 通常ビルド（全工程）
+#   ./build_mac.sh                   # 通常ビルド（全工程・アーキ自動選択）
+#   ./build_mac.sh --arm64           # Apple Silicon (M1/M2/M3) 用を明示
+#   ./build_mac.sh --intel           # Intel Mac 用を明示（Intel Mac 上でのみ有効）
 #   ./build_mac.sh --build-only      # PyInstaller ビルドのみ
 #   ./build_mac.sh --sign-only       # 署名・公証のみ（ビルド済み前提）
 #   ./build_mac.sh --skip-notarize   # 公証をスキップ（テスト用）
@@ -61,6 +63,7 @@ BUILD_ONLY=false
 SIGN_ONLY=false
 SKIP_NOTARIZE=false
 DO_CLEAN=false
+FORCE_ARCH=""  # 空=自動, arm64, x86_64
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -68,8 +71,10 @@ while [[ $# -gt 0 ]]; do
         --sign-only)     SIGN_ONLY=true ;;
         --skip-notarize) SKIP_NOTARIZE=true ;;
         --clean)         DO_CLEAN=true ;;
+        --arm64)         FORCE_ARCH="arm64" ;;
+        --intel)         FORCE_ARCH="x86_64" ;;
         -h|--help)
-            echo "Usage: ./build_mac.sh [--build-only|--sign-only|--skip-notarize|--clean]"
+            echo "Usage: ./build_mac.sh [--arm64|--intel|--build-only|--sign-only|--skip-notarize|--clean]"
             exit 0 ;;
         *) log_warn "Unknown: $1" ;;
     esac
@@ -90,7 +95,14 @@ fi
 
 ARCH="$(uname -m)"
 MACOS_VER="$(sw_vers -productVersion)"
-log_info "macOS ${MACOS_VER} / ${ARCH}"
+# ビルド対象アーキテクチャ（--arm64/--intel で上書き可能）
+if [[ -n "$FORCE_ARCH" ]]; then
+    TARGET_ARCH="$FORCE_ARCH"
+    [[ "$ARCH" != "$TARGET_ARCH" ]] && log_warn "クロスビルド: ホスト ${ARCH} → ターゲット ${TARGET_ARCH}"
+else
+    TARGET_ARCH="$ARCH"
+fi
+log_info "macOS ${MACOS_VER} / ホスト:${ARCH} ターゲット:${TARGET_ARCH}"
 
 # ── プレースホルダー検出 ──────────────────────────────────────────────────────
 log_step "設定値の確認"
@@ -157,19 +169,20 @@ if [[ "$SIGN_ONLY" != true ]]; then
     # 既存の .app を削除
     [[ -d "$APP_PATH" ]] && rm -rf "$APP_PATH"
 
-    # Apple Silicon / Intel の判定
-    if [[ "$ARCH" == "arm64" ]]; then
-        TARGET_ARCH="arm64"
-    else
-        TARGET_ARCH="x86_64"
+    # アーキテクチャ別 spec を選択
+    SPEC_FILE="${SCRIPT_DIR}/ARIAKE_OCTA_${TARGET_ARCH}.spec"
+    if [[ ! -f "$SPEC_FILE" ]]; then
+        log_error "spec が見つかりません: ${SPEC_FILE}"
+        exit 1
     fi
+    log_info "使用 spec: $(basename "$SPEC_FILE")"
 
     pyinstaller \
         --clean \
         --noconfirm \
         --distpath="${DIST_DIR}" \
         --workpath="${BUILD_DIR}" \
-        "${SCRIPT_DIR}/${APP_NAME}.spec"
+        "$SPEC_FILE"
 
     if [[ ! -d "$APP_PATH" ]]; then
         log_error "ビルドに失敗しました: ${APP_PATH} が見つかりません"
@@ -179,68 +192,118 @@ if [[ "$SIGN_ONLY" != true ]]; then
 fi
 
 # ── libcrypto バージョン衝突の修正 ────────────────────────────────────────────
-# 問題: cv2 がバンドルする libcrypto.3.dylib (OpenSSL 3.0.x) を
-#       Python の _ssl.so (OpenSSL 3.2+ 向けコンパイル) が誤ってロードし
-#       _X509_STORE_get1_objects シンボルが見つからずクラッシュする。
-# 修正: Python の _ssl.so が実際にリンクしている Homebrew の libcrypto で差し替える。
+# 問題: _ssl.so のビルド時にリンクした SSL ライブラリとバンドル libcrypto が不一致だとクラッシュ。
+#       - Xcode Python: /usr/lib/libcrypto.44.dylib（Apple LibreSSL）→ システムのまま触らない
+#       - Homebrew Python: libcrypto.3.dylib（OpenSSL 3.x）→ 差し替え処理が必要な場合あり
+# 修正: Apple の /usr/lib を参照している場合は何もせず、OpenSSL 系のときのみ差し替え。
 log_step "libcrypto バージョン衝突の修正"
 
 FRAMEWORKS_DIR="${APP_PATH}/Contents/Frameworks"
 
-# Python の _ssl.so が実際にリンクしている libcrypto を特定
-# PyInstaller のパス構造 (python3.9 または python3__dot__9) を考慮
+# Python の _ssl.so を取得（PyInstaller 後のアプリ内）
 VENV_SSL_SO=$(find "${FRAMEWORKS_DIR}" -name "_ssl.cpython-*.so" | head -1)
+RUN_LIBCRYPTO_FIX=false
 
 if [[ -n "$VENV_SSL_SO" ]]; then
     log_info "Python _ssl.so: ${VENV_SSL_SO}"
-    
-    # 実際の本物の libcrypto のパスを取得
-    # brew install openssl@3 で入るパスを優先
-    CORRECT_LIBCRYPTO=$(find /usr/local/opt/openssl@3/lib /opt/homebrew/opt/openssl@3/lib \
-        -name "libcrypto.3.dylib" 2>/dev/null | head -1 || echo "")
 
-    if [[ -z "$CORRECT_LIBCRYPTO" ]]; then
-        # fallback: _ssl.so がリンクしているパスから抽出試行
-        CORRECT_LIBCRYPTO=$(otool -L "$VENV_SSL_SO" | grep libcrypto | awk '{print $1}' | grep "^/" | head -1 || echo "")
+    # _ssl.so が元々リンクしている libcrypto のパスを特定
+    LIBCRYPTO_REF=$(otool -L "$VENV_SSL_SO" 2>/dev/null | grep libcrypto | awk '{print $1}' | head -1)
+
+    # Apple のシステム libcrypto (/usr/lib) を参照している場合は触らない
+    if [[ "$LIBCRYPTO_REF" == /usr/lib/* ]] || [[ "$LIBCRYPTO_REF" == /System/* ]]; then
+        log_info "_ssl.so は Apple のシステム libcrypto を参照（${LIBCRYPTO_REF}）。差し替え不要。"
+    else
+        RUN_LIBCRYPTO_FIX=true
+    fi
+fi
+
+if [[ "$RUN_LIBCRYPTO_FIX" == true ]]; then
+    NEED_OPENSSL_11=false
+    if [[ "$LIBCRYPTO_REF" == *"libcrypto.3"* ]]; then
+        NEED_OPENSSL_11=false
+    elif [[ "$LIBCRYPTO_REF" == *"1.1"* || "$LIBCRYPTO_REF" == *"libcrypto.1"* ]]; then
+        NEED_OPENSSL_11=true
+    else
+        NEED_OPENSSL_11=true
+    fi
+
+    if [[ "$NEED_OPENSSL_11" == true ]]; then
+        LIBCRYPTO_DYLIB_NAME="libcrypto.1.1.dylib"
+        SEARCH_DIRS="/opt/homebrew/opt/openssl@1.1/lib /usr/local/opt/openssl@1.1/lib"
+    else
+        LIBCRYPTO_DYLIB_NAME="libcrypto.3.dylib"
+        SEARCH_DIRS="/opt/homebrew/opt/openssl@3/lib /usr/local/opt/openssl@3/lib"
+    fi
+
+    log_info "_ssl.so の参照: ${LIBCRYPTO_REF} → ${LIBCRYPTO_DYLIB_NAME} を使用"
+
+    CORRECT_LIBCRYPTO=""
+    for d in $SEARCH_DIRS; do
+        if [[ -f "${d}/${LIBCRYPTO_DYLIB_NAME}" ]]; then
+            CORRECT_LIBCRYPTO="${d}/${LIBCRYPTO_DYLIB_NAME}"
+            break
+        fi
+    done
+    if [[ -z "$CORRECT_LIBCRYPTO" && "$LIBCRYPTO_REF" == /* && -f "$LIBCRYPTO_REF" ]]; then
+        CORRECT_LIBCRYPTO="$LIBCRYPTO_REF"
     fi
 
     if [[ -n "$CORRECT_LIBCRYPTO" && -f "$CORRECT_LIBCRYPTO" ]]; then
         log_info "正しい libcrypto を発見: ${CORRECT_LIBCRYPTO}"
         
-        # .app 内の libcrypto をすべて置換
-        # パスに __dot__ や . が混在しても確実に捕まえる
-        # find の前に対象ディレクトリの存在を確認 (set -e 対策)
+        # 正しい libcrypto を Frameworks に必ず配置
+        LIBCRYPTO_DEST="${FRAMEWORKS_DIR}/${LIBCRYPTO_DYLIB_NAME}"
+        log_info "libcrypto を配置: ${LIBCRYPTO_DEST}"
+        cp -vf "$CORRECT_LIBCRYPTO" "$LIBCRYPTO_DEST"
+        chmod 755 "$LIBCRYPTO_DEST"
+
+        # 同名校が既に別の場所にあれば内容を差し替え
         if [[ -d "${APP_PATH}" ]]; then
-            find "${APP_PATH}" -name "*libcrypto*3*dylib*" 2>/dev/null | while read -r bundled_lib; do
-                log_info "libcrypto を差し替え中: ${bundled_lib}"
-                if [[ -L "$bundled_lib" ]]; then
-                    log_info "  (シンボリックリンクのためスキップ)"
-                    continue
+            while IFS= read -r bundled_lib; do
+                [[ -z "$bundled_lib" || "$bundled_lib" == "$LIBCRYPTO_DEST" ]] && continue
+                if [[ -L "$bundled_lib" ]]; then continue; fi
+                if [[ "$(basename "$bundled_lib")" == "$LIBCRYPTO_DYLIB_NAME" ]]; then
+                    log_info "libcrypto を差し替え中: ${bundled_lib}"
+                    chmod +w "$bundled_lib"
+                    cp -vf "$CORRECT_LIBCRYPTO" "$bundled_lib"
+                    chmod 755 "$bundled_lib"
                 fi
-                chmod +w "$bundled_lib"
-                cp -vf "$CORRECT_LIBCRYPTO" "$bundled_lib"
-                chmod 755 "$bundled_lib"
-            done
+            done < <(find "${APP_PATH}" -name "*libcrypto*.dylib*" 2>/dev/null)
         fi
 
-        # すべてのバイナリ内の libcrypto 参照を @rpath/libcrypto.3.dylib に更新
+        # メイン実行ファイルの RPATH に Frameworks を追加（@rpath 解決のため）
+        EXE_PATH="${APP_PATH}/Contents/MacOS/${APP_NAME}"
+        if [[ -f "$EXE_PATH" ]]; then
+            if ! otool -l "$EXE_PATH" 2>/dev/null | grep -q "path @executable_path/../Frameworks"; then
+                log_info "exe に RPATH を追加: @executable_path/../Frameworks"
+                install_name_tool -add_rpath "@executable_path/../Frameworks" "$EXE_PATH" 2>/dev/null || true
+            fi
+        fi
+
+        # すべてのバイナリ内の libcrypto 参照を @rpath/${LIBCRYPTO_DYLIB_NAME} に更新
         log_info "バイナリのリンク参照を更新中..."
+        RPATH_CRYPTO="@rpath/${LIBCRYPTO_DYLIB_NAME}"
         if [[ -d "${APP_PATH}" ]]; then
             find "${APP_PATH}" \( -name "*.so" -o -name "*.dylib" -o -perm +111 -type f \) 2>/dev/null | while read -r binary; do
                 # libcrypto への依存関係があるか確認
                 deps=$(otool -L "$binary" 2>/dev/null | grep libcrypto | awk '{print $1}') || continue
                 for current_ref in $deps; do
-                    if [[ "$current_ref" != "@rpath/libcrypto.3.dylib" ]]; then
-                        install_name_tool -change "$current_ref" "@rpath/libcrypto.3.dylib" "$binary" 2>/dev/null || true
+                    if [[ "$current_ref" != "$RPATH_CRYPTO" ]]; then
+                        install_name_tool -change "$current_ref" "$RPATH_CRYPTO" "$binary" 2>/dev/null || true
                     fi
                 done
             done
         fi
         log_success "libcrypto の一括置換と参照の更新を完了しました"
+
+        # 差し替え後に再署名（アドホック）— バイナリ変更で署名が無効になるため
+        log_info "アドホック署名を実行..."
+        codesign --force --deep --sign - "${APP_PATH}"
     else
-        log_warn "正しい libcrypto が見つかりません。Homebrew の openssl@3 を確認してください。"
+        log_warn "正しい libcrypto が見つかりません。Homebrew で openssl@1.1 または openssl@3 をインストールしてください: brew install openssl@3"
     fi
-else
+elif [[ -z "$VENV_SSL_SO" ]]; then
     log_warn "Python の _ssl.so が見つかりません (スキップ)"
 fi
 
