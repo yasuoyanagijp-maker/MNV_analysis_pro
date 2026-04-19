@@ -269,6 +269,64 @@ class ROIModifier:
 
         return modified_mask
 
+    def modify_roi_get_contour(
+        self,
+        image: np.ndarray,
+        contour: np.ndarray,
+        iterations: int = 2,
+        search_radius: int = 2,
+        angle_threshold: float = 0.8,
+    ) -> np.ndarray:
+        """
+        ROI輪郭を修正して修正後の輪郭を返す
+
+        Parameters:
+        -----------
+        image : np.ndarray
+            入力画像 (グレースケール)
+        contour : np.ndarray
+            入力輪郭 (OpenCV形式)
+        iterations : int
+            反復回数
+        search_radius : int
+            探索半径
+        angle_threshold : float
+            角度閾値
+
+        Returns:
+        --------
+        modified_contour : np.ndarray
+            修正された輪郭 (OpenCV形式)
+        """
+        # Override instance params with caller's values
+        self.iterations = iterations
+        self.search_radius = search_radius
+        self.angle_threshold = angle_threshold
+
+        # Build a mask from the contour
+        h, w = image.shape[:2]
+        roi_mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.drawContours(roi_mask, [contour], -1, 255, -1)
+
+        # Ensure image is grayscale
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image
+
+        # Run the existing modify_roi pipeline
+        modified_mask = self.modify_roi(gray, roi_mask)
+
+        # Extract contour from modified mask
+        contours, _ = cv2.findContours(
+            modified_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        if len(contours) == 0:
+            return contour  # fallback to original
+
+        return max(contours, key=cv2.contourArea)
+
     def _iterative_modification(
         self,
         image: np.ndarray,
