@@ -4,11 +4,31 @@ import time
 import threading
 import asyncio
 import httpx
+import uuid
 from pathlib import Path
+from typing import List, Optional
 import cv2
 import numpy as np
 import base64
 from src.core.fast_region_growing import fast_region_growing
+
+# Flet Web: browser uploads land here (see ft.app(upload_dir=...))
+UPLOAD_ROOT = Path(__file__).resolve().parent / "uploads"
+
+
+def _pick_first_image_in_dir(d: Path) -> Optional[Path]:
+    patterns = (
+        "*.tif", "*.tiff", "*.TIF", "*.TIFF",
+        "*.png", "*.PNG", "*.jpg", "*.jpeg", "*.JPEG", "*.bmp",
+    )
+    found: List[Path] = []
+    for pat in patterns:
+        found.extend(d.glob(pat))
+    if not found:
+        return None
+    found.sort(key=lambda x: x.name.lower())
+    return found[0]
+
 
 # --- Backend Client ---
 class BackendClient:
@@ -106,6 +126,7 @@ class BackendClient:
         return output.getvalue()
 
 async def main(page: ft.Page):
+    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     # Initialize Backend Client early to avoid coroutine shadowing
     client = BackendClient()
     
@@ -126,10 +147,10 @@ async def main(page: ft.Page):
     TEXT_MUTED = "#8B9BB4"
     
     # --- Console System ---
-    log_console_ref = ft.Ref[ft.ListView]()
-    intelligent_roi_ref = ft.Ref[ft.Switch]()
-    scale_mm_ref = ft.Ref[ft.Dropdown]()
-    analysis_type_ref = ft.Ref[ft.Dropdown]()
+    log_console_ref = ft.Ref()
+    intelligent_roi_ref = ft.Ref()
+    scale_mm_ref = ft.Ref()
+    analysis_type_ref = ft.Ref()
     
     def add_to_console(message, level="INFO"):
         colors = {"INFO": PRIMARY, "ERROR": Colors.RED_400, "WARN": Colors.AMBER_400}
@@ -143,7 +164,10 @@ async def main(page: ft.Page):
                     ft.Text(message, color=Colors.WHITE, size=11, font_family="monospace"),
                 ], spacing=10)
             )
-            page.update()
+            try:
+                page.update()
+            except Exception as e:
+                print(f"Console Update Failed: {e}")
 
     # --- Global Error Handler ---
     def on_error(e):
@@ -206,43 +230,93 @@ async def main(page: ft.Page):
 
     # --- File/Folder Processing Logic ---
     async def process_target_path(target: str):
-        if not target: return
+        if not target:
+            return
+        target = str(Path(target).expanduser()).strip()
+        p = Path(target)
+        if not p.exists():
+            add_to_console(f"Path does not exist: {target}", "ERROR")
+            return
+
+        analysis_mode = analysis_type_ref.current.value if analysis_type_ref else "MNV"
+
+        if analysis_mode == "MNV" and p.is_dir():
+            picked = _pick_first_image_in_dir(p)
+            if picked is None:
+                add_to_console("No TIFF/PNG/JPEG images in selected folder.", "ERROR")
+                return
+            target = str(picked.resolve())
+            p = picked
+            add_to_console(f"Folder selected → using {p.name}", "INFO")
+        elif analysis_mode == "MNV" and not p.is_file():
+            add_to_console("MNV requires an image file or a folder that contains images.", "ERROR")
+            return
+
         snack = ft.SnackBar(ft.Text(f"Processing: {Path(target).name}"), bgcolor=PRIMARY)
         page.overlay.append(snack)
         snack.open = True
         page.update()
-        
+
         # Smart Detect
         add_to_console(f"Analyzing structure: {target}", "INFO")
         info = await client.detect_type(target)
         detected_type = str(info.get("type", "unknown"))
-        
+
         page.session.set("target_path", target)
         page.session.set("scale", float(scale_mm_ref.current.value if scale_mm_ref.current else 6.0))
-        
+
         # Respect User Override if set on Dashboard
-        analysis_mode = analysis_type_ref.current.value if analysis_type_ref else "MNV"
-        
         if analysis_mode == "VD_BATCH" or analysis_mode == "VD_SINGLE" or detected_type == "VD":
-             add_to_console(f"Launch Sequence: VD Analytics. Navigating...", "INFO")
-             page.go("/vd")
+            add_to_console("Launch Sequence: VD Analytics. Navigating...", "INFO")
+            page.go("/vd")
         elif analysis_mode == "MNV" or detected_type == "MNV":
-             add_to_console(f"Launch Sequence: MNV Analysis. Navigating...", "INFO")
-             page.go("/roi")
+            add_to_console("Launch Sequence: MNV Analysis. Navigating...", "INFO")
+            page.go("/roi")
         else:
             # Fallback path-based navigation
             if Path(target).is_dir():
-                 add_to_console(f"Fallback: Folder detected. Navigating to VD...", "INFO")
-                 page.go("/vd")
+                add_to_console("Fallback: Folder detected. Navigating to VD...", "INFO")
+                page.go("/vd")
             else:
-                 add_to_console(f"Fallback: File detected. Navigating to MNV...", "INFO")
-                 page.go("/roi")
+                add_to_console("Fallback: File detected. Navigating to MNV...", "INFO")
+                page.go("/roi")
 
     async def on_file_result(e: ft.FilePickerResultEvent):
         if e.files:
-            await process_target_path(e.files[0].path)
+            f = e.files[0]
+            client_path = (f.path or "").strip()
+            if client_path and Path(client_path).exists():
+                await process_target_path(client_path)
+                return
+            # Flet Web: no local path — upload bytes into upload_dir, then continue in on_upload
+            try:
+                unique_name = f"{uuid.uuid4().hex}_{f.name}"
+                file_picker.upload(
+                    [
+                        ft.FilePickerUploadFile(
+                            name=f.name,
+                            upload_url=page.get_upload_url(unique_name, 600),
+                        )
+                    ]
+                )
+                add_to_console(f"Uploading {f.name}…", "INFO")
+            except Exception as ex:
+                add_to_console(f"Could not start upload: {ex}", "ERROR")
         elif e.path:
             await process_target_path(e.path)
+
+    def on_upload_complete(e: ft.FilePickerUploadEvent):
+        if e.error:
+            add_to_console(f"Upload error: {e.error}", "ERROR")
+            return
+        if e.progress is not None and e.progress < 1.0:
+            return
+        dest = (UPLOAD_ROOT / e.file_name).resolve()
+        if not dest.is_file():
+            add_to_console(f"Upload finished but file missing: {dest}", "ERROR")
+            return
+        add_to_console(f"Upload saved: {dest.name}", "INFO")
+        page.run_task(process_target_path, str(dest))
 
     async def on_directory_result(e: ft.FilePickerResultEvent):
         if e.path:
@@ -269,7 +343,7 @@ async def main(page: ft.Page):
             snack.open = True
             page.update()
 
-    file_picker = ft.FilePicker(on_result=on_file_result)
+    file_picker = ft.FilePicker(on_result=on_file_result, on_upload=on_upload_complete)
     directory_picker = ft.FilePicker(on_result=on_directory_result)
     page.overlay.append(file_picker)
     page.overlay.append(directory_picker)
@@ -321,11 +395,14 @@ async def main(page: ft.Page):
     async def show_folder_explorer(title="Select Folder", on_select=None):
         explorer_list = ft.ListView(expand=True, spacing=5)
         current_path_text = ft.Text(size=12, color=TEXT_MUTED, weight=FontWeight.BOLD)
+        selection_hint = ft.Text("", size=11, color=PRIMARY)
         
-        state = {"path": str(Path.home())}
+        state = {"path": str(Path.home()), "selected_file": None}
         
         async def load_dir(target_path):
             state["path"] = target_path
+            state["selected_file"] = None
+            selection_hint.value = ""
             res = await client.list_dir(target_path)
             if "error" in res:
                 add_to_console(f"Explorer Error: {res['error']}", "ERROR")
@@ -340,8 +417,9 @@ async def main(page: ft.Page):
                 if is_dir:
                     await load_dir(path)
                 else:
-                    # Could handle file selection here if needed
-                    pass
+                    state["selected_file"] = path
+                    selection_hint.value = f"Selected file: {path}"
+                    page.update()
 
             for item in res.get("items", []):
                 icon = Icons.FOLDER_ROUNDED if item["is_dir"] else Icons.INSERT_DRIVE_FILE_OUTLINED
@@ -360,7 +438,8 @@ async def main(page: ft.Page):
 
         async def confirm_selection(e):
             if on_select:
-                await on_select(state["path"])
+                final_path = state.get("selected_file") or state["path"]
+                await on_select(final_path)
             page.close(dlg)
 
         dlg = ft.AlertDialog(
@@ -368,6 +447,7 @@ async def main(page: ft.Page):
             content=ft.Container(
                 content=ft.Column([
                     current_path_text,
+                    selection_hint,
                     ft.Divider(color=Colors.with_opacity(0.1, Colors.WHITE)),
                     ft.Container(explorer_list, height=400, border=ft.border.all(1, Colors.with_opacity(0.1, Colors.WHITE)), border_radius=10),
                 ], spacing=10),
@@ -376,7 +456,7 @@ async def main(page: ft.Page):
             ),
             actions=[
                 ft.TextButton("Cancel", on_click=lambda _: page.close(dlg)),
-                ft.ElevatedButton("Select Current Folder", bgcolor=PRIMARY, color=Colors.BLACK, on_click=confirm_selection)
+                ft.ElevatedButton("Confirm Selection", bgcolor=PRIMARY, color=Colors.BLACK, on_click=confirm_selection)
             ],
             bgcolor=GLASS_BG,
         )
@@ -692,7 +772,7 @@ async def main(page: ft.Page):
                 # visible 切り替え（content 変更なし → Flet Web 安全）
                 loading_layer.visible = False
                 image_layer.visible = True
-                status_text.value = "병変部をクリック＆長押しして領域を抽出してください"
+                status_text.value = "病変部をクリック＆長押しして領域を抽出してください"
                 add_to_console(f"ROI: image loaded OK ({new_w}x{new_h})", "INFO")
                 page.update()
 
@@ -782,7 +862,7 @@ async def main(page: ft.Page):
             else:
                 status_text.value = "Analysis Success! Loading result metrics..."
                 page.session.set("last_result", result)
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.15)
                 page.go("/results")
             
             progress_bar.visible = False
@@ -985,6 +1065,44 @@ async def main(page: ft.Page):
             ], spacing=20)
         else:
             # Standard MNV Result — 3-tab layout matching Streamlit
+            viz_b64 = res.get("visualization_base64")
+            mask_b64 = res.get("mask_base64")
+            viz_path = (res.get("visualization_path") or "").strip()
+            mask_path = (res.get("mask_path") or "").strip()
+            # Web clients cannot open server filesystem paths; use base64 or omit src.
+            use_viz_fs = (
+                not page.web
+                and not viz_b64
+                and bool(viz_path)
+                and Path(viz_path).is_file()
+            )
+            use_mask_fs = (
+                not page.web
+                and not mask_b64
+                and bool(mask_path)
+                and Path(mask_path).is_file()
+            )
+
+            def viz_image():
+                if viz_b64:
+                    return ft.Image(src_base64=viz_b64, fit=ft.ImageFit.CONTAIN)
+                if use_viz_fs:
+                    return ft.Image(src=viz_path, fit=ft.ImageFit.CONTAIN)
+                return ft.Center(
+                    ft.Text(
+                        "No visualization image (check API / engine output).",
+                        color=TEXT_MUTED,
+                        text_align=ft.TextAlign.CENTER,
+                    )
+                )
+
+            def mask_image():
+                if mask_b64:
+                    return ft.Image(src_base64=mask_b64, fit=ft.ImageFit.CONTAIN)
+                if use_mask_fs:
+                    return ft.Image(src=mask_path, fit=ft.ImageFit.CONTAIN)
+                return ft.Center(ft.Text("No mask visualization", color=TEXT_MUTED))
+
             # Tab 1: Basic Vessel Metrics
             basic_tab = ft.Column([
                 ft.Row([
@@ -1004,20 +1122,12 @@ async def main(page: ft.Page):
                 ft.Text("Processed Visualizations", size=20, weight=FontWeight.BOLD),
                 ft.Row([
                     ft.Container(
-                        bgcolor=Colors.BLACK, width=400, height=400, border_radius=10, 
-                        content=ft.Image(
-                            src=res.get("visualization_path", "") if not res.get("visualization_base64") else None,
-                            src_base64=res.get("visualization_base64"),
-                            fit=ft.ImageFit.CONTAIN
-                        )
+                        bgcolor=Colors.BLACK, width=400, height=400, border_radius=10,
+                        content=viz_image(),
                     ),
                     ft.Container(
                         bgcolor=Colors.BLACK, width=400, height=400, border_radius=10,
-                        content=ft.Image(
-                            src_base64=res.get("mask_base64"),
-                            src=res.get("mask_path", "") if not res.get("mask_base64") else None,
-                            fit=ft.ImageFit.CONTAIN
-                        ) if (res.get("mask_base64") or res.get("mask_path")) else ft.Text("No mask visualization", color=TEXT_MUTED)
+                        content=mask_image(),
                     ),
                 ], spacing=20, scroll=ft.ScrollMode.ADAPTIVE),
             ], spacing=10)
@@ -1062,15 +1172,14 @@ async def main(page: ft.Page):
                 ], spacing=20, alignment=ft.MainAxisAlignment.CENTER),
             ], spacing=15)
 
-            main_content = ft.Tabs(
-                selected_index=0,
-                tabs=[
-                    ft.Tab(text="Basic Metrics", icon=Icons.QUERY_STATS, content=ft.Container(content=basic_tab, padding=20)),
-                    ft.Tab(text="Spatial Distribution", icon=Icons.HUB, content=ft.Container(content=spatial_tab, padding=20)),
-                    ft.Tab(text="Flow Deficit", icon=Icons.WATER_DROP, content=ft.Container(content=fd_tab, padding=20)),
-                ],
-                expand=True,
-            )
+            main_content = ft.Column([
+                ft.Container(content=ft.Text("Basic Metrics", size=22, weight=ft.FontWeight.BOLD, color=PRIMARY), padding=ft.padding.only(top=20)),
+                ft.Container(content=basic_tab, padding=20, bgcolor=GLASS_BG, border_radius=15),
+                ft.Container(content=ft.Text("Spatial Distribution", size=22, weight=ft.FontWeight.BOLD, color=PRIMARY), padding=ft.padding.only(top=30)),
+                ft.Container(content=spatial_tab, padding=20, bgcolor=GLASS_BG, border_radius=15),
+                ft.Container(content=ft.Text("Flow Deficit", size=22, weight=ft.FontWeight.BOLD, color=PRIMARY), padding=ft.padding.only(top=30)),
+                ft.Container(content=fd_tab, padding=20, bgcolor=GLASS_BG, border_radius=15),
+            ], scroll=ft.ScrollMode.ADAPTIVE, expand=True)
 
         async def handle_export(e):
             directory_picker.get_directory_path()
@@ -1311,4 +1420,13 @@ async def main(page: ft.Page):
     await build_main_ui()
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    import os
+    port = int(os.environ.get("FLET_PORT", 8550))
+    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    ft.app(
+        target=main,
+        view=ft.AppView.WEB_BROWSER,
+        port=port,
+        host="0.0.0.0",
+        upload_dir=str(UPLOAD_ROOT),
+    )

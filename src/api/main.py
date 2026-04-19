@@ -152,6 +152,7 @@ async def analyze_mnv(request: AnalysisRequest):
         )
     except Exception as e:
         import traceback
+        traceback.print_exc()  # Print full traceback to console
         error_detail = {
             "error": str(e),
             "traceback": traceback.format_exc(),

@@ -19,6 +19,7 @@ desktop.ini
 output/
 output/exports/logs/
 temp_data/
+uploads/
 *.tmp
 
 # Test
