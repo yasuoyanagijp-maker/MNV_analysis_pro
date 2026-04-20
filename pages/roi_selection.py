@@ -14,93 +14,220 @@ async def get_roi_view(ctx: AppContext):
     if not target_path:
         return ft.Container(ft.Text("No image selected.", color=Colors.RED_400))
 
-    ctx.add_to_console(f"ROI View: loading {target_path}", "INFO")
+    ctx.add_to_console(f"ROI Subtraction Mode: loading {target_path}", "INFO")
 
-    status_text = ft.Text(
-        "画像ロード完了後、病変部をクリック＆長押しして領域を抽出してください",
-        color=TEXT_MUTED
-    )
-    a_value_text = ft.Text("", size=18, weight=FontWeight.BOLD, color=PRIMARY)
-    load_error_text = ft.Text("", color=Colors.RED_400, visible=False)
-
-    img_control = ft.Image(fit=ft.ImageFit.CONTAIN, width=500, height=500)
-
+    # State Definition
     state = {
-        "is_pressing": False,
-        "seed_point": None,
-        "current_a": 0.5,
-        "mask": None,
+        "mode": "draw", # "draw" or "erase"
         "base_img": None,
+        "current_mask": None,
+        "history_masks": [],
+        "scale": 1.0,
         "new_w": 500,
         "new_h": 500,
-        "scale": 1.0,
+        "drag_start": None,
     }
 
+    # UI Controls
+    status_text = ft.Text("ドラッグしてROI（抽出領域）の枠を作成してください", color=TEXT_MUTED)
+    load_error_text = ft.Text("", color=Colors.RED_400, visible=False)
+    img_control = ft.Image(fit=ft.ImageFit.CONTAIN, width=500, height=500)
+    
+    selection_box = ft.Container(
+        border=ft.border.all(2, Colors.AMBER_400),
+        bgcolor=Colors.with_opacity(0.1, Colors.AMBER_400),
+        visible=False,
+        left=0, top=0, width=0, height=0
+    )
+
     def encode_img_b64(img_arr):
-        _, buf = cv2.imencode('.jpg', img_arr, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        _, buf = cv2.imencode('.jpg', img_arr, [cv2.IMWRITE_JPEG_QUALITY, 80])
         return base64.b64encode(buf).decode('utf-8')
 
-    async def process_region_growing():
-        while state["is_pressing"]:
-            base_img = state["base_img"]
-            if state["seed_point"] and base_img is not None:
-                mask = fast_region_growing(base_img, state["seed_point"], a=state["current_a"])
-                state["mask"] = mask
-                overlay = base_img.copy()
-                overlay[mask == 255] = [0, 0, 255]
-                blended = cv2.addWeighted(overlay, 0.5, base_img, 0.5, 0)
-                cv2.circle(blended, state["seed_point"], 3, (0, 255, 0), -1)
-                img_control.src_base64 = encode_img_b64(blended)
-                a_value_text.value = f"Extraction Power (a): {state['current_a']:.1f}"
-                ctx.page.update()
-            state["current_a"] += 0.2
-            if state["current_a"] > 6.0:
-                state["current_a"] = 6.0
+    def render_mask():
+        if state["base_img"] is None or state["current_mask"] is None:
+            return
+            
+        base = state["base_img"].copy()
+        mask = state["current_mask"]
+        
+        overlay = base.copy()
+        # ROI領域を緑色の半透明で表示
+        overlay[mask == 255] = [0, 255, 0] # BGR format
+        
+        blended = cv2.addWeighted(overlay, 0.4, base, 0.6, 0)
+        img_control.src_base64 = encode_img_b64(blended)
+        
+        undo_button.disabled = len(state["history_masks"]) <= 1
+        ctx.page.update()
+
+    def save_state(new_mask):
+        state["history_masks"].append(new_mask.copy())
+        state["current_mask"] = new_mask.copy()
+        render_mask()
+
+    def handle_undo(e):
+        if len(state["history_masks"]) > 1:
+            state["history_masks"].pop() # Remove current state
+            state["current_mask"] = state["history_masks"][-1].copy()
+            render_mask()
+            ctx.add_to_console("Undo performed.", "INFO")
+
+    def handle_reset(e):
+        if state["base_img"] is not None:
+            blended = state["base_img"].copy()
+            state["history_masks"].clear()
+            blank_mask = np.zeros((state["new_h"], state["new_w"]), dtype=np.uint8)
+            save_state(blank_mask)
+            ctx.add_to_console("Mask reset.", "INFO")
+
+    # Interaction Events
+    def on_pan_start(e: ft.DragStartEvent):
+        if state["mode"] != "draw": return
+        state["drag_start"] = True
+        state["freehand_points"] = [(int(e.local_x), int(e.local_y))]
+
+    def on_pan_update(e: ft.DragUpdateEvent):
+        if state["mode"] != "draw" or not state["drag_start"]: return
+        cx = np.clip(int(e.local_x), 0, state["new_w"])
+        cy = np.clip(int(e.local_y), 0, state["new_h"])
+        state["freehand_points"].append((cx, cy))
+        
+        # Live render of the line
+        if len(state["freehand_points"]) > 1:
+            pts = np.array(state["freehand_points"], np.int32).reshape((-1, 1, 2))
+            temp_mask = state["current_mask"].copy()
+            cv2.polylines(temp_mask, [pts], False, 255, 2)
+            
+            # Temporary render
+            base = state["base_img"].copy()
+            overlay = base.copy()
+            overlay[temp_mask == 255] = [0, 255, 0]
+            blended = cv2.addWeighted(overlay, 0.4, base, 0.6, 0)
+            img_control.src_base64 = encode_img_b64(blended)
+            ctx.page.update()
+
+    def on_pan_end(e: ft.DragEndEvent):
+        if state["mode"] == "erase":
+            on_tap_up(None)
+            return
+            
+        if state["mode"] != "draw" or not state.get("drag_start"): return
+        state["drag_start"] = False
+        if len(state["freehand_points"]) > 2:
+            new_mask = state["current_mask"].copy()
+            pts = np.array(state["freehand_points"], np.int32)
+            cv2.fillPoly(new_mask, [pts], 255)
+            save_state(new_mask)
+            ctx.add_to_console("Freehand ROI section added.", "INFO")
+
+    async def continuous_erase(x, y):
+        a_power = 0.5
+        while state.get("is_pressing", False):
+            try:
+                if state["base_img"] is not None:
+                    noise_mask = fast_region_growing(state["base_img"], (x, y), a=a_power)
+                    if np.sum(noise_mask) > 0:
+                        temp_mask = state["current_mask"].copy()
+                        temp_mask[noise_mask == 255] = 0
+                        
+                        # Live preview
+                        base = state["base_img"].copy()
+                        overlay = base.copy()
+                        overlay[temp_mask == 255] = [0, 255, 0]
+                        blended = cv2.addWeighted(overlay, 0.4, base, 0.6, 0)
+                        img_control.src_base64 = encode_img_b64(blended)
+                        
+                        status_text.value = f"ノイズ除去処理中... (パワー: {a_power:.1f})"
+                        ctx.page.update()
+                        
+                        state["temp_mask"] = temp_mask
+            except Exception as e:
+                ctx.add_to_console(f"Erase Error: {e}", "ERROR")
+                
+            a_power += 0.2
+            if a_power > 6.0:
+                a_power = 6.0
             await asyncio.sleep(0.05)
 
-    x_slider = ft.Slider(min=0, max=10000, value=256, visible=False)
-    y_slider = ft.Slider(min=0, max=10000, value=256, visible=False)
-    w_slider = ft.Slider(min=1, max=10000, value=512, visible=False)
-    h_slider = ft.Slider(min=1, max=10000, value=512, visible=False)
-
     def on_tap_down(e: ft.ContainerTapEvent):
-        if state["is_pressing"] or state["base_img"] is None:
-            return
-        state["is_pressing"] = True
-        state["seed_point"] = (int(e.local_x), int(e.local_y))
-        state["current_a"] = 0.5
-        status_text.value = "抽出中..."
+        if state["mode"] != "erase" or state["base_img"] is None: return
+        x, y = int(e.local_x), int(e.local_y)
+        
+        ctx.add_to_console(f"Erase clicked at: {x}, {y}", "INFO")
+        status_text.value = "ノイズ除去処理中..."
         status_text.color = Colors.AMBER_400
+        state["is_pressing"] = True
+        state["temp_mask"] = None
         ctx.page.update()
-        ctx.page.run_task(process_region_growing)
-
+        
+        ctx.page.run_task(continuous_erase, x, y)
+        
     def on_tap_up(e):
-        if not state["is_pressing"]:
-            return
+        if state["mode"] != "erase": return
         state["is_pressing"] = False
-        status_text.value = "✅ 確定。やり直す場合は再クリック＆長押し"
-        status_text.color = Colors.GREEN_400
-        if state["mask"] is not None and np.sum(state["mask"]) > 0:
-            inv_scale = 1.0 / state["scale"]
-            orig_w = int(state["new_w"] * inv_scale)
-            orig_h = int(state["new_h"] * inv_scale)
-            full_mask = cv2.resize(state["mask"], (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
-            _, buf = cv2.imencode('.png', full_mask)
-            state["mask_b64"] = base64.b64encode(buf).decode('utf-8')
-            pts = np.argwhere(state["mask"] > 0)
-            y_min, x_min = pts.min(axis=0)
-            y_max, x_max = pts.max(axis=0)
-            x_slider.value = float(x_min * inv_scale)
-            y_slider.value = float(y_min * inv_scale)
-            w_slider.value = float((x_max - x_min) * inv_scale)
-            h_slider.value = float((y_max - y_min) * inv_scale)
+        
+        if state.get("temp_mask") is not None:
+            save_state(state["temp_mask"])
+            status_text.value = "🗑️ ノイズを除去しました（やり直す場合は長押し）"
+            status_text.color = Colors.GREEN_400
+        else:
+            status_text.value = "⚠️ 背景として抽出できる領域がありませんでした"
+            status_text.color = Colors.RED_400
         ctx.page.update()
 
+    # Define Top UI Toolbar
+    undo_button = ft.IconButton(Icons.UNDO, on_click=handle_undo, disabled=True, tooltip="Undo Last Action")
+    reset_button = ft.IconButton(Icons.REFRESH, on_click=handle_reset, tooltip="Reset All")
+
+    # Replaced SegmentedButton with two robust explicit buttons
+    draw_btn = ft.ElevatedButton(
+        "1. Draw ROI (フリーハンド)", 
+        icon=Icons.CROP_SQUARE,
+        bgcolor=PRIMARY, 
+        color=Colors.BLACK,
+        on_click=lambda e: set_mode("draw")
+    )
+    
+    erase_btn = ft.ElevatedButton(
+        "2. Erase Noise (長押し)", 
+        icon=Icons.BACKSPACE,
+        bgcolor=Colors.TRANSPARENT, 
+        color=TEXT_MUTED,
+        on_click=lambda e: set_mode("erase")
+    )
+
+    def set_mode(new_mode):
+        state["mode"] = new_mode
+        if new_mode == "draw":
+            draw_btn.bgcolor = PRIMARY
+            draw_btn.color = Colors.BLACK
+            erase_btn.bgcolor = Colors.TRANSPARENT
+            erase_btn.color = TEXT_MUTED
+            status_text.value = "ドラッグしてROI（抽出領域）をフリーハンドで囲んでください"
+        else:
+            erase_btn.bgcolor = Colors.RED_400
+            erase_btn.color = Colors.WHITE
+            draw_btn.bgcolor = Colors.TRANSPARENT
+            draw_btn.color = TEXT_MUTED
+            status_text.value = "緑の領域内の「黒い隙間」を丸ごと長押ししてノイズを除去してください"
+            
+        status_text.color = TEXT_MUTED
+        ctx.page.update()
+
+    mode_tabs = ft.Row([draw_btn, erase_btn], spacing=10)
+
+    # GestureDetector wrapping the image and selection frame
     gesture = ft.GestureDetector(
-        content=img_control,
+        content=ft.Stack([
+            img_control,
+            selection_box
+        ], width=500, height=500),
+        on_pan_start=on_pan_start,
+        on_pan_update=on_pan_update,
+        on_pan_end=on_pan_end,
         on_tap_down=on_tap_down,
         on_tap_up=on_tap_up,
-        on_pan_end=lambda e: on_tap_up(e),
         mouse_cursor=ft.MouseCursor.PRECISE,
     )
 
@@ -119,11 +246,13 @@ async def get_roi_view(ctx: AppContext):
         alignment=ft.alignment.center,
         visible=True,
     )
+    
     image_layer = ft.Container(
         content=gesture,
         width=500, height=500,
         visible=False,
     )
+    
     img_stack = ft.Container(
         content=ft.Stack([loading_layer, image_layer]),
         width=500, height=500,
@@ -133,17 +262,36 @@ async def get_roi_view(ctx: AppContext):
     )
 
     async def confirm_roi(e):
+        if state["current_mask"] is None or np.sum(state["current_mask"]) == 0:
+            status_text.value = "⚠️ ROIが空です。領域を選択してください。"
+            status_text.color = Colors.RED_400
+            ctx.page.update()
+            return
+            
+        inv_scale = 1.0 / state["scale"]
+        orig_w = int(state["new_w"] * inv_scale)
+        orig_h = int(state["new_h"] * inv_scale)
+        full_mask = cv2.resize(state["current_mask"], (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+        
+        _, buf = cv2.imencode('.png', full_mask)
+        mask_b64 = base64.b64encode(buf).decode('utf-8')
+        
+        pts = np.argwhere(state["current_mask"] > 0)
+        y_min, x_min = pts.min(axis=0)
+        y_max, x_max = pts.max(axis=0)
         roi = {
-            "x": int(x_slider.value), "y": int(y_slider.value),
-            "w": int(w_slider.value), "h": int(h_slider.value),
+            "x": int(x_min * inv_scale), 
+            "y": int(y_min * inv_scale),
+            "w": int((x_max - x_min) * inv_scale), 
+            "h": int((y_max - y_min) * inv_scale),
         }
+        
         ctx.page.session.set("roi", roi)
-        if state.get("mask_b64"):
-            ctx.page.session.set("roi_mask_b64", state["mask_b64"])
+        ctx.page.session.set("roi_mask_b64", mask_b64)
         ctx.page.go("/mnv")
 
     async def load_image_async():
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.1)
         try:
             loop = asyncio.get_event_loop()
             base_img = await loop.run_in_executor(
@@ -153,7 +301,6 @@ async def get_roi_view(ctx: AppContext):
                 load_error_text.value = f"❌ 読み込み失敗: {target_path}"
                 load_error_text.visible = True
                 ctx.page.update()
-                ctx.add_to_console(f"ROI: imread failed for {target_path}", "ERROR")
                 return
 
             orig_h, orig_w = base_img.shape[:2]
@@ -165,15 +312,17 @@ async def get_roi_view(ctx: AppContext):
             state["new_w"] = new_w
             state["new_h"] = new_h
             state["scale"] = sc
+            
+            # Initialize empty mask and push to history
+            blank_mask = np.zeros((new_h, new_w), dtype=np.uint8)
+            state["history_masks"].clear()
+            save_state(blank_mask)
 
-            img_control.src_base64 = encode_img_b64(resized)
             img_control.width = new_w
             img_control.height = new_h
 
             loading_layer.visible = False
             image_layer.visible = True
-            status_text.value = "病変部をクリック＆長押しして領域を抽出してください"
-            ctx.add_to_console(f"ROI: image loaded OK ({new_w}x{new_h})", "INFO")
             ctx.page.update()
 
         except Exception as ex:
@@ -181,7 +330,6 @@ async def get_roi_view(ctx: AppContext):
             load_error_text.value = f"❌ エラー: {str(ex)}"
             load_error_text.visible = True
             ctx.page.update()
-            ctx.add_to_console(f"ROI load error: {traceback.format_exc()}", "ERROR")
 
     ctx.page.run_task(load_image_async)
 
@@ -189,8 +337,8 @@ async def get_roi_view(ctx: AppContext):
         content=ft.Column([
             ft.Row([
                 ft.Column([
-                    ft.Text("Step 1: ROI Selection", size=32, weight=FontWeight.BOLD, color=PRIMARY),
-                    ft.Text("Long-press / click & hold to expand the lesion area.", color=TEXT_MUTED),
+                    ft.Text("Step 1: ROI Refinement (Subtraction)", size=32, weight=FontWeight.BOLD, color=PRIMARY),
+                    ft.Text("Draw ROI and click dark areas to erase background noise.", color=TEXT_MUTED),
                 ]),
                 ft.ElevatedButton(
                     "Confirm ROI & Proceed", icon=Icons.CHECK_CIRCLE,
@@ -202,15 +350,23 @@ async def get_roi_view(ctx: AppContext):
                 img_stack,
                 ft.Column([
                     status_text,
-                    a_value_text,
+                    ft.Row([mode_tabs]),
+                    ft.Row([undo_button, reset_button]),
                     ft.Divider(height=20, color=Colors.TRANSPARENT),
-                    ft.Icon(Icons.TOUCH_APP, size=60, color=PRIMARY),
-                    ft.Text("Target the lesion, click & hold, release when covered.", color=TEXT_MUTED),
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Row([ft.Icon(Icons.CROP_SQUARE, color=PRIMARY), ft.Text("1. ドラッグして囲む", color=Colors.WHITE)]),
+                            ft.Row([ft.Icon(Icons.BACKSPACE, color=Colors.RED_400), ft.Text("2. 黒い背景をクリックして削る", color=Colors.WHITE)]),
+                            ft.Row([ft.Icon(Icons.UNDO, color=Colors.AMBER_400), ft.Text("3. ミスしたらUndoで戻る", color=Colors.WHITE)])
+                        ], spacing=10),
+                        padding=20,
+                        bgcolor=Colors.with_opacity(0.05, Colors.WHITE),
+                        border_radius=10
+                    )
                 ], expand=True, spacing=15,
-                   alignment=ft.MainAxisAlignment.CENTER,
-                   horizontal_alignment=ft.CrossAxisAlignment.CENTER)
-            ], spacing=40),
-            x_slider, y_slider, w_slider, h_slider,
+                   alignment=ft.MainAxisAlignment.START,
+                   horizontal_alignment=ft.CrossAxisAlignment.START)
+            ], spacing=40, vertical_alignment=ft.CrossAxisAlignment.START),
         ], spacing=10, scroll=ft.ScrollMode.ADAPTIVE),
         padding=40,
         expand=True,

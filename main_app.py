@@ -67,10 +67,18 @@ async def main(page: ft.Page):
 
     page.on_error = on_error
 
+    def on_disconnect(e):
+        print("Client disconnected (Browser tab closed). Terminating ARIAKE OCTA UI Server...")
+        import os
+        os._exit(0)
+        
+    page.on_disconnect = on_disconnect
+
+
     async def process_target_path(target: str):
         if not target:
             return
-        target = str(Path(target).expanduser()).strip()
+        target = str(Path(target.strip(' \n\r\t\'"')).expanduser()).strip(' \n\r\t\'"')
         p = Path(target)
         if not p.exists():
             ctx.add_to_console(f"Path does not exist: {target}", "ERROR")

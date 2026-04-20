@@ -89,10 +89,10 @@ async def get_dashboard_view(ctx: AppContext):
             ctx.page.update()
 
         async def confirm_selection(e):
+            ctx.page.close(dlg)
             if on_select:
                 final_path = state.get("selected_file") or state["path"]
                 await on_select(final_path)
-            ctx.page.close(dlg)
 
         dlg = ft.AlertDialog(
             title=ft.Text(title, size=20, weight=FontWeight.BOLD),
@@ -194,7 +194,7 @@ async def get_dashboard_view(ctx: AppContext):
                                     icon=Icons.IMAGE_OUTLINED,
                                     bgcolor=Colors.AMBER_400, 
                                     color=Colors.BLACK,
-                                    on_click=start_unified_analysis,
+                                    on_click=upload_file_direct,
                                     width=250
                                 ),
                             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),

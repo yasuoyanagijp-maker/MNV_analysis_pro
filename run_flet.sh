@@ -38,7 +38,7 @@ trap "echo 'Shutting down...'; kill $BACKEND_PID; exit" INT TERM HUP
 
 # Run Flet application (Web mode for better stability on Mac filesystem)
 # If you prefer desktop mode, remove '--web'
-flet run --web main_app.py
+flet run --web --port 8550 main_app.py
 
 # 4. Cleanup on exit
 echo "Closing application. Cleaning up background processes..."
