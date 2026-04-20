@@ -19,14 +19,22 @@ async def get_mnv_view(ctx: AppContext):
     status_text = ft.Text("Ready to analyze." if target_path else "Please select an image.", color=TEXT_MUTED)
     progress_bar = ft.ProgressBar(width=400, value=0, visible=False)
     
-    async def run_mnv_analysis(e):
+    async def run_mnv_analysis(e=None):
         if not target_path: return
-        e.control.disabled = True
+        if e:
+            e.control.disabled = True
+        else:
+            auto_start_btn.disabled = True
+        
         progress_bar.visible = True
         ctx.add_to_console(f"Starting MNV Analysis for {Path(target_path).name}...", "INFO")
         ctx.page.update()
         
-        iroi = ctx.intelligent_roi_ref.current.value if ctx.intelligent_roi_ref.current else True
+        try:
+            iroi = ctx.intelligent_roi_ref.current.value
+        except Exception:
+            iroi = True
+            
         roi_mask_b64 = ctx.page.session.get("roi_mask_b64")
         result = await ctx.client.start_mnv_analysis(target_path, scale, roi=roi, roi_mask_b64=roi_mask_b64, intelligent_roi=iroi)
         
@@ -43,19 +51,22 @@ async def get_mnv_view(ctx: AppContext):
             
             status_text.value = "Analysis failed. See diagnostic report."
             status_text.color = Colors.RED_400
-            e.control.disabled = False
+            if e: e.control.disabled = False
+            else: auto_start_btn.disabled = False
         else:
             status_text.value = "Analysis Success! Loading result metrics..."
             ctx.page.session.set("last_result", result)
+            ctx.page.session.set("is_vd_result", False)
             await asyncio.sleep(0.15)
             ctx.page.go("/results")
         
         progress_bar.visible = False
-        e.control.disabled = False
+        if e: e.control.disabled = False
+        else: auto_start_btn.disabled = False
         ctx.page.update()
 
     auto_start_btn = ft.ElevatedButton(
-        "Start MNV Pipeline", 
+        "Confirm & Start Analysis", 
         icon=Icons.PLAY_CIRCLE_FILL, 
         bgcolor=PRIMARY, 
         color=Colors.BLACK,
@@ -63,34 +74,83 @@ async def get_mnv_view(ctx: AppContext):
         on_click=run_mnv_analysis
     )
 
+    import cv2
+    import numpy as np
+    import base64
+    
+    # ----------------------------------------------------
+    # Visualize ROI Overlay
+    # ----------------------------------------------------
+    img_control = ft.Container(height=30) # Default spacer if no visual
+    
+    if target_path and target_path != "None" and ctx.page.session.get("roi_mask_b64"):
+        try:
+            # Load original image
+            base_img = cv2.imread(target_path)
+            if base_img is not None:
+                # Load mask
+                mask_bytes = base64.b64decode(ctx.page.session.get("roi_mask_b64"))
+                mask_arr = np.frombuffer(mask_bytes, dtype=np.uint8)
+                mask_img = cv2.imdecode(mask_arr, cv2.IMREAD_GRAYSCALE)
+                
+                if mask_img is not None:
+                    # Resize mask to match base image if necessary
+                    h, w = base_img.shape[:2]
+                    if mask_img.shape != (h, w):
+                        mask_img = cv2.resize(mask_img, (w, h), interpolation=cv2.INTER_NEAREST)
+                    
+                    # Create green overlay
+                    overlay = base_img.copy()
+                    overlay[mask_img == 255] = [0, 255, 0] # BGR
+                    blended = cv2.addWeighted(overlay, 0.4, base_img, 0.6, 0)
+                    
+                    # Encode to B64 for Flet Image
+                    _, buf = cv2.imencode('.jpg', blended, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    blended_b64 = base64.b64encode(buf).decode('utf-8')
+                    
+                    img_control = ft.Container(
+                        content=ft.Image(src_base64=blended_b64, fit=ft.ImageFit.CONTAIN, width=300, height=300),
+                        border=ft.border.all(2, PRIMARY),
+                        border_radius=10,
+                        padding=10,
+                        bgcolor=Colors.BLACK,
+                    )
+        except Exception as e:
+            ctx.add_to_console(f"Visual overlay failed: {e}", "WARNING")
+
+    # ----------------------------------------------------
+    # UI Layout Construction
+    # ----------------------------------------------------
     return ft.Container(
         content=ft.Column([
-            ft.Text("MNV Analysis Wizard", size=32, weight=FontWeight.BOLD, color=Colors.WHITE),
-            ft.Text("Real-time automated segmentation and feature extraction.", color=TEXT_MUTED),
-            ft.Container(height=30),
+            ft.Text("Step 2: Confirm & Analyze", size=32, weight=FontWeight.BOLD, color=Colors.WHITE),
+            ft.Text("Please verify your selected ROI below and start the automated analysis pipeline.", color=TEXT_MUTED),
+            ft.Container(height=20),
             
             ft.Row([
                 ft.Column([ft.Icon(Icons.UPLOAD_FILE, color=PRIMARY), ft.Text("Setup", size=12)], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.Container(width=100, height=2, bgcolor=Colors.with_opacity(0.2, Colors.WHITE)),
-                ft.Column([ft.Icon(Icons.AUTO_AWESOME, color=PRIMARY), ft.Text("Processing", size=12)], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.Container(width=100, height=2, bgcolor=Colors.with_opacity(0.2, Colors.WHITE)),
-                ft.Column([ft.Icon(Icons.QUERY_STATS, color=TEXT_MUTED), ft.Text("Summary", size=12)], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Container(width=100, height=2, bgcolor=PRIMARY),
+                ft.Column([ft.Icon(Icons.CROP_FREE, color=PRIMARY), ft.Text("ROI", size=12)], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Container(width=100, height=2, bgcolor=Colors.with_opacity(0.3, PRIMARY)),
+                ft.Column([ft.Icon(Icons.AUTO_AWESOME, color=TEXT_MUTED), ft.Text("Processing", size=12)], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             ], alignment=ft.MainAxisAlignment.CENTER),
+            
+            ft.Container(height=10),
             
             ft.Container(
                 content=ft.Column([
-                    ft.Icon(Icons.FILE_PRESENT_ROUNDED, size=80, color=PRIMARY if target_path else TEXT_MUTED),
-                    ft.Text(target_name, size=18, color=Colors.WHITE),
-                    ft.Text(target_path if target_path else "Launch from dashboard to select file", size=12, color=TEXT_MUTED),
+                    img_control,
+                    ft.Text(target_name, size=16, color=Colors.WHITE),
+                    ft.Text("ROI Selected Successfully" if ctx.page.session.get("roi") else "Wait, no ROI found!", size=12, color=Colors.GREEN_400 if ctx.page.session.get("roi") else Colors.RED_400),
                     ft.Container(height=10),
                     auto_start_btn,
                     status_text,
                     progress_bar,
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),
-                padding=60,
+                padding=40,
                 bgcolor=Colors.with_opacity(0.05, PRIMARY),
                 border=ft.border.all(1, Colors.with_opacity(0.2, PRIMARY)),
-                border_radius=25,
+                border_radius=20,
                 width=800,
             ),
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, scroll=ft.ScrollMode.ADAPTIVE),
