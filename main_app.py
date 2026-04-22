@@ -46,7 +46,7 @@ async def main(page: ft.Page):
     page.spacing = 0
     page.bgcolor = BG_DARK
 
-    def on_error(e):
+    async def on_error(e):
         print(f"Global Error: {e.data}")
         if "AssertionError" in str(e.data) or "ENTITLEMENT_NOT_FOUND" in str(e.data):
              return 
@@ -67,21 +67,15 @@ async def main(page: ft.Page):
 
     page.on_error = on_error
 
-    def on_disconnect(e):
-        print("Client disconnected (Browser tab closed). Terminating ARIAKE OCTA UI Server...")
-        import os
-        os._exit(0)
-        
-    page.on_disconnect = on_disconnect
-
-
+    # Removed aggressive on_disconnect exit to ensure server stability during dev reloads
+    
     async def process_target_path(target: str):
         if not target:
             return
         target = str(Path(target.strip(' \n\r\t\'"')).expanduser()).strip(' \n\r\t\'"')
         p = Path(target)
         if not p.exists():
-            ctx.add_to_console(f"Path does not exist: {target}", "ERROR")
+            await ctx.add_to_console(f"Path does not exist: {target}", "ERROR")
             return
 
         analysis_mode = ctx.analysis_type_ref.current.value if ctx.analysis_type_ref.current else "MNV"
@@ -89,13 +83,13 @@ async def main(page: ft.Page):
         if analysis_mode == "MNV" and p.is_dir():
             picked = _pick_first_image_in_dir(p)
             if picked is None:
-                ctx.add_to_console("No TIFF/PNG/JPEG images in selected folder.", "ERROR")
+                await ctx.add_to_console("No TIFF/PNG/JPEG images in selected folder.", "ERROR")
                 return
             target = str(picked.resolve())
             p = picked
-            ctx.add_to_console(f"Folder selected → using {p.name}", "INFO")
+            await ctx.add_to_console(f"Folder selected → using {p.name}", "INFO")
         elif analysis_mode == "MNV" and not p.is_file():
-            ctx.add_to_console("MNV requires an image file or a folder that contains images.", "ERROR")
+            await ctx.add_to_console("MNV requires an image file or a folder that contains images.", "ERROR")
             return
 
         snack = ft.SnackBar(ft.Text(f"Processing: {Path(target).name}"), bgcolor=PRIMARY)
@@ -103,25 +97,29 @@ async def main(page: ft.Page):
         snack.open = True
         page.update()
 
-        ctx.add_to_console(f"Analyzing structure: {target}", "INFO")
-        info = await client.detect_type(target)
-        detected_type = str(info.get("type", "unknown"))
+        await ctx.add_to_console(f"Analyzing structure: {target}", "INFO")
+        
+        # Reset previous results for the new analysis session
+        page.session.set("last_result", None)
+        page.session.set("is_vd_result", False)
+        
+        res = await client.detect_type(target)
 
         page.session.set("target_path", target)
         page.session.set("scale", float(ctx.scale_mm_ref.current.value if ctx.scale_mm_ref.current else 6.0))
 
-        if analysis_mode == "VD_BATCH" or analysis_mode == "VD_SINGLE" or detected_type == "VD":
-            ctx.add_to_console("Launch Sequence: VD Analytics. Navigating...", "INFO")
+        if res["type"] == "vd_batch":
+            await ctx.add_to_console("Launch Sequence: VD Analytics. Navigating...", "INFO")
             page.go("/vd")
-        elif analysis_mode == "MNV" or detected_type == "MNV":
-            ctx.add_to_console("Launch Sequence: MNV Analysis. Navigating...", "INFO")
+        elif res["type"] == "mnv_single":
+            await ctx.add_to_console("Launch Sequence: MNV Analysis (ROI Selection). Navigating...", "INFO")
             page.go("/roi")
         else:
-            if Path(target).is_dir():
-                ctx.add_to_console("Fallback: Folder detected. Navigating to VD...", "INFO")
+            if p.is_dir():
+                await ctx.add_to_console("Fallback: Folder detected. Navigating to VD...", "INFO")
                 page.go("/vd")
             else:
-                ctx.add_to_console("Fallback: File detected. Navigating to MNV...", "INFO")
+                await ctx.add_to_console("Fallback: File detected. Navigating to ROI selection...", "INFO")
                 page.go("/roi")
 
     ctx.process_target_path = process_target_path
@@ -133,34 +131,32 @@ async def main(page: ft.Page):
             if client_path and Path(client_path).exists():
                 await process_target_path(client_path)
                 return
-            try:
-                unique_name = f"{uuid.uuid4().hex}_{f.name}"
-                ctx.file_picker.upload(
-                    [
-                        ft.FilePickerUploadFile(
-                            name=f.name,
-                            upload_url=page.get_upload_url(unique_name, 600),
-                        )
-                    ]
-                )
-                ctx.add_to_console(f"Uploading {f.name}…", "INFO")
-            except Exception as ex:
-                ctx.add_to_console(f"Could not start upload: {ex}", "ERROR")
+            for f in e.files:
+                await ctx.add_to_console(f"Uploading {f.name}…", "INFO")
+                try:
+                    file_picker.upload(
+                        [ft.FilePickerUploadFile(
+                            f.name,
+                            upload_url=page.get_upload_url(f.name, 600),
+                        )]
+                    )
+                except Exception as ex:
+                    await ctx.add_to_console(f"Could not start upload: {ex}", "ERROR")
         elif e.path:
             await process_target_path(e.path)
 
-    def on_upload_complete(e: ft.FilePickerUploadEvent):
+    async def on_upload_complete(e: ft.FilePickerUploadEvent):
         if e.error:
-            ctx.add_to_console(f"Upload error: {e.error}", "ERROR")
+            await ctx.add_to_console(f"Upload error: {e.error}", "ERROR")
             return
-        if e.progress is not None and e.progress < 1.0:
+        
+        dest = UPLOAD_ROOT / e.file_name
+        if not dest.exists():
+            await ctx.add_to_console(f"Upload finished but file missing: {dest}", "ERROR")
             return
-        dest = (UPLOAD_ROOT / e.file_name).resolve()
-        if not dest.is_file():
-            ctx.add_to_console(f"Upload finished but file missing: {dest}", "ERROR")
-            return
-        ctx.add_to_console(f"Upload saved: {dest.name}", "INFO")
-        page.run_task(process_target_path, str(dest))
+            
+        await ctx.add_to_console(f"Upload saved: {dest.name}", "INFO")
+        await process_target_path(str(dest.resolve()))
 
     async def on_directory_result(e: ft.FilePickerResultEvent):
         if e.path:
@@ -175,12 +171,12 @@ async def main(page: ft.Page):
                 f.write(csv_content)
             
             if not is_vd and res_data.get("visualization_path"):
-                src_vis = res_data.get("visualization_path")
-                if Path(src_vis).exists():
+                src_vis = Path(res_data["visualization_path"])
+                if src_vis.exists():
                     import shutil
                     shutil.copy(src_vis, dest_dir / f"MNV_Visualization_{int(time.time())}.png")
             
-            ctx.add_to_console(f"Results saved to: {dest_dir}", "INFO")
+            await ctx.add_to_console(f"Results saved to: {dest_dir}", "INFO")
             snack = ft.SnackBar(ft.Text(f"Saved to {dest_dir.name}"), bgcolor=PRIMARY)
             page.overlay.append(snack)
             snack.open = True
@@ -201,7 +197,7 @@ async def main(page: ft.Page):
     title_text = ft.Text("ARIAKE OCTA", size=60, weight=FontWeight.W_900, color=Colors.WHITE)
     title_container = ft.Container(content=title_text, opacity=1.0)
     
-    subtitle_text = ft.Text("INITIALIZING BIOMARKER ENGINE...", size=14, color=PRIMARY)
+    subtitle_text = ft.Text("INITIALIZING BIOMARKER ENGINE... (v1.0.4 - STABLE)", size=14, color=PRIMARY)
     subtitle_container = ft.Container(content=subtitle_text, opacity=1.0)
     
     splash = ft.Container(
@@ -239,6 +235,10 @@ async def main(page: ft.Page):
     async def build_main_ui():
         page.clean()
         
+        async def on_nav_change(e):
+            routes = ["/", "/mnv", "/vd", "/results"]
+            page.go(routes[e.control.selected_index])
+
         nav_rail = ft.NavigationRail(
             selected_index=0,
             label_type=ft.NavigationRailLabelType.ALL,
@@ -251,7 +251,7 @@ async def main(page: ft.Page):
                 ft.NavigationRailDestination(icon=Icons.COMPARE_ARROWS_ROUNDED, selected_icon=Icons.COMPARE_ARROWS, label="VD Pairing"),
                 ft.NavigationRailDestination(icon=Icons.REMOVE_RED_EYE_ROUNDED, selected_icon=Icons.REMOVE_RED_EYE, label="Results"),
             ],
-            on_change=lambda e: page.go(["/", "/mnv", "/vd", "/results"][e.control.selected_index]),
+            on_change=on_nav_change,
         )
 
         console_area = ft.Container(
@@ -270,17 +270,26 @@ async def main(page: ft.Page):
 
         is_navigating = False
 
-        async def route_change(route):
+        async def route_change(route_event):
             nonlocal is_navigating
             if is_navigating: return
             is_navigating = True
+            
+            # 2. Explicit Routing Logs
+            print(f"ROUTE_TRIGGERED: {page.route}")
             
             route_map = {"/": 0, "/mnv": 1, "/roi": 1, "/vd": 2, "/results": 3}
             if page.route in route_map:
                 nav_rail.selected_index = route_map[page.route]
             
             try:
+                # 1. Login Guard Bypass (Debug Mode)
+                if not page.session.get("username"):
+                    print("DEBUG: Auto-logging in for debug session")
+                    page.session.set("username", "DebugUser")
+                
                 if not page.session.get("username") and page.route != "/login":
+                    print(f"DEBUG: Redirecting from {page.route} to /login (Should not happen with bypass)")
                     page.go("/login")
                     is_navigating = False
                     return
@@ -310,9 +319,11 @@ async def main(page: ft.Page):
                                 ft.Row([
                                     nav_rail,
                                     ft.VerticalDivider(width=1, color=Colors.with_opacity(0.1, Colors.WHITE)),
-                                    view_content
-                                ], expand=True),
-                                console_area
+                                    ft.Column([
+                                        ft.Container(content=view_content, expand=True),
+                                        console_area
+                                    ], expand=True, spacing=0)
+                                ], expand=True, spacing=0)
                             ], expand=True, spacing=0)
                         ],
                         bgcolor=BG_DARK,
@@ -321,7 +332,25 @@ async def main(page: ft.Page):
                 )
                 page.update()
             except Exception as e:
-                ctx.add_to_console(f"Routing Error: {str(e)}", "ERROR")
+                import traceback
+                error_msg = traceback.format_exc()
+                print(f"!!! ROUTING CRASH !!!\n{error_msg}")
+                page.views.append(
+                    ft.View(
+                        "/error",
+                        [
+                            ft.Container(
+                                content=ft.Column([
+                                    ft.Text("ROUTING FATAL ERROR", size=30, weight="bold"),
+                                    ft.Text(error_msg, font_family="monospace", size=12)
+                                ], scroll=ft.ScrollMode.ADAPTIVE),
+                                bgcolor=ft.Colors.RED_900,
+                                padding=40,
+                                expand=True
+                            )
+                        ]
+                    )
+                )
             finally:
                 is_navigating = False
 

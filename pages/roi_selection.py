@@ -14,7 +14,7 @@ async def get_roi_view(ctx: AppContext):
     if not target_path:
         return ft.Container(ft.Text("No image selected.", color=Colors.RED_400))
 
-    ctx.add_to_console(f"ROI Subtraction Mode: loading {target_path}", "INFO")
+    await ctx.add_to_console(f"ROI Subtraction Mode: loading {target_path}", "INFO")
 
     # State Definition
     state = {
@@ -31,7 +31,9 @@ async def get_roi_view(ctx: AppContext):
     # UI Controls
     status_text = ft.Text("ドラッグしてROI（抽出領域）の枠を作成してください", color=TEXT_MUTED)
     load_error_text = ft.Text("", color=Colors.RED_400, visible=False)
-    img_control = ft.Image(fit=ft.ImageFit.CONTAIN, width=500, height=500)
+    # 1x1 transparent pixel placeholder to prevent "Image must have either src or src_base64 specified" error
+    EMPTY_PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+    img_control = ft.Image(src="", src_base64=EMPTY_PX, fit=ft.ImageFit.CONTAIN, width=500, height=500)
     
     selection_box = ft.Container(
         border=ft.border.all(2, Colors.AMBER_400),
@@ -44,7 +46,7 @@ async def get_roi_view(ctx: AppContext):
         _, buf = cv2.imencode('.jpg', img_arr, [cv2.IMWRITE_JPEG_QUALITY, 80])
         return base64.b64encode(buf).decode('utf-8')
 
-    def render_mask():
+    async def render_mask():
         if state["base_img"] is None or state["current_mask"] is None:
             return
             
@@ -61,33 +63,33 @@ async def get_roi_view(ctx: AppContext):
         undo_button.disabled = len(state["history_masks"]) <= 1
         ctx.page.update()
 
-    def save_state(new_mask):
+    async def save_state(new_mask):
         state["history_masks"].append(new_mask.copy())
         state["current_mask"] = new_mask.copy()
-        render_mask()
+        await render_mask()
 
-    def handle_undo(e):
+    async def handle_undo(e):
         if len(state["history_masks"]) > 1:
             state["history_masks"].pop() # Remove current state
             state["current_mask"] = state["history_masks"][-1].copy()
-            render_mask()
-            ctx.add_to_console("Undo performed.", "INFO")
+            await render_mask()
+            await ctx.add_to_console("Undo performed.", "INFO")
 
-    def handle_reset(e):
+    async def handle_reset(e):
         if state["base_img"] is not None:
             blended = state["base_img"].copy()
             state["history_masks"].clear()
             blank_mask = np.zeros((state["new_h"], state["new_w"]), dtype=np.uint8)
-            save_state(blank_mask)
-            ctx.add_to_console("Mask reset.", "INFO")
+            await save_state(blank_mask)
+            await ctx.add_to_console("Mask reset.", "INFO")
 
     # Interaction Events
-    def on_pan_start(e: ft.DragStartEvent):
+    async def on_pan_start(e: ft.DragStartEvent):
         if state["mode"] != "draw": return
         state["drag_start"] = True
         state["freehand_points"] = [(int(e.local_x), int(e.local_y))]
 
-    def on_pan_update(e: ft.DragUpdateEvent):
+    async def on_pan_update(e: ft.DragUpdateEvent):
         if state["mode"] != "draw" or not state["drag_start"]: return
         cx = np.clip(int(e.local_x), 0, state["new_w"])
         cy = np.clip(int(e.local_y), 0, state["new_h"])
@@ -107,9 +109,9 @@ async def get_roi_view(ctx: AppContext):
             img_control.src_base64 = encode_img_b64(blended)
             ctx.page.update()
 
-    def on_pan_end(e: ft.DragEndEvent):
+    async def on_pan_end(e: ft.DragEndEvent):
         if state["mode"] == "erase":
-            on_tap_up(None)
+            await on_tap_up(None)
             return
             
         if state["mode"] != "draw" or not state.get("drag_start"): return
@@ -118,8 +120,8 @@ async def get_roi_view(ctx: AppContext):
             new_mask = state["current_mask"].copy()
             pts = np.array(state["freehand_points"], np.int32)
             cv2.fillPoly(new_mask, [pts], 255)
-            save_state(new_mask)
-            ctx.add_to_console("Freehand ROI section added.", "INFO")
+            await save_state(new_mask)
+            await ctx.add_to_console("Freehand ROI section added.", "INFO")
 
     async def continuous_erase(x, y):
         a_power = 0.5
@@ -143,32 +145,32 @@ async def get_roi_view(ctx: AppContext):
                         
                         state["temp_mask"] = temp_mask
             except Exception as e:
-                ctx.add_to_console(f"Erase Error: {e}", "ERROR")
+                await ctx.add_to_console(f"Erase Error: {e}", "ERROR")
                 
             a_power += 0.2
             if a_power > 6.0:
                 a_power = 6.0
             await asyncio.sleep(0.05)
 
-    def on_tap_down(e: ft.ContainerTapEvent):
+    async def on_tap_down(e: ft.ContainerTapEvent):
         if state["mode"] != "erase" or state["base_img"] is None: return
         x, y = int(e.local_x), int(e.local_y)
         
-        ctx.add_to_console(f"Erase clicked at: {x}, {y}", "INFO")
+        await ctx.add_to_console(f"Erase clicked at: {x}, {y}", "INFO")
         status_text.value = "ノイズ除去処理中..."
         status_text.color = Colors.AMBER_400
         state["is_pressing"] = True
         state["temp_mask"] = None
         ctx.page.update()
         
-        ctx.page.run_task(continuous_erase, x, y)
+        await continuous_erase(x, y)
         
-    def on_tap_up(e):
+    async def on_tap_up(e):
         if state["mode"] != "erase": return
         state["is_pressing"] = False
         
         if state.get("temp_mask") is not None:
-            save_state(state["temp_mask"])
+            await save_state(state["temp_mask"])
             status_text.value = "🗑️ ノイズを除去しました（やり直す場合は長押し）"
             status_text.color = Colors.GREEN_400
         else:
@@ -186,7 +188,7 @@ async def get_roi_view(ctx: AppContext):
         icon=Icons.CROP_SQUARE,
         bgcolor=PRIMARY, 
         color=Colors.BLACK,
-        on_click=lambda e: set_mode("draw")
+        on_click=lambda e: ctx.page.run_task(set_mode, "draw")
     )
     
     erase_btn = ft.ElevatedButton(
@@ -194,10 +196,10 @@ async def get_roi_view(ctx: AppContext):
         icon=Icons.BACKSPACE,
         bgcolor=Colors.TRANSPARENT, 
         color=TEXT_MUTED,
-        on_click=lambda e: set_mode("erase")
+        on_click=lambda e: ctx.page.run_task(set_mode, "erase")
     )
 
-    def set_mode(new_mode):
+    async def set_mode(new_mode):
         state["mode"] = new_mode
         if new_mode == "draw":
             draw_btn.bgcolor = PRIMARY
@@ -316,7 +318,7 @@ async def get_roi_view(ctx: AppContext):
             # Initialize empty mask and push to history
             blank_mask = np.zeros((new_h, new_w), dtype=np.uint8)
             state["history_masks"].clear()
-            save_state(blank_mask)
+            await save_state(blank_mask)
 
             img_control.width = new_w
             img_control.height = new_h
@@ -331,7 +333,8 @@ async def get_roi_view(ctx: AppContext):
             load_error_text.visible = True
             ctx.page.update()
 
-    ctx.page.run_task(load_image_async)
+    # Load image initially
+    await load_image_async()
 
     return ft.Container(
         content=ft.Column([

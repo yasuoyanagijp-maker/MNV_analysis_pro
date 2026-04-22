@@ -113,14 +113,14 @@ class AppContext:
         self.page = page
         self.client = client
         self.log_console_ref = ft.Ref()
-        self.intelligent_roi_ref = ft.Ref[ft.Switch]()
-        self.scale_mm_ref = ft.Ref[ft.Dropdown]()
-        self.analysis_type_ref = ft.Ref[ft.Dropdown]()
+        self.intelligent_roi_ref = ft.Ref()
+        self.scale_mm_ref = ft.Ref()
+        self.analysis_type_ref = ft.Ref()
         self.file_picker = None
         self.directory_picker = None
         self.process_target_path = None # Function reference
 
-    def add_to_console(self, message, level="INFO"):
+    async def add_to_console(self, message, level="INFO"):
         colors = {"INFO": PRIMARY, "ERROR": Colors.RED_400, "WARN": Colors.AMBER_400}
         color = colors.get(level, PRIMARY)
         timestamp = time.strftime("%H:%M:%S")
@@ -162,15 +162,21 @@ class AppContext:
                 )
             )
 
+        async def on_copy(e):
+            self.page.set_clipboard(f"{title}\n{message}\n{detail}")
+            
+        async def on_dismiss(e):
+            self.page.close(dlg)
+
         dlg = ft.AlertDialog(
             content=ft.Container(error_content, width=650),
             actions=[
-                ft.TextButton("Copy Error", on_click=lambda _: self.page.set_clipboard(f"{title}\n{message}\n{detail}")),
-                ft.ElevatedButton("Dismiss", on_click=lambda _: self.page.close(dlg), bgcolor=PRIMARY, color=Colors.BLACK)
+                ft.TextButton("Copy Error", on_click=on_copy),
+                ft.ElevatedButton("Dismiss", on_click=on_dismiss, bgcolor=PRIMARY, color=Colors.BLACK)
             ],
             bgcolor=GLASS_BG,
         )
-        self.page.open(dlg)
+        self.page.open(dlg) 
 
 
 class HoverButton(ft.Container):
@@ -194,7 +200,7 @@ class HoverButton(ft.Container):
         self.animate_scale = Animation(200, AnimationCurve.BOUNCE_OUT)
         self.scale = 1.0
 
-    def hover_effect(self, e):
+    async def hover_effect(self, e):
         if e.data == "true":
             self.bgcolor = Colors.with_opacity(0.12, PRIMARY)
             self.border = ft.border.all(2, PRIMARY)

@@ -34,8 +34,10 @@ async def get_vd_view(ctx: AppContext):
                 ctx.show_alpha_error("VD Error", str(err_data))
             e.control.disabled = False
         else:
+            print(f"DEBUG: VD API Response Keys: {list(result.keys())}")
+            print(f"DEBUG: Setting last_result in session...")
             ctx.page.session.set("last_result", result)
-            ctx.page.session.set("is_vd_result", True)
+            await ctx.add_to_console(f"VD Result Received - Type: {result.get('result_type', 'N/A')}", "INFO")
             ctx.page.go("/results")
         ctx.page.update()
 

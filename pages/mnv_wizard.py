@@ -1,6 +1,9 @@
 import flet as ft
 from flet import Colors, Icons, FontWeight
 import asyncio
+import cv2
+import numpy as np
+import base64
 from pathlib import Path
 from components.shared import PRIMARY, TEXT_MUTED, AppContext
 
@@ -27,16 +30,32 @@ async def get_mnv_view(ctx: AppContext):
             auto_start_btn.disabled = True
         
         progress_bar.visible = True
-        ctx.add_to_console(f"Starting MNV Analysis for {Path(target_path).name}...", "INFO")
+        # Safety sleep to ensure RenderBox is laid out before update()
+        await asyncio.sleep(0.2)
+        print(f"DEBUG: Starting MNV Analysis for {target_path}")
+        await ctx.add_to_console(f"Starting MNV Analysis for {Path(target_path).name}...", "INFO")
         ctx.page.update()
         
+        # Determine Intelligent ROI setting from Ref or Default
+        iroi = True
         try:
-            iroi = ctx.intelligent_roi_ref.current.value
-        except Exception:
+            if ctx.intelligent_roi_ref and ctx.intelligent_roi_ref.current:
+                iroi = ctx.intelligent_roi_ref.current.value
+                print(f"DEBUG: Intelligent ROI setting: {iroi}")
+        except Exception as e:
+            print(f"DEBUG: Error reading intelligent_roi_ref: {e}")
             iroi = True
             
         roi_mask_b64 = ctx.page.session.get("roi_mask_b64")
-        result = await ctx.client.start_mnv_analysis(target_path, scale, roi=roi, roi_mask_b64=roi_mask_b64, intelligent_roi=iroi)
+        print(f"DEBUG: Mask B64 present: {bool(roi_mask_b64)}")
+        
+        print("DEBUG: Sending request to API...")
+        try:
+            result = await ctx.client.start_mnv_analysis(target_path, scale, roi=roi, roi_mask_b64=roi_mask_b64, intelligent_roi=iroi)
+            print(f"DEBUG: API result received: {list(result.keys()) if isinstance(result, dict) else 'non-dict result'}")
+        except Exception as api_err:
+            print(f"DEBUG: API CALL CRASHED: {api_err}")
+            result = {"error": f"Internal UI/API Connection Crash: {str(api_err)}"}
         
         if "error" in result:
             err_data = result["error"]
@@ -54,9 +73,9 @@ async def get_mnv_view(ctx: AppContext):
             if e: e.control.disabled = False
             else: auto_start_btn.disabled = False
         else:
-            status_text.value = "Analysis Success! Loading result metrics..."
             ctx.page.session.set("last_result", result)
             ctx.page.session.set("is_vd_result", False)
+            await ctx.add_to_console(f"MNV Result Received - Type: {result.get('result_type', 'N/A')}", "INFO")
             await asyncio.sleep(0.15)
             ctx.page.go("/results")
         
@@ -74,10 +93,6 @@ async def get_mnv_view(ctx: AppContext):
         on_click=run_mnv_analysis
     )
 
-    import cv2
-    import numpy as np
-    import base64
-    
     # ----------------------------------------------------
     # Visualize ROI Overlay
     # ----------------------------------------------------
@@ -109,14 +124,14 @@ async def get_mnv_view(ctx: AppContext):
                     blended_b64 = base64.b64encode(buf).decode('utf-8')
                     
                     img_control = ft.Container(
-                        content=ft.Image(src_base64=blended_b64, fit=ft.ImageFit.CONTAIN, width=300, height=300),
+                        content=ft.Image(src="", src_base64=blended_b64, fit=ft.ImageFit.CONTAIN, width=300, height=300),
                         border=ft.border.all(2, PRIMARY),
                         border_radius=10,
                         padding=10,
                         bgcolor=Colors.BLACK,
                     )
         except Exception as e:
-            ctx.add_to_console(f"Visual overlay failed: {e}", "WARNING")
+            await ctx.add_to_console(f"Visual overlay failed: {e}", "WARNING")
 
     # ----------------------------------------------------
     # UI Layout Construction

@@ -25,13 +25,16 @@ async def get_dashboard_view(ctx: AppContext):
         border_color=PRIMARY,
     )
 
+    async def on_manual_submit(e):
+        await ctx.process_target_path(e.control.value)
+
     manual_path = ft.TextField(
         label="Manual Path (Paste folder/file path here if picker fails)",
         border_color=PRIMARY,
         expand=True,
         text_size=12,
         height=40,
-        on_submit=lambda e: ctx.page.run_task(ctx.process_target_path, e.control.value)
+        on_submit=on_manual_submit
     )
 
     async def start_unified_analysis(e):
@@ -57,7 +60,7 @@ async def get_dashboard_view(ctx: AppContext):
             selection_hint.value = ""
             res = await ctx.client.list_dir(target_path)
             if "error" in res:
-                ctx.add_to_console(f"Explorer Error: {res['error']}", "ERROR")
+                await ctx.add_to_console(f"Explorer Error: {res['error']}", "ERROR")
                 return
             
             current_path_text.value = res.get("current_path")
@@ -94,6 +97,9 @@ async def get_dashboard_view(ctx: AppContext):
                 final_path = state.get("selected_file") or state["path"]
                 await on_select(final_path)
 
+        async def cancel_selection(e):
+            ctx.page.close(dlg)
+
         dlg = ft.AlertDialog(
             title=ft.Text(title, size=20, weight=FontWeight.BOLD),
             content=ft.Container(
@@ -107,7 +113,7 @@ async def get_dashboard_view(ctx: AppContext):
                 height=500
             ),
             actions=[
-                ft.TextButton("Cancel", on_click=lambda _: ctx.page.close(dlg)),
+                ft.TextButton("Cancel", on_click=cancel_selection),
                 ft.ElevatedButton("Confirm Selection", bgcolor=PRIMARY, color=Colors.BLACK, on_click=confirm_selection)
             ],
             bgcolor=GLASS_BG,
@@ -128,7 +134,7 @@ async def get_dashboard_view(ctx: AppContext):
     async def handle_drop(e):
         if hasattr(e, "data") and e.data:
             try:
-                ctx.add_to_console(f"Data dropped: {e.data}", "INFO")
+                await ctx.add_to_console(f"Data dropped: {e.data}", "INFO")
                 target = e.data.strip()
                 if target.startswith("[") and target.endswith("]"):
                     import ast
@@ -137,7 +143,7 @@ async def get_dashboard_view(ctx: AppContext):
                         target = paths[0]
                 await ctx.process_target_path(target)
             except Exception as ex:
-                ctx.add_to_console(f"Drop error: {str(ex)}", "ERROR")
+                await ctx.add_to_console(f"Drop error: {str(ex)}", "ERROR")
     
     ctx.page.on_drop = handle_drop
 

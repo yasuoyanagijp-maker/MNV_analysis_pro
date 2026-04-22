@@ -16,6 +16,9 @@ class AnalysisRequest(BaseModel):
     intelligent_roi: bool = True
 
 class MNVResult(BaseModel):
+    result_type: str = "MNV"
+    source_filename: str = ""
+    analysis_timestamp: str = ""
     mnv_area_mm2: float
     vessel_area_mm2: float
     vessel_density: float
@@ -60,6 +63,9 @@ class VDRequest(BaseModel):
     single_image_mode: bool = False
 
 class VDResult(BaseModel):
+    result_type: str = "VD"
+    source_filename: str = ""
+    analysis_timestamp: str = ""
     patient_ids: List[str]
     superficial_files: List[str]
     deep_files: List[str]

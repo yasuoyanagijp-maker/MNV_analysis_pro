@@ -117,6 +117,9 @@ async def analyze_mnv(request: AnalysisRequest):
         
         # Map all results to enriched schema
         return MNVResult(
+            result_type="MNV",
+            source_filename=Path(request.image_path).name,
+            analysis_timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             mnv_area_mm2=res.get("mnv_area_mm2", 0),
             vessel_area_mm2=res.get("vessel_area_mm2", 0),
             vessel_density=res.get("vessel_density", 0),
@@ -184,6 +187,9 @@ async def analyze_vd(request: VDRequest):
              raise ValueError("No valid file pairs or single images found for VD analysis.")
 
         return VDResult(
+            result_type="VD",
+            source_filename=Path(request.input_dir).name,
+            analysis_timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             patient_ids=res.get("patient_ids", []),
             superficial_files=res.get("superficial_files", []),
             deep_files=res.get("deep_files", []),
