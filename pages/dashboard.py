@@ -2,7 +2,14 @@ import flet as ft
 from flet import Colors, Icons, FontWeight
 import time
 from pathlib import Path
+import shutil
+from datetime import datetime
 from components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext
+from src.utils.cv2_path import (
+    BGR_READ_OK,
+    BGR_READ_PERMISSION,
+    imread_bgr_outcome,
+)
 
 async def get_dashboard_view(ctx: AppContext):
     # --- UI STATE ELEMENTS (Defined early for handler reference) ---
@@ -205,6 +212,47 @@ async def get_dashboard_view(ctx: AppContext):
 
     intelligent_roi_switch = ft.Switch(label="Intelligent ROI", value=True, active_color=PRIMARY)
     ctx.intelligent_roi_ref.current = intelligent_roi_switch
+    staging_copy_switch = ft.Switch(
+        label="Staging copy (OneDrive-safe batch)",
+        value=True,
+        active_color=PRIMARY,
+    )
+
+    async def run_batch_preflight():
+        """
+        Validate queued files before analysis so failures are actionable.
+        Returns list[bool] aligned with batch_table.rows indicating readiness.
+        """
+        readiness = [True] * len(batch_table.rows)
+        for i, row in enumerate(batch_table.rows):
+            file_path = row.data["path"].strip().strip("'").strip('"')
+            p = Path(file_path)
+            if not p.exists():
+                readiness[i] = False
+                row.cells[3].content.value = "Missing"
+                row.cells[3].content.color = Colors.RED_400
+                await ctx.add_to_console(f"Preflight: file not found [{p.name}]", "ERROR")
+                continue
+            img, reason = imread_bgr_outcome(file_path)
+            if img is None or reason != BGR_READ_OK:
+                readiness[i] = False
+                row.cells[3].content.value = "Unreadable"
+                row.cells[3].content.color = Colors.RED_400
+                if reason == BGR_READ_PERMISSION:
+                    await ctx.add_to_console(
+                        f"Preflight: permission denied [{p.name}] (CloudStorage/TCC). Consider staging copy.",
+                        "ERROR",
+                    )
+                else:
+                    await ctx.add_to_console(
+                        f"Preflight: read failed [{p.name}] (reason={reason})",
+                        "ERROR",
+                    )
+            else:
+                row.cells[3].content.value = "Ready"
+                row.cells[3].content.color = PRIMARY
+        ctx.page.update()
+        return readiness
 
     # --- BATCH PROCESSING LOGIC ---
     async def run_batch_analysis(e):
@@ -220,11 +268,31 @@ async def get_dashboard_view(ctx: AppContext):
         total = len(batch_table.rows)
         
         await ctx.add_to_console(f"Starting batch analysis for {total} files...", "INFO")
+        readiness = await run_batch_preflight()
+        runnable = sum(1 for ok in readiness if ok)
+        if runnable == 0:
+            await ctx.add_to_console("Preflight failed for all files. Batch aborted.", "ERROR")
+            start_button.disabled = False
+            batch_progress.visible = False
+            ctx.page.update()
+            return
+        if runnable < total:
+            await ctx.add_to_console(
+                f"Preflight: {total - runnable} file(s) will be skipped due to read errors.",
+                "WARN",
+            )
         
         for i, row in enumerate(batch_table.rows):
             file_path = row.data["path"].strip().strip("'").strip('"')
             filename = Path(file_path).name
             analysis_mode = row.cells[1].content.value
+            if not readiness[i]:
+                all_results.append(
+                    {"error": "Preflight failed (unreadable/missing)", "source_filename": filename, "status": "failed"}
+                )
+                batch_progress.value = (i + 1) / total
+                ctx.page.update()
+                continue
             
             batch_status_text.value = f"Processing ({i+1}/{total}): {filename}..."
             row.cells[3].content.value = "Processing..."
@@ -320,6 +388,28 @@ async def get_dashboard_view(ctx: AppContext):
             await ctx.add_to_console("No supported images found in directory.", "ERROR")
             return
 
+        staging_root = None
+        staged_files = []
+        if staging_copy_switch.value:
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            staging_root = Path("uploads") / "batch_staging" / stamp
+            staging_root.mkdir(parents=True, exist_ok=True)
+            await ctx.add_to_console(f"Staging enabled: copying files to {staging_root}", "INFO")
+            for src in files:
+                dst = staging_root / src.name
+                # Keep first if duplicate names exist; append suffix for collisions.
+                if dst.exists():
+                    dst = staging_root / f"{src.stem}_{len(staged_files):03d}{src.suffix}"
+                try:
+                    shutil.copy2(src, dst)
+                    staged_files.append(dst)
+                except Exception as ex:
+                    await ctx.add_to_console(f"Stage copy failed [{src.name}]: {ex}", "ERROR")
+            files = staged_files
+            if not files:
+                await ctx.add_to_console("Staging failed for all files. Batch queue not created.", "ERROR")
+                return
+
         batch_table.rows.clear()
         for f in files:
             size_mb = f.stat().st_size / (1024 * 1024)
@@ -400,6 +490,7 @@ async def get_dashboard_view(ctx: AppContext):
                         intelligent_roi_switch,
                         manual_path
                     ], spacing=20, vertical_alignment=ft.CrossAxisAlignment.END),
+                    ft.Row([staging_copy_switch], spacing=10),
                     ft.Divider(height=40, color=Colors.TRANSPARENT),
                     ft.Text("2. Launch Analytics", size=20, weight=FontWeight.BOLD, color=PRIMARY),
                     ft.Container(
