@@ -6,6 +6,7 @@ import numpy as np
 import base64
 from pathlib import Path
 from components.shared import PRIMARY, TEXT_MUTED, AppContext
+from src.utils.cv2_path import imread_bgr
 
 async def get_mnv_view(ctx: AppContext):
     target_path = ctx.page.session.get("target_path")
@@ -106,8 +107,8 @@ async def get_mnv_view(ctx: AppContext):
             clean_path = target_path.strip().strip("'").strip('"')
             print(f"DEBUG: MNV Wizard loading overlay from: {clean_path}", flush=True)
             
-            # Load original image
-            base_img = cv2.imread(clean_path)
+            # Load original image (Unicode-safe; cv2.imread fails on some paths)
+            base_img = imread_bgr(clean_path)
             if base_img is not None:
                 # Load mask
                 mask_bytes = base64.b64decode(ctx.page.session.get("roi_mask_b64"))

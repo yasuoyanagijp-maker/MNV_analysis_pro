@@ -7,6 +7,7 @@ import asyncio
 from pathlib import Path
 from components.shared import PRIMARY, TEXT_MUTED, AppContext
 from src.core.fast_region_growing import fast_region_growing
+from src.utils.cv2_path import imread_bgr
 
 async def get_roi_view(ctx: AppContext):
     target_path = ctx.page.session.get("target_path")
@@ -299,13 +300,31 @@ async def get_roi_view(ctx: AppContext):
             clean_path = target_path.strip().strip("'").strip('"')
             print(f"DEBUG: ROI Selection Attempting to load: {clean_path}", flush=True)
             
-            loop = asyncio.get_event_loop()
-            base_img = await loop.run_in_executor(
-                None, lambda: cv2.imread(clean_path)
-            )
-            if base_img is None:
-                load_error_text.value = f"❌ 読み込み失敗: {target_path}"
+            p = Path(clean_path)
+            if not p.is_file():
+                err = f"❌ ファイルが見つかりません: {clean_path}"
+                print(f"DEBUG: ROI {err}", flush=True)
+                load_error_text.value = err
                 load_error_text.visible = True
+                ctx.page.update()
+                return
+
+            loop = asyncio.get_event_loop()
+            base_img = await loop.run_in_executor(None, lambda: imread_bgr(clean_path))
+            if base_img is None:
+                err = (
+                    f"❌ 画像の読み込みに失敗しました（形式不正・OneDrive未同期・文字パス等）: {clean_path}"
+                )
+                print(
+                    f"DEBUG: ROI imread_bgr returned None (exists={p.is_file()}, size={p.stat().st_size if p.is_file() else 0})",
+                    flush=True,
+                )
+                load_error_text.value = err
+                load_error_text.visible = True
+                await ctx.add_to_console(
+                    "OpenCV: パスに日本語や空白が含まれる場合、ファイルを英語フォルダにコピーするか、OneDriveで「常にこのデバイスに保持」を試してください。",
+                    "ERROR",
+                )
                 ctx.page.update()
                 return
 
@@ -333,6 +352,9 @@ async def get_roi_view(ctx: AppContext):
 
         except Exception as ex:
             import traceback
+
+            print(f"DEBUG: ROI load_image_async exception: {ex}", flush=True)
+            print(traceback.format_exc(), flush=True)
             load_error_text.value = f"❌ エラー: {str(ex)}"
             load_error_text.visible = True
             ctx.page.update()

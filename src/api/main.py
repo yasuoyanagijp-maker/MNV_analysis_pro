@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from src.api.schemas import AnalysisRequest, MNVResult, VDRequest, VDResult, LoginRequest, AuthResponse
 from core.mnv_pipeline import MNVPipeline
 from core.vd_analysis import VDAnalyzer
+from utils.cv2_path import imread_grayscale
 import shutil
 import cv2
 import numpy as np
@@ -80,12 +81,12 @@ async def analyze_mnv(request: AnalysisRequest):
             mask_img = cv2.imdecode(mask_arr, cv2.IMREAD_GRAYSCALE)
             if mask_img is not None:
                 # Resize to match input image if needed
-                img = cv2.imread(request.image_path, cv2.IMREAD_GRAYSCALE)
+                img = imread_grayscale(request.image_path)
                 if img is not None and mask_img.shape != img.shape:
                     mask_img = cv2.resize(mask_img, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
                 roi_mask = mask_img
         elif request.roi:
-            img = cv2.imread(request.image_path, cv2.IMREAD_GRAYSCALE)
+            img = imread_grayscale(request.image_path)
             if img is not None:
                 roi_mask = np.zeros(img.shape, dtype=np.uint8)
                 h, w = img.shape
