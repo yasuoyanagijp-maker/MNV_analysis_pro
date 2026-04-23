@@ -299,24 +299,21 @@ async def get_roi_view(ctx: AppContext):
             # Secondary cleansing just in case
             clean_path = target_path.strip().strip("'").strip('"')
             print(f"DEBUG: ROI Selection Attempting to load: {clean_path}", flush=True)
-            
-            p = Path(clean_path)
-            if not p.is_file():
-                err = f"❌ ファイルが見つかりません: {clean_path}"
-                print(f"DEBUG: ROI {err}", flush=True)
-                load_error_text.value = err
-                load_error_text.visible = True
-                ctx.page.update()
-                return
 
+            p = Path(clean_path)
             loop = asyncio.get_event_loop()
             base_img = await loop.run_in_executor(None, lambda: imread_bgr(clean_path))
             if base_img is None:
                 err = (
-                    f"❌ 画像の読み込みに失敗しました（形式不正・OneDrive未同期・文字パス等）: {clean_path}"
+                    f"❌ 画像の読み込みに失敗しました（形式不正・OneDrive 未同期・未保存の一時パス等）: {clean_path}"
                 )
+                ex = p.exists()
+                try:
+                    sz = p.stat().st_size
+                except OSError:
+                    sz = -1
                 print(
-                    f"DEBUG: ROI imread_bgr returned None (exists={p.is_file()}, size={p.stat().st_size if p.is_file() else 0})",
+                    f"DEBUG: ROI imread_bgr returned None (exists={ex}, st_size={sz})",
                     flush=True,
                 )
                 load_error_text.value = err

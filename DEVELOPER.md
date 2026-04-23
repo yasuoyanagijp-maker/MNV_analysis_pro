@@ -110,7 +110,7 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 
 - ターミナルに **`print(..., flush=True)`** や Flet/バックエンドのログを残す。Web の FilePicker は **`Picker attached` ログだけでは不十分**な場合があり、`page.web` の分岐を常に意識する。
 - バックエンド単体: `python src/api/main.py`、フロント単体: `flet run` または `python main_app.py`。
-- **画像パスに日本語やスペースが含まれる**と `cv2.imread` が `None` を返すことがある。`src/utils/cv2_path.py` の `imread_bgr` / `imread_grayscale`（`read_bytes` + `imdecode`）を使う。OneDrive のオンラインのみファイルも読めない場合がある。
+- **画像パスに日本語やスペースが含まれる**と `cv2.imread` が `None` を返すことがある。`src/utils/cv2_path.py` の `imread_bgr` / `imread_grayscale`（`read_bytes` + `imdecode`、必要時 **Pillow**）を使う。ROI 画面では `Path.is_file()` の**事前**チェックをしない（`d967a9d` で入れた条件が原因で、以前と比べ失敗しやすくなっていた例がある）。OneDrive オンラインのみは引き続き注意。
 
 ---
 
