@@ -14,6 +14,9 @@ echo "Initializing ARIAKE OCTA..."
 export FLET_USE_WEB
 : "${FLET_PORT:=8550}"
 export FLET_PORT
+# Web: bind + browser URL use this (default loopback so auto-opened tab is not http://0.0.0.0/ which stays blank)
+: "${FLET_SERVER_IP:=127.0.0.1}"
+export FLET_SERVER_IP
 
 # Get the directory of the script and change to it
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

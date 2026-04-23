@@ -189,5 +189,8 @@ if __name__ == "__main__":
         "upload_dir": str(UPLOAD_ROOT),
     }
     if use_web:
-        app_kwargs["host"] = "0.0.0.0"
+        # Flet builds open_in_browser URL as http://{url_host}:port/... (see flet app.__run_web_server).
+        # host=0.0.0.0 makes url_host 0.0.0.0, which most browsers will not load (blank tab). Local dev: 127.0.0.1.
+        # Override bind address with FLET_SERVER_IP (e.g. 0.0.0.0 for LAN); open http://127.0.0.1:PORT on same machine.
+        app_kwargs["host"] = os.environ.get("FLET_SERVER_IP", "127.0.0.1")
     ft.app(**app_kwargs)

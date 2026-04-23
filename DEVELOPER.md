@@ -38,6 +38,7 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 |------|------|------|
 | `FLET_USE_WEB` | `1` | `1` = ブラウザ（`AppView.WEB_BROWSER`）。`0` や `native` 等 = ネイティブウィンドウ（`FLET_APP`） |
 | `FLET_PORT` | `8550` | Flet のポート（`main_app` と `run_flet.sh` の両方で使用） |
+| `FLET_SERVER_IP` | `127.0.0.1`（`run_flet.sh` 既定） | Web 時の uvicorn バインド。`0.0.0.0` だと Flet が `http://0.0.0.0:…` を開き**ブラウザで白紙のまま**になることがある。LAN 向けに `0.0.0.0` を付ける場合は、同一マシンでは `http://127.0.0.1:FLET_PORT` を手動で開く。 |
 | `DEV_MODE` | 未設定 | `1` のとき**ログイン無効**・テスト用セッション注入。**本番禁止** |
 | `DEV_MODE` 以外 | — | バックエンド URL 等を変える場合は `components/shared.py` の `BackendClient` を確認 |
 
