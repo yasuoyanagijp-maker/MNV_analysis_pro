@@ -1,6 +1,10 @@
 import flet as ft
+import uuid
+from pathlib import Path
 from flet import Colors, Icons, FontWeight
 from components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, safe_round
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 async def get_results_view(ctx: AppContext):
@@ -16,6 +20,70 @@ async def get_results_view(ctx: AppContext):
         r_type = res.get("result_type")
         is_mnv = r_type == "MNV" or (r_type is None and "mnv_area_mm2" in res)
         is_vd = r_type == "VD" or (r_type is None and ctx.page.session.get("is_vd_result"))
+
+        async def on_export_csv(e):
+            try:
+                csv_text = await ctx.client.export_csv(res, is_vd=bool(is_vd and not is_mnv))
+                ctx.page.set_clipboard(csv_text)
+                d = ft.AlertDialog(
+                    title=ft.Text("Export CSV", color=Colors.WHITE),
+                    content=ft.Text(
+                        "CSV をクリップボードにコピーしました。Excel 等に貼り付けて保存できます。\n\n"
+                        "表示画面をそのまま PDF 化するには、ブラウザの「印刷」"
+                        "（Mac: Cmd+P、Windows: Ctrl+P）を使うこともできます。",
+                        color=TEXT_MUTED,
+                    ),
+                    bgcolor=GLASS_BG,
+                )
+
+                def close(_):
+                    ctx.page.close(d)
+
+                d.actions = [ft.TextButton("OK", on_click=close, style=ft.ButtonStyle(color=PRIMARY))]
+                ctx.page.open(d)
+            except Exception as ex:
+                await ctx.add_to_console(f"Export CSV: {ex}", "ERROR")
+            ctx.page.update()
+
+        async def on_save_pdf(e):
+            if not is_mnv:
+                d = ft.AlertDialog(
+                    title=ft.Text("Save Report", color=Colors.WHITE),
+                    content=ft.Text("PDF レポート生成は MNV 結果向けのテンプレートです。VD 等は Export CSV をご利用ください。", color=TEXT_MUTED),
+                    bgcolor=GLASS_BG,
+                )
+                d.actions = [ft.TextButton("OK", on_click=lambda _: ctx.page.close(d), style=ft.ButtonStyle(color=PRIMARY))]
+                ctx.page.open(d)
+                ctx.page.update()
+                return
+            from utils.report_generator import generate_pdf_report
+
+            out_dir = _PROJECT_ROOT / "uploads"
+            out_dir.mkdir(exist_ok=True)
+            out = out_dir / f"ARIAKE_report_{uuid.uuid4().hex[:8]}.pdf"
+            try:
+                generate_pdf_report(res, str(out))
+            except Exception as ex:
+                d = ft.AlertDialog(
+                    title=ft.Text("PDF エラー", color=Colors.RED_400),
+                    content=ft.Text(str(ex), color=TEXT_MUTED),
+                    bgcolor=GLASS_BG,
+                )
+                d.actions = [ft.TextButton("OK", on_click=lambda _: ctx.page.close(d), style=ft.ButtonStyle(color=PRIMARY))]
+                ctx.page.open(d)
+                ctx.page.update()
+                return
+            d = ft.AlertDialog(
+                title=ft.Text("PDF 保存", color=Colors.WHITE),
+                content=ft.Text(
+                    f"次の場所に保存しました:\n{out}\n\nFinder で表示: open コマンド、または上記フォルダを開いてください。",
+                    color=TEXT_MUTED,
+                ),
+                bgcolor=GLASS_BG,
+            )
+            d.actions = [ft.TextButton("OK", on_click=lambda _: ctx.page.close(d), style=ft.ButtonStyle(color=PRIMARY))]
+            ctx.page.open(d)
+            ctx.page.update()
 
         def metric_card(label, value, unit, icon, color):
             return ft.Container(
@@ -56,14 +124,24 @@ async def get_results_view(ctx: AppContext):
                             expand=True,
                             color=Colors.WHITE,
                         ),
-                        ft.ElevatedButton("Export CSV", icon=Icons.SAVE_ALT_ROUNDED),
+                        ft.ElevatedButton(
+                            "Export CSV",
+                            icon=Icons.SAVE_ALT_ROUNDED,
+                            on_click=on_export_csv,
+                        ),
                         ft.ElevatedButton(
                             "Save Report",
                             icon=Icons.PICTURE_AS_PDF_ROUNDED,
                             bgcolor=PRIMARY,
                             color=Colors.BLACK,
+                            on_click=on_save_pdf,
                         ),
                     ]
+                ),
+                ft.Text(
+                    "印刷: この画面のままブラウザの「印刷」",
+                    size=12,
+                    color=TEXT_MUTED,
                 ),
                 ft.Row(
                     [
