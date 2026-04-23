@@ -295,9 +295,13 @@ async def get_roi_view(ctx: AppContext):
     async def load_image_async():
         await asyncio.sleep(0.1)
         try:
+            # Secondary cleansing just in case
+            clean_path = target_path.strip().strip("'").strip('"')
+            print(f"DEBUG: ROI Selection Attempting to load: {clean_path}", flush=True)
+            
             loop = asyncio.get_event_loop()
             base_img = await loop.run_in_executor(
-                None, lambda: cv2.imread(target_path)
+                None, lambda: cv2.imread(clean_path)
             )
             if base_img is None:
                 load_error_text.value = f"❌ 読み込み失敗: {target_path}"

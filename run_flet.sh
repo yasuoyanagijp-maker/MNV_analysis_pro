@@ -54,7 +54,7 @@ trap "echo 'Shutting down...'; kill $BACKEND_PID 2>/dev/null; cleanup_port 8000;
 
 # Run Flet application (Web mode for better stability on Mac filesystem)
 # Using --web mode to avoid common socket issues with native windows on some macOS versions
-flet run --web --port 8550 main_app.py > flet_latest.log 2>&1
+flet run --web --port 8550 main_app.py
 
 # 4. Cleanup on exit (if Flet exits normally)
 echo "Closing application. Cleaning up background processes..."

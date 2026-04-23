@@ -49,9 +49,11 @@ async def get_mnv_view(ctx: AppContext):
         roi_mask_b64 = ctx.page.session.get("roi_mask_b64")
         print(f"DEBUG: Mask B64 present: {bool(roi_mask_b64)}")
         
+        # Clean path before API call
+        clean_path = target_path.strip().strip("'").strip('"')
         print("DEBUG: Sending request to API...")
         try:
-            result = await ctx.client.start_mnv_analysis(target_path, scale, roi=roi, roi_mask_b64=roi_mask_b64, intelligent_roi=iroi)
+            result = await ctx.client.start_mnv_analysis(clean_path, scale, roi=roi, roi_mask_b64=roi_mask_b64, intelligent_roi=iroi)
             print(f"DEBUG: API result received: {list(result.keys()) if isinstance(result, dict) else 'non-dict result'}")
         except Exception as api_err:
             print(f"DEBUG: API CALL CRASHED: {api_err}")
@@ -100,8 +102,12 @@ async def get_mnv_view(ctx: AppContext):
     
     if target_path and target_path != "None" and ctx.page.session.get("roi_mask_b64"):
         try:
+            # Clean path just in case
+            clean_path = target_path.strip().strip("'").strip('"')
+            print(f"DEBUG: MNV Wizard loading overlay from: {clean_path}", flush=True)
+            
             # Load original image
-            base_img = cv2.imread(target_path)
+            base_img = cv2.imread(clean_path)
             if base_img is not None:
                 # Load mask
                 mask_bytes = base64.b64decode(ctx.page.session.get("roi_mask_b64"))

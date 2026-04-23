@@ -118,6 +118,7 @@ class AppContext:
         self.analysis_type_ref = ft.Ref()
         self.file_picker = None
         self.directory_picker = None
+        self.save_file_picker = None
         self.process_target_path = None # Function reference
 
     async def add_to_console(self, message, level="INFO"):

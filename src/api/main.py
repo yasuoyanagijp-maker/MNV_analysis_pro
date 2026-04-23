@@ -11,6 +11,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from src.api.schemas import AnalysisRequest, MNVResult, VDRequest, VDResult, LoginRequest, AuthResponse
 from core.mnv_pipeline import MNVPipeline
@@ -23,6 +24,22 @@ import uvicorn
 from datetime import datetime
 
 app = FastAPI(title="ARIAKE OCTA Engine API")
+
+# Ensure uploads directory exists
+UPLOAD_DIR = ROOT / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+@app.get("/download/{filename}")
+async def download_file(filename: str):
+    file_path = UPLOAD_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type='application/octet-stream'
+    )
 
 # Store results in memory for now (or a simple cache)
 results_cache = {}
