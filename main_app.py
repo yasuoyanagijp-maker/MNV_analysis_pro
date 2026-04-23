@@ -20,6 +20,17 @@ UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 DEV_MODE = os.environ.get("DEV_MODE") == "1"
 
+
+def _flet_use_web() -> bool:
+    """
+    FLET_USE_WEB: default 1 = browser (WEB_BROWSER / page.web True).
+    Set 0 or native|desktop|flet for a native Flet window and OS file dialogs.
+    """
+    v = (os.environ.get("FLET_USE_WEB") or "1").strip().lower()
+    if v in ("0", "false", "no", "n", "native", "desktop", "flet", "flet_app"):
+        return False
+    return True
+
 async def main(page: ft.Page):
     print("MAIN_START: Initializing app", flush=True)
     page.title = "ARIAKE OCTA - Advanced Retinal Analysis"
@@ -165,10 +176,18 @@ async def main(page: ft.Page):
 
 if __name__ == "__main__":
     port = int(os.environ.get("FLET_PORT", 8550))
-    ft.app(
-        target=main,
-        view=ft.AppView.WEB_BROWSER,
-        port=port,
-        host="0.0.0.0",
-        upload_dir=str(UPLOAD_ROOT),
+    use_web = _flet_use_web()
+    print(
+        f"Flet: FLET_USE_WEB={os.environ.get('FLET_USE_WEB', '1')} -> "
+        f"{'web browser' if use_web else 'native window'}",
+        flush=True,
     )
+    app_kwargs = {
+        "target": main,
+        "view": ft.AppView.WEB_BROWSER if use_web else ft.AppView.FLET_APP,
+        "port": port,
+        "upload_dir": str(UPLOAD_ROOT),
+    }
+    if use_web:
+        app_kwargs["host"] = "0.0.0.0"
+    ft.app(**app_kwargs)

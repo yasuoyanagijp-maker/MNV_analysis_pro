@@ -6,6 +6,15 @@
 
 echo "Initializing ARIAKE OCTA..."
 
+# Flet UI mode (must match what main_app.py reads):
+#   FLET_USE_WEB=1  (default) — browser, no OS folder dialog for get_directory_path
+#   FLET_USE_WEB=0  — native Flet window, OS file/folder pickers
+# Examples:  FLET_USE_WEB=0 ./run_flet.sh
+: "${FLET_USE_WEB:=1}"
+export FLET_USE_WEB
+: "${FLET_PORT:=8550}"
+export FLET_PORT
+
 # Get the directory of the script and change to it
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$DIR"
@@ -24,7 +33,7 @@ cleanup_port() {
 
 # Pre-flight: Clear ports to avoid "Address already in use" errors
 cleanup_port 8000
-cleanup_port 8550
+cleanup_port "$FLET_PORT"
 
 # 1. Activate Virtual Environment
 if [ -f "./.venv/bin/activate" ]; then
@@ -50,16 +59,21 @@ sleep 2
 echo "Starting Command Center UI (Flet)..."
 
 # Catch termination signals to properly close the backend
-trap "echo 'Shutting down...'; kill $BACKEND_PID 2>/dev/null; cleanup_port 8000; cleanup_port 8550; exit" INT TERM HUP
+trap "echo 'Shutting down...'; kill $BACKEND_PID 2>/dev/null; cleanup_port 8000; cleanup_port $FLET_PORT; exit" INT TERM HUP
 
-# Run Flet application (Web mode for better stability on Mac filesystem)
-# Using --web mode to avoid common socket issues with native windows on some macOS versions
-flet run --web --port 8550 main_app.py
+# Flet: --web with FLET_USE_WEB=1, or native window when FLET_USE_WEB=0
+if [ "$FLET_USE_WEB" = "0" ] || [ "$FLET_USE_WEB" = "false" ] || [ "$FLET_USE_WEB" = "no" ] || [ "$FLET_USE_WEB" = "native" ]; then
+    echo "Flet UI: native desktop window (FLET_USE_WEB=$FLET_USE_WEB)"
+    flet run --port "$FLET_PORT" main_app.py
+else
+    echo "Flet UI: web browser (FLET_USE_WEB=$FLET_USE_WEB)"
+    flet run --web --port "$FLET_PORT" main_app.py
+fi
 
 # 4. Cleanup on exit (if Flet exits normally)
 echo "Closing application. Cleaning up background processes..."
 kill $BACKEND_PID 2>/dev/null
 cleanup_port 8000
-cleanup_port 8550
+cleanup_port "$FLET_PORT"
 
 echo "ARIAKE OCTA session securely terminated."
