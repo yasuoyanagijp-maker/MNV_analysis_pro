@@ -634,6 +634,7 @@ class MNVPipeline:
 
             t6_3 = time.perf_counter()
             try:
+                from ariake_octa.mnv.visualization_rgb import VisualizationRGB
                 visualizer = VisualizationRGB(
                     pixel_size_mm=scale_manager.mm_per_pixel,
                     scale_bar_length_mm=0.5,
@@ -641,24 +642,15 @@ class MNVPipeline:
                 )
                 metrics_for_vis = {
                     "lesion_area_mm2": mnv_area_mm2,
-                    "vessel_density_percent": vessel_density * 100
-                    if vessel_density
-                    else 0,
-                    "skeleton_num_junctions": skeleton_results.get(
-                        "num_junctions", 0
-                    ),
-                    "overall_fd_ratio_percent": fd_results.get(
-                        "FD_percent_R1", 0
-                    ),
+                    "vessel_density_percent": vessel_density * 100 if vessel_density else 0,
                 }
+                # Use the subtractive RGB method (Yellow=Normal, Red=Arteriolarization)
                 vis_rgb = visualizer.create_rgb_visualization(
                     original_image=image,
                     binary_vessel=binary,
                     lesion_mask=roi_mask,
                     metrics=metrics_for_vis,
-                    highskew_mask=skeleton_results.get(
-                        "dilated_highSkew_for_visualization"
-                    ),
+                    highskew_mask=skeleton_results.get("dilated_highSkew_for_visualization"),
                 )
             except Exception as e:
                 self.logger.warning(f"RGB visualization failed: {e}")
@@ -776,6 +768,13 @@ class MNVPipeline:
                         f"fd_image shape={fd_image.shape if 'fd_image' in locals() else None}"
                     )
                     fd_vis = None
+
+            # 保存（output_dir 指定時）
+            if output_dir and vis_rgb is not None:
+                debug_dir = Path(output_dir)
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(debug_dir / "visualization_rgb.png"), cv2.cvtColor(vis_rgb, cv2.COLOR_RGB2BGR))
+                self.logger.debug(f"  Saved color-coded visualization: {debug_dir / 'visualization_rgb.png'}")
 
             self.logger.debug(
                 f"[Step6] Step 6 subtotal: {time.perf_counter()-step_start:.3f}s"
@@ -1098,6 +1097,10 @@ class MNVPipeline:
             "pixel_size_um": scale_manager.pixel_size_um,
             "trunk_pattern": trunk_classification["pattern"],
             "trunk_score": trunk_classification["score"],
+            "tier1_score": trunk_classification["tier1_score"],
+            "tier2_score": trunk_classification["tier2_score"],
+            "tier3_score": trunk_classification["tier3_score"],
+            "tier4_score": trunk_classification["tier4_score"],
         }
 
     def _perform_flow_deficit_analysis(

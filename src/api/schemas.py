@@ -38,6 +38,19 @@ class MNVResult(BaseModel):
     stability_score: float = 0.0
     maturity_index: float = 0.0
     mnv_subtype: str = "Unknown"
+    # Advanced Spatial Metrics (New)
+    diameter_center_mean: float = 0.0
+    diameter_periphery_mean: float = 0.0
+    diameter_ratio: float = 1.0
+    thick_vessel_center_ratio: float = 0.0
+    thick_vessel_periphery_ratio: float = 0.0
+    angular_distribution_cv: float = 0.0
+    radial_uniformity: float = 0.0
+    # Pattern Logic Scores (New)
+    tier1_score: float = 0.0
+    tier2_score: float = 0.0
+    tier3_score: float = 0.0
+    tier4_score: float = 0.0
     # Flow deficit
     fd_percent_r1: float = 0.0
     fd_number_r1: int = 0

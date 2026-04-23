@@ -157,6 +157,19 @@ async def analyze_mnv(request: AnalysisRequest):
             stability_score=res.get("stability_score", 0.0),
             maturity_index=res.get("maturity_index", 0.0),
             mnv_subtype=res.get("mnv_subtype", "Unknown"),
+            # Advanced Spatial Metrics
+            diameter_center_mean=res.get("diameter_center_mean", 0.0),
+            diameter_periphery_mean=res.get("diameter_periphery_mean", 0.0),
+            diameter_ratio=res.get("diameter_center_periphery_ratio", 1.0),
+            thick_vessel_center_ratio=res.get("thick_vessel_center_ratio", 0.0),
+            thick_vessel_periphery_ratio=res.get("thick_vessel_periphery_ratio", 0.0),
+            angular_distribution_cv=res.get("angular_distribution_cv", 0.0),
+            radial_uniformity=res.get("radial_uniformity", 0.0),
+            # Pattern Logic Scores
+            tier1_score=res.get("tier1_score", 0.0),
+            tier2_score=res.get("tier2_score", 0.0),
+            tier3_score=res.get("tier3_score", 0.0),
+            tier4_score=res.get("tier4_score", 0.0),
             # Flow deficit
             fd_percent_r1=res.get("FD_percent_R1", 0.0),
             fd_number_r1=res.get("FD_number_R1", 0),
