@@ -7,7 +7,14 @@ import asyncio
 from pathlib import Path
 from components.shared import PRIMARY, TEXT_MUTED, AppContext
 from src.core.fast_region_growing import fast_region_growing
-from src.utils.cv2_path import imread_bgr
+from src.utils.cv2_path import (
+    BGR_READ_DECODE,
+    BGR_READ_NOT_FOUND,
+    BGR_READ_OK,
+    BGR_READ_OSERROR,
+    BGR_READ_PERMISSION,
+    imread_bgr_outcome,
+)
 
 async def get_roi_view(ctx: AppContext):
     target_path = ctx.page.session.get("target_path")
@@ -302,26 +309,44 @@ async def get_roi_view(ctx: AppContext):
 
             p = Path(clean_path)
             loop = asyncio.get_event_loop()
-            base_img = await loop.run_in_executor(None, lambda: imread_bgr(clean_path))
-            if base_img is None:
-                err = (
-                    f"❌ 画像の読み込みに失敗しました（形式不正・OneDrive 未同期・未保存の一時パス等）: {clean_path}"
-                )
-                ex = p.exists()
+            base_img, read_reason = await loop.run_in_executor(
+                None, lambda: imread_bgr_outcome(clean_path)
+            )
+            if base_img is None or read_reason != BGR_READ_OK:
                 try:
-                    sz = p.stat().st_size
+                    sz = p.stat().st_size if p.exists() else 0
                 except OSError:
                     sz = -1
                 print(
-                    f"DEBUG: ROI imread_bgr returned None (exists={ex}, st_size={sz})",
+                    f"DEBUG: ROI load failed reason={read_reason} exists={p.exists()} st_size={sz}",
                     flush=True,
                 )
-                load_error_text.value = err
+                if read_reason == BGR_READ_PERMISSION:
+                    load_error_text.value = (
+                        "❌ macOS がこのファイルの読み取りを拒否しています（Permission / OneDrive）。"
+                        " 同じパスでも、ターミナルや Cursor の「フルディスクアクセス」が無いと失敗することがあります。"
+                        " システム設定 → プライバシーとセキュリティ → フルディスクアクセス で、使っているターミナル（または Python）を許可するか、"
+                        "画像をプロジェクトの uploads/ などローカルフォルダへコピーしてから指定してください。"
+                    )
+                    await ctx.add_to_console(
+                        "read_bytes: Operation not permitted — 多くは TCC / OneDrive。午前は別ターミナルで起動していた可能性。",
+                        "ERROR",
+                    )
+                elif read_reason == BGR_READ_NOT_FOUND:
+                    load_error_text.value = f"❌ ファイルが見つかりません: {clean_path}"
+                elif read_reason == BGR_READ_DECODE:
+                    load_error_text.value = f"❌ 画像をデコードできません（破損・非対応形式）: {clean_path}"
+                elif read_reason == BGR_READ_OSERROR:
+                    load_error_text.value = f"❌ ファイル読み取りエラー: {clean_path}"
+                else:
+                    load_error_text.value = (
+                        f"❌ 画像の読み込みに失敗しました: {clean_path}"
+                    )
+                    await ctx.add_to_console(
+                        "形式・OneDrive 未同期・パスを確認してください。",
+                        "ERROR",
+                    )
                 load_error_text.visible = True
-                await ctx.add_to_console(
-                    "OpenCV: パスに日本語や空白が含まれる場合、ファイルを英語フォルダにコピーするか、OneDriveで「常にこのデバイスに保持」を試してください。",
-                    "ERROR",
-                )
                 ctx.page.update()
                 return
 

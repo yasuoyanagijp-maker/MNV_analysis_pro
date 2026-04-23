@@ -111,6 +111,7 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 - ターミナルに **`print(..., flush=True)`** や Flet/バックエンドのログを残す。Web の FilePicker は **`Picker attached` ログだけでは不十分**な場合があり、`page.web` の分岐を常に意識する。
 - バックエンド単体: `python src/api/main.py`、フロント単体: `flet run` または `python main_app.py`。
 - **画像パスに日本語やスペースが含まれる**と `cv2.imread` が `None` を返すことがある。`src/utils/cv2_path.py` の `imread_bgr` / `imread_grayscale`（`read_bytes` + `imdecode`、必要時 **Pillow**）を使う。ROI 画面では `Path.is_file()` の**事前**チェックをしない（`d967a9d` で入れた条件が原因で、以前と比べ失敗しやすくなっていた例がある）。OneDrive オンラインのみは引き続き注意。
+- **macOS `PermissionError` / `Operation not permitted`（exists は True、read_bytes だけ失敗）**: `Library/CloudStorage/.../OneDrive` 等で、**TCC により Python／ターミナルに読取権限がない**と発生。コード変更だけでは解消しない。**システム設定 → プライバシーとセキュリティ → フルディスクアクセス**（または**ファイルとフォルダ**）で、**実際に起動に使ったアプリ**（`Terminal.app` / `iTerm` / `Cursor` / `python` 等）を追加する。午前に動いて午後に失敗する場合は、**起動元ターミナルが違う**、設定変更後の再起動、が典型。代替: 画像を `uploads/` 等プロジェクト下へコピーして指定。
 
 ---
 
