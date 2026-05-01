@@ -384,12 +384,24 @@ async def get_roi_view(ctx: AppContext):
     # Load image initially
     await load_image_async()
 
+    batch_paths = ctx.page.session.get("mnv_batch_paths") or []
+    batch_idx = int(ctx.page.session.get("mnv_batch_index") or 0)
+    preview_names = ctx.page.session.get("mnv_batch_names_preview")
+    batch_caption = ""
+    if batch_paths:
+        batch_caption = f"MNV folder batch — image {batch_idx + 1} of {len(batch_paths)}: {Path(target_path).name}"
+        if isinstance(preview_names, list) and preview_names:
+            batch_caption += "\nキュー · " + " · ".join(str(n) for n in preview_names) + " （いずれも MNV）"
+
     return ft.Container(
         content=ft.Column([
             ft.Row([
                 ft.Column([
                     ft.Text("Step 1: ROI Refinement (Subtraction)", size=32, weight=FontWeight.BOLD, color=PRIMARY),
-                    ft.Text("Draw ROI and click dark areas to erase background noise.", color=TEXT_MUTED),
+                    ft.Text(
+                        batch_caption or "Draw ROI and click dark areas to erase background noise.",
+                        color=TEXT_MUTED,
+                    ),
                 ]),
                 ft.ElevatedButton(
                     "Confirm ROI & Proceed", icon=Icons.CHECK_CIRCLE,

@@ -4,12 +4,14 @@ import time
 from pathlib import Path
 import shutil
 from datetime import datetime
-from components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext
+import asyncio
+from components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, session_discard
 from src.utils.cv2_path import (
     BGR_READ_OK,
     BGR_READ_PERMISSION,
     imread_bgr_outcome,
 )
+from src.utils.batch_input_filter import filter_mnv_files_for_roi_selection
 
 async def get_dashboard_view(ctx: AppContext):
     # --- UI STATE ELEMENTS (Defined early for handler reference) ---
@@ -31,35 +33,11 @@ async def get_dashboard_view(ctx: AppContext):
     def _is_web() -> bool:
         return bool(getattr(ctx.page, "web", False))
 
-    async def on_folder_selected(e: ft.FilePickerResultEvent):
-        if not e.path:
-            print("DEBUG: [ON_RESULT] Folder selection cancelled.", flush=True)
-            return
-
-        print(f"DEBUG: [ON_RESULT] Folder selection event received: {e.path}", flush=True)
-        await load_batch_from_directory(e.path)
-
-    async def on_file_selected(e: ft.FilePickerResultEvent):
-        if not e.files:
-            print("DEBUG: [ON_RESULT] File selection cancelled or no files selected.", flush=True)
-            return
-
-        target = e.files[0].path
-        if target:
-            print(f"DEBUG: [ON_RESULT] File selected: {target}", flush=True)
-            await ctx.add_to_console(f"File selected: {Path(target).name}", "INFO")
-            await ctx.process_target_path(target)
-        else:
-            print("DEBUG: [ON_RESULT] Path is None", flush=True)
-
-    # --- STRICT SAFETY CHECK: Ensure pickers are attached and handlers are wired ---
+    # --- Ensure pickers on overlay (on_result wired after load_batch_from_directory; FilePicker API is sync only) ---
     if ctx.directory_picker not in ctx.page.overlay:
         ctx.page.overlay.append(ctx.directory_picker)
     if ctx.file_picker not in ctx.page.overlay:
         ctx.page.overlay.append(ctx.file_picker)
-    
-    ctx.directory_picker.on_result = on_folder_selected
-    ctx.file_picker.on_result = on_file_selected
     ctx.page.update()
     
     analysis_type = ft.Dropdown(
@@ -82,8 +60,27 @@ async def get_dashboard_view(ctx: AppContext):
         border_color=PRIMARY,
     )
 
-    async def on_manual_submit(e):
-        await ctx.process_target_path(e.control.value)
+    vd_sup_suffix = ft.TextField(
+        label="VD sup. suffix",
+        value="1.tif",
+        width=140,
+        tooltip="Superficial layer filename suffix (same as Streamlit / VDAnalyzer).",
+        border_color=PRIMARY,
+    )
+    vd_deep_suffix = ft.TextField(
+        label="VD deep suffix",
+        value="2.tif",
+        width=140,
+        tooltip="Deep layer filename suffix.",
+        border_color=PRIMARY,
+    )
+    vd_side = ft.Dropdown(
+        label="VD eye side",
+        options=[ft.dropdown.Option("right"), ft.dropdown.Option("left")],
+        value="right",
+        width=120,
+        border_color=PRIMARY,
+    )
 
     manual_path = ft.TextField(
         label="Manual Path (Paste folder/file path here if picker fails)",
@@ -91,8 +88,15 @@ async def get_dashboard_view(ctx: AppContext):
         expand=True,
         text_size=12,
         height=40,
-        on_submit=on_manual_submit
     )
+
+    async def on_manual_submit(_=None):
+        raw = (manual_path.value or "").strip().strip("'").strip('"')
+        if not raw:
+            return
+        await ctx.process_target_path(raw)
+
+    manual_path.on_submit = lambda _: ctx.page.run_task(on_manual_submit)
 
     async def start_unified_analysis(e):
         if manual_path.value:
@@ -148,19 +152,25 @@ async def get_dashboard_view(ctx: AppContext):
                         leading=ft.Icon(icon, color=color),
                         title=ft.Text(item["name"], size=14),
                         data={"path": item["path"], "is_dir": item["is_dir"]},
-                        on_click=handle_item_click,
+                        on_click=lambda e: ctx.page.run_task(handle_item_click, e),
                         subtitle=ft.Text(item["path"], size=10, color=TEXT_MUTED) if item["name"] == ".." else None
                     )
                 )
             ctx.page.update()
 
-        async def confirm_selection(e):
+        async def confirm_selection(_=None):
             ctx.page.close(dlg)
             if on_select:
-                final_path = state.get("selected_file") or state["path"]
-                await on_select(final_path)
+                try:
+                    final_path = state.get("selected_file") or state["path"]
+                    await on_select(final_path)
+                except Exception as ex:
+                    import traceback
 
-        async def cancel_selection(e):
+                    print(traceback.format_exc(), flush=True)
+                    await ctx.add_to_console(f"Confirm selection failed: {ex}", "ERROR")
+
+        async def cancel_selection(_=None):
             ctx.page.close(dlg)
 
         dlg = ft.AlertDialog(
@@ -176,8 +186,13 @@ async def get_dashboard_view(ctx: AppContext):
                 height=500
             ),
             actions=[
-                ft.TextButton("Cancel", on_click=cancel_selection),
-                ft.ElevatedButton("Confirm Selection", bgcolor=PRIMARY, color=Colors.BLACK, on_click=confirm_selection)
+                ft.TextButton("Cancel", on_click=lambda _: ctx.page.run_task(cancel_selection)),
+                ft.ElevatedButton(
+                    "Confirm Selection",
+                    bgcolor=PRIMARY,
+                    color=Colors.BLACK,
+                    on_click=lambda _: ctx.page.run_task(confirm_selection),
+                ),
             ],
             bgcolor=GLASS_BG,
         )
@@ -233,6 +248,10 @@ async def get_dashboard_view(ctx: AppContext):
                 row.cells[3].content.color = Colors.RED_400
                 await ctx.add_to_console(f"Preflight: file not found [{p.name}]", "ERROR")
                 continue
+            if p.is_dir():
+                row.cells[3].content.value = "Ready"
+                row.cells[3].content.color = PRIMARY
+                continue
             img, reason = imread_bgr_outcome(file_path)
             if img is None or reason != BGR_READ_OK:
                 readiness[i] = False
@@ -266,7 +285,14 @@ async def get_dashboard_view(ctx: AppContext):
         
         all_results = []
         total = len(batch_table.rows)
-        
+        vd_folder_cache = {}
+
+        def _vd_cache_key(vd_dir: str, single: bool) -> tuple:
+            sup = (vd_sup_suffix.value or "").strip() or "1.tif"
+            deep = (vd_deep_suffix.value or "").strip() or "2.tif"
+            side = (vd_side.value or "right").strip() or "right"
+            return (vd_dir, single, sup, deep, side)
+
         await ctx.add_to_console(f"Starting batch analysis for {total} files...", "INFO")
         readiness = await run_batch_preflight()
         runnable = sum(1 for ok in readiness if ok)
@@ -285,7 +311,7 @@ async def get_dashboard_view(ctx: AppContext):
         for i, row in enumerate(batch_table.rows):
             file_path = row.data["path"].strip().strip("'").strip('"')
             filename = Path(file_path).name
-            analysis_mode = row.cells[1].content.value
+            analysis_mode = row.data.get("queue_kind") or row.cells[1].content.value
             if not readiness[i]:
                 all_results.append(
                     {"error": "Preflight failed (unreadable/missing)", "source_filename": filename, "status": "failed"}
@@ -307,17 +333,35 @@ async def get_dashboard_view(ctx: AppContext):
                         intelligent_roi=intelligent_roi_switch.value
                     )
                 else:
-                    res = await ctx.client.start_vd_analysis(
-                        input_dir=file_path, 
-                        scale=float(scale_mm.value)
-                    )
-                
+                    pfp = Path(file_path)
+                    vd_dir = str(pfp.resolve()) if pfp.is_dir() else str(pfp.parent.resolve())
+                    single_im = analysis_mode == "VD_SINGLE"
+                    ck = _vd_cache_key(vd_dir, single_im)
+                    if ck in vd_folder_cache:
+                        res = vd_folder_cache[ck]
+                    else:
+                        res = await ctx.client.start_vd_analysis(
+                            vd_dir,
+                            float(scale_mm.value),
+                            side=str(vd_side.value or "right"),
+                            sup_suffix=(vd_sup_suffix.value or "").strip() or "1.tif",
+                            deep_suffix=(vd_deep_suffix.value or "").strip() or "2.tif",
+                            single_image_mode=single_im,
+                        )
+                        vd_folder_cache[ck] = res
+
                 if "error" in res:
                     raise Exception(res["error"])
-                
+
                 row.cells[3].content.value = "Success"
                 row.cells[3].content.color = Colors.GREEN_400
-                all_results.append(res)
+                if analysis_mode == "MNV":
+                    all_results.append(res)
+                else:
+                    out = dict(res)
+                    if not Path(file_path).is_dir():
+                        out["source_filename"] = filename
+                    all_results.append(out)
                 
             except Exception as ex:
                 print(f"Batch Error on {filename}: {str(ex)}")
@@ -343,7 +387,7 @@ async def get_dashboard_view(ctx: AppContext):
         icon=Icons.PLAY_CIRCLE_FILL_ROUNDED,
         bgcolor=PRIMARY, 
         color=Colors.BLACK,
-        on_click=run_batch_analysis,
+        on_click=lambda _: ctx.page.run_task(run_batch_analysis, None),
         width=300
     )
 
@@ -411,33 +455,126 @@ async def get_dashboard_view(ctx: AppContext):
                 return
 
         batch_table.rows.clear()
-        for f in files:
-            size_mb = f.stat().st_size / (1024 * 1024)
-            detected_type = "MNV" if "mnv" in f.name.lower() else "VD"
+        batch_plan = analysis_type.value
+
+        if batch_plan == "MNV":
+            raw_count = len(files)
+            files = filter_mnv_files_for_roi_selection(files, "MNV")
+            if not files:
+                await ctx.add_to_console(
+                    "MNV folder filter removed all files (*1/*2/*4 and image1/2/4 patterns). Nothing to analyze.",
+                    "ERROR",
+                )
+                return
+            if len(files) < raw_count:
+                await ctx.add_to_console(
+                    f"MNV folder filter: {raw_count} → {len(files)} file(s) (Streamlit-aligned suffix rules).",
+                    "INFO",
+                )
+            paths_ordered = [str(f.resolve()) for f in files]
+            preview_names = [Path(p).name for p in paths_ordered]
+            ctx.page.session.set("mnv_batch_paths", paths_ordered)
+            ctx.page.session.set("mnv_batch_index", 0)
+            ctx.page.session.set("mnv_batch_results", [])
+            ctx.page.session.set("mnv_batch_names_preview", preview_names)
+            session_discard(ctx.page.session, "mnv_batch_awaiting_qc")
+            session_discard(ctx.page.session, "last_result")
+            session_discard(ctx.page.session, "batch_results")
+            session_discard(ctx.page.session, "results_selected_index")
+            ctx.page.session.set("target_path", paths_ordered[0])
+            ctx.page.session.set("scale", float(scale_mm.value))
+            session_discard(ctx.page.session, "roi")
+            session_discard(ctx.page.session, "roi_mask_b64")
+            batch_table.rows.clear()
+            for fp_str in paths_ordered:
+                pf = Path(fp_str)
+                try:
+                    mb = pf.stat().st_size / (1024 * 1024)
+                    sz_txt = f"{mb:.2f} MB"
+                except OSError:
+                    sz_txt = "—"
+                batch_table.rows.append(
+                    ft.DataRow(
+                        cells=[
+                            ft.DataCell(ft.Text(pf.name, size=12)),
+                            ft.DataCell(ft.Text("MNV", size=10, color=PRIMARY)),
+                            ft.DataCell(ft.Text(sz_txt, size=11, color=TEXT_MUTED)),
+                            ft.DataCell(ft.Text("ROI queue", color=PRIMARY, size=11)),
+                        ],
+                        data={"path": fp_str, "queue_kind": "MNV"},
+                    )
+                )
+            batch_container.visible = True
+            ctx.page.update()
+            await ctx.add_to_console(
+                f"MNV batch: {len(paths_ordered)} file(s). Opening ROI for image 1 — draw ROI, then confirm and run analysis.",
+                "INFO",
+            )
+            await asyncio.sleep(0.35)
+            ctx.page.go("/roi")
+            return
+        elif batch_plan in ("VD_BATCH", "VD_SINGLE"):
+            root_dir = files[0].parent
+            total_mb = sum(f.stat().st_size for f in files) / (1024 * 1024)
+            sup = (vd_sup_suffix.value or "").strip() or "1.tif"
+            deep = (vd_deep_suffix.value or "").strip() or "2.tif"
+            mode_label = "VD (pairs)" if batch_plan == "VD_BATCH" else "VD (single)"
             batch_table.rows.append(
                 ft.DataRow(
                     cells=[
-                        ft.DataCell(ft.Text(f.name, size=12)),
                         ft.DataCell(
                             ft.Text(
-                                detected_type,
-                                size=10,
-                                color=Colors.AMBER_400 if detected_type == "MNV" else Colors.BLUE_400,
+                                f"{mode_label}: {len(files)} images in {root_dir.name} | sup={sup} deep={deep}",
+                                size=12,
                             )
                         ),
-                        ft.DataCell(ft.Text(f"{size_mb:.1f} MB", size=11, color=TEXT_MUTED)),
+                        ft.DataCell(ft.Text(mode_label, size=10, color=Colors.BLUE_400)),
+                        ft.DataCell(ft.Text(f"{total_mb:.1f} MB (total)", size=11, color=TEXT_MUTED)),
                         ft.DataCell(ft.Text("Ready", color=PRIMARY, size=11)),
                     ],
-                    data={"path": str(f.resolve())},
+                    data={"path": str(root_dir.resolve()), "queue_kind": batch_plan},
                 )
             )
+        else:
+            await ctx.add_to_console(f"Unknown analysis type: {batch_plan}", "ERROR")
+            return
 
         batch_container.visible = True
         ctx.page.update()
         await ctx.add_to_console(f"Found {len(files)} images. Auto-starting analysis...", "INFO")
         await run_batch_analysis(None)
 
-    async def handle_select_folder(e):
+    ctx.folder_batch_loader = load_batch_from_directory
+
+    async def _directory_picker_result_async(e: ft.FilePickerResultEvent):
+        if not e.path:
+            print("DEBUG: [ON_RESULT] Folder selection cancelled.", flush=True)
+            return
+        print(f"DEBUG: [ON_RESULT] Folder selection event received: {e.path}", flush=True)
+        await load_batch_from_directory(e.path)
+
+    def _directory_picker_result(e: ft.FilePickerResultEvent):
+        ctx.page.run_task(_directory_picker_result_async, e)
+
+    async def _file_picker_result_async(e: ft.FilePickerResultEvent):
+        if not e.files:
+            print("DEBUG: [ON_RESULT] File selection cancelled or no files selected.", flush=True)
+            return
+        target = e.files[0].path
+        if target:
+            print(f"DEBUG: [ON_RESULT] File selected: {target}", flush=True)
+            await ctx.add_to_console(f"File selected: {Path(target).name}", "INFO")
+            await ctx.process_target_path(target)
+        else:
+            print("DEBUG: [ON_RESULT] Path is None", flush=True)
+
+    def _file_picker_result(e: ft.FilePickerResultEvent):
+        ctx.page.run_task(_file_picker_result_async, e)
+
+    ctx.directory_picker.on_result = _directory_picker_result
+    ctx.file_picker.on_result = _file_picker_result
+
+    async def handle_select_folder(_=None):
         print("DEBUG: [FOLDER] Launching directory picker...", flush=True)
         if _is_web():
             print(
@@ -454,7 +591,7 @@ async def get_dashboard_view(ctx: AppContext):
         else:
             print("ERROR: directory_picker is None or missing from Context", flush=True)
 
-    async def handle_select_file(e):
+    async def handle_select_file(_=None):
         print("DEBUG: [FILE] Launching file picker...", flush=True)
         if _is_web():
             print(
@@ -485,11 +622,26 @@ async def get_dashboard_view(ctx: AppContext):
                 content=ft.Column([
                     ft.Text("1. Configure Engine", size=20, weight=FontWeight.BOLD, color=PRIMARY),
                     ft.Row([
-                        analysis_type, 
+                        analysis_type,
                         scale_mm,
                         intelligent_roi_switch,
-                        manual_path
+                        manual_path,
                     ], spacing=20, vertical_alignment=ft.CrossAxisAlignment.END),
+                    ft.Row(
+                        [
+                            vd_sup_suffix,
+                            vd_deep_suffix,
+                            vd_side,
+                        ],
+                        spacing=16,
+                        vertical_alignment=ft.CrossAxisAlignment.END,
+                    ),
+                    ft.Text(
+                        "Folder batch: choose Analysis Type first. MNV applies *1/*2/*4 + image1/2/4 exclusion, then opens ROI per file; "
+                        "after each result use OK for next image or Redo ROI. VD (pairs) uses sup/deep suffixes; VD (single) runs single-image mode on the folder.",
+                        size=11,
+                        color=TEXT_MUTED,
+                    ),
                     ft.Row([staging_copy_switch], spacing=10),
                     ft.Divider(height=40, color=Colors.TRANSPARENT),
                     ft.Text("2. Launch Analytics", size=20, weight=FontWeight.BOLD, color=PRIMARY),
@@ -512,7 +664,7 @@ async def get_dashboard_view(ctx: AppContext):
                                     icon=Icons.FOLDER_OPEN,
                                     bgcolor=PRIMARY, 
                                     color=Colors.BLACK,
-                                    on_click=handle_select_folder,
+                                    on_click=lambda _: ctx.page.run_task(handle_select_folder),
                                     width=250
                                 ),
                             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),
@@ -531,7 +683,7 @@ async def get_dashboard_view(ctx: AppContext):
                                     icon=Icons.IMAGE_OUTLINED,
                                     bgcolor=Colors.AMBER_400, 
                                     color=Colors.BLACK,
-                                    on_click=handle_select_file,
+                                    on_click=lambda _: ctx.page.run_task(handle_select_file),
                                     width=250
                                 ),
                             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),

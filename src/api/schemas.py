@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 class ROI(BaseModel):
     x: int
@@ -65,6 +65,8 @@ class MNVResult(BaseModel):
     # Base64-encoded images for Flet Web display (avoids local path issues)
     visualization_base64: Optional[str] = None
     mask_base64: Optional[str] = None
+    # Pipeline scalars for ImageJ-compatible CSV (same keys as MNVPipeline.analyze minus arrays)
+    csv_metrics: Optional[Dict[str, Any]] = None
 
 class VDRequest(BaseModel):
     input_dir: str

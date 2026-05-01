@@ -1,11 +1,23 @@
 import flet as ft
 import uuid
 import json
+import sys
+import time
 from pathlib import Path
 from flet import Colors, Icons, FontWeight
-from components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, safe_round
+from components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, safe_round, session_discard
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_SRC = _PROJECT_ROOT / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+from utils.mnv_imagej_csv import (
+    _metrics_to_imagej_row,
+    build_csv_bytes_from_imagej_rows,
+    metrics_from_session_result_row,
+    qc_status_for_row,
+)
 
 async def get_results_view(ctx: AppContext):
     # --- DATA INITIALIZATION ---
@@ -13,52 +25,183 @@ async def get_results_view(ctx: AppContext):
     if not batch_results and ctx.page.session.get("last_result"):
         batch_results = [ctx.page.session.get("last_result")]
 
+    awaiting_mnv_batch_qc = bool(ctx.page.session.get("mnv_batch_awaiting_qc"))
+
     # Selection State (Default to Summary if multiple, or the first result)
     # We use a simple list index, -1 means Summary
     selected_index = ctx.page.session.get("results_selected_index")
     if selected_index is None:
         selected_index = -1 if len(batch_results) > 1 else 0
         ctx.page.session.set("results_selected_index", selected_index)
+    if awaiting_mnv_batch_qc and batch_results:
+        selected_index = 0
+        ctx.page.session.set("results_selected_index", 0)
 
     # --- ACTION HANDLERS ---
     async def select_result(index):
         ctx.page.session.set("results_selected_index", index)
-        await ctx.page.go("/results") # Refresh view
+        # Bump query so Page.go fires route_change while already on /results (SPA same-path no-op otherwise)
+        ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
 
-    async def on_export_batch_csv(e):
+    async def on_export_batch_csv(_=None):
         try:
-            if not batch_results: return
-            # Combine all results into one CSV string
-            csv_rows = []
-            # Header
-            headers = ["Filename", "Type", "Area_mm2", "VesselDensity_%", "FractalDim", "Complexity", "Maturity", "Timestamp"]
-            csv_rows.append(",".join(headers))
-            
-            for res in batch_results:
-                row = [
-                    res.get("source_filename", "N/A"),
-                    res.get("result_type", "MNV"),
-                    str(safe_round(res.get("mnv_area_mm2", 0), 4)),
-                    str(safe_round(res.get("vessel_density", 0) * 100, 2)),
-                    str(safe_round(res.get("fractal_dimension", 0), 4)),
-                    str(safe_round(res.get("complexity_score", 0), 2)),
-                    str(safe_round(res.get("maturity_index", 0), 2)),
-                    res.get("analysis_timestamp", "N/A")
-                ]
-                csv_rows.append(",".join(row))
-            
-            csv_text = "\n".join(csv_rows)
-            ctx.page.set_clipboard(csv_text)
-            
+            if not batch_results:
+                return
+            mnv_rows = [
+                r
+                for r in batch_results
+                if str(r.get("result_type") or "MNV") == "MNV"
+            ]
+            if not mnv_rows:
+                await ctx.add_to_console(
+                    "Export combined CSV: no MNV rows in this batch (VD-only batches are skipped).",
+                    "WARN",
+                )
+                ctx.page.update()
+                return
+            ordered = sorted(
+                mnv_rows,
+                key=lambda x: str(x.get("source_filename") or ""),
+            )
+            uname = (ctx.page.session.get("username") or "").strip()
+            meta = {
+                "Analyst": uname if uname else "Unknown",
+                "Started At": str(ctx.page.session.get("analysis_started_at") or ""),
+                "Ended At": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "Duration Sec": float(ctx.page.session.get("analysis_duration_sec") or 0.0),
+                "Session ID": str(ctx.page.session.get("session_id") or ""),
+            }
+            rows = []
+            for idx, r in enumerate(ordered):
+                fn = str(r.get("source_filename") or "N/A")
+                success = "error" not in r
+                metrics = metrics_from_session_result_row(r)
+                rows.append(
+                    _metrics_to_imagej_row(
+                        fn,
+                        idx,
+                        qc_status_for_row(r),
+                        success,
+                        metrics,
+                    )
+                )
+            csv_bytes = build_csv_bytes_from_imagej_rows(rows, meta)
+            exports_dir = _PROJECT_ROOT / "uploads" / "exports"
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            fname = f"mnv_batch_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.csv"
+            out_path = (exports_dir / fname).resolve()
+            out_path.write_bytes(csv_bytes)
+
+            try:
+                ctx.page.set_clipboard(csv_bytes.decode("utf-8-sig"))
+            except Exception:
+                pass
+
+            is_web = bool(getattr(ctx.page, "web", False))
+            if is_web:
+                export_url = f"{ctx.client.base_url.rstrip('/')}/download_export/{fname}"
+                ctx.page.launch_url(export_url)
+            elif ctx.save_file_picker:
+
+                async def on_csv_save_pick(e: ft.FilePickerResultEvent):
+                    if not getattr(e, "path", None):
+                        return
+                    try:
+                        Path(e.path).write_bytes(csv_bytes)
+                        await ctx.add_to_console(f"CSV saved: {Path(e.path).name}", "SUCCESS")
+                    except Exception as sav_ex:
+                        await ctx.add_to_console(f"CSV save failed: {sav_ex}", "ERROR")
+                    ctx.page.update()
+
+                def sync_csv_pick(ev: ft.FilePickerResultEvent):
+                    ctx.page.run_task(on_csv_save_pick, ev)
+
+                ctx.save_file_picker.on_result = sync_csv_pick
+                ctx.save_file_picker.save_file(
+                    dialog_title="Export combined CSV",
+                    file_name=fname,
+                    allowed_extensions=["csv"],
+                )
+
+            if is_web:
+                help_body = (
+                    "ImageJ 互換の全列 CSV を uploads/exports に保存しました（UTF-8 BOM、mainstreamer と同一列）。\n\n"
+                    f"{out_path}\n\n"
+                    "ブラウザではバックエンドのダウンロード URL を開きます（Safari でも data: URL より表示・保存しやすいです）。\n"
+                    f"{ctx.client.base_url.rstrip('/')}/download_export/{fname}\n\n"
+                    "※ クリップボードへの自動コピーは環境によりブロックされることがあります。"
+                )
+            else:
+                help_body = (
+                    "ImageJ 互換の全列 CSV を次のファイルに書き出しました（mainstreamer と同一列）:\n\n"
+                    f"{out_path}\n\n"
+                    "保存ダイアログで任意の場所にもコピーを保存できます。\n"
+                    "（クリップボードへの転送も試みましたが、環境により無効です。）"
+                )
+
             d = ft.AlertDialog(
                 title=ft.Text("Batch CSV Export", color=Colors.WHITE),
-                content=ft.Text("全件のデータをCSV形式でクリップボードにコピーしました。\nExcel等に直接貼り付けて保存できます。", color=TEXT_MUTED),
+                content=ft.Container(
+                    content=ft.Text(
+                        help_body,
+                        selectable=True,
+                        size=12,
+                        color=TEXT_MUTED,
+                    ),
+                    width=520,
+                ),
                 bgcolor=GLASS_BG,
             )
             ctx.page.open(d)
         except Exception as ex:
             await ctx.add_to_console(f"Batch Export Error: {ex}", "ERROR")
         ctx.page.update()
+
+    async def on_mnv_batch_ok(_=None):
+        res = ctx.page.session.get("last_result")
+        if not res:
+            await ctx.add_to_console(
+                "MNV batch OK: missing last_result (session); cannot finalize this step. Try analyzing again.",
+                "ERROR",
+            )
+            ctx.page.update()
+            return
+        paths = ctx.page.session.get("mnv_batch_paths") or []
+        idx = int(ctx.page.session.get("mnv_batch_index") or 0)
+        acc = list(ctx.page.session.get("mnv_batch_results") or [])
+        acc.append(res)
+        ctx.page.session.set("mnv_batch_results", acc)
+        session_discard(ctx.page.session, "mnv_batch_awaiting_qc")
+        next_i = idx + 1
+        ctx.page.session.set("mnv_batch_index", next_i)
+        session_discard(ctx.page.session, "roi")
+        session_discard(ctx.page.session, "roi_mask_b64")
+        session_discard(ctx.page.session, "last_result")
+        session_discard(ctx.page.session, "batch_results")
+        session_discard(ctx.page.session, "results_selected_index")
+        if next_i < len(paths):
+            ctx.page.session.set("target_path", paths[next_i])
+            await ctx.add_to_console(f"MNV batch: accepted. Opening ROI for file {next_i + 1}/{len(paths)}.", "INFO")
+            ctx.page.go("/roi")
+        else:
+            ctx.page.session.set("batch_results", acc)
+            session_discard(ctx.page.session, "mnv_batch_paths")
+            session_discard(ctx.page.session, "mnv_batch_index")
+            session_discard(ctx.page.session, "mnv_batch_results")
+            session_discard(ctx.page.session, "mnv_batch_names_preview")
+            ctx.page.session.set("results_selected_index", -1)
+            await ctx.add_to_console(f"MNV batch complete: {len(acc)} file(s).", "SUCCESS")
+            ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
+
+    async def on_mnv_batch_redo(_=None):
+        session_discard(ctx.page.session, "mnv_batch_awaiting_qc")
+        session_discard(ctx.page.session, "roi")
+        session_discard(ctx.page.session, "roi_mask_b64")
+        session_discard(ctx.page.session, "last_result")
+        session_discard(ctx.page.session, "batch_results")
+        session_discard(ctx.page.session, "results_selected_index")
+        await ctx.add_to_console("MNV batch: redo ROI for the same image.", "INFO")
+        ctx.page.go("/roi")
 
     async def on_save_individual_pdf(res):
         from utils.report_generator import generate_pdf_report
@@ -99,6 +242,12 @@ async def get_results_view(ctx: AppContext):
     # --- VIEWS ---
 
     def get_summary_content():
+        def _open_summary_row_detail(i: int):
+            def _tap(_):
+                ctx.page.run_task(select_result, i)
+
+            return _tap
+
         # Calculate stats
         total = len(batch_results)
         success_count = len([r for r in batch_results if "error" not in r])
@@ -109,7 +258,13 @@ async def get_results_view(ctx: AppContext):
             ft.Row([
                 ft.Text("Batch Analytics Summary", size=32, weight=FontWeight.BOLD),
                 ft.Container(expand=True),
-                ft.ElevatedButton("Export Combined CSV", icon=Icons.FILE_DOWNLOAD_ROUNDED, bgcolor=PRIMARY, color=Colors.BLACK, on_click=on_export_batch_csv)
+                ft.ElevatedButton(
+                    "Export Combined CSV",
+                    icon=Icons.FILE_DOWNLOAD_ROUNDED,
+                    bgcolor=PRIMARY,
+                    color=Colors.BLACK,
+                    on_click=lambda _: ctx.page.run_task(on_export_batch_csv),
+                )
             ]),
             ft.Text(f"Overview of {total} processed images", color=TEXT_MUTED),
             ft.Divider(height=40, color=Colors.TRANSPARENT),
@@ -123,7 +278,7 @@ async def get_results_view(ctx: AppContext):
             
             ft.Divider(height=40, color=Colors.with_opacity(0.1, Colors.WHITE)),
             ft.Text("File Breakdown", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-            
+
             ft.DataTable(
                 columns=[
                     ft.DataColumn(ft.Text("Source File")),
@@ -132,17 +287,26 @@ async def get_results_view(ctx: AppContext):
                     ft.DataColumn(ft.Text("Vessel Density")),
                 ],
                 rows=[
-                    ft.DataRow(cells=[
-                        ft.DataCell(ft.Text(r.get("source_filename", "Unknown"), size=13)),
-                        ft.DataCell(ft.Icon(Icons.CHECK_CIRCLE, color=Colors.GREEN_400, size=18) if "error" not in r else ft.Icon(Icons.ERROR, color=Colors.RED_400, size=18)),
-                        ft.DataCell(ft.Text(f"{safe_round(r.get('mnv_area_mm2', 0), 4)} mm²")),
-                        ft.DataCell(ft.Text(f"{safe_round(r.get('vessel_density', 0)*100, 2)} %")),
-                    ], on_select=lambda _, i=idx: select_result(i))
+                    ft.DataRow(
+                        cells=[
+                            ft.DataCell(
+                                ft.Text(r.get("source_filename", "Unknown"), size=13),
+                                on_tap=_open_summary_row_detail(idx),
+                            ),
+                            ft.DataCell(
+                                ft.Icon(Icons.CHECK_CIRCLE, color=Colors.GREEN_400, size=18)
+                                if "error" not in r
+                                else ft.Icon(Icons.ERROR, color=Colors.RED_400, size=18)
+                            ),
+                            ft.DataCell(ft.Text(f"{safe_round(r.get('mnv_area_mm2', 0), 4)} mm²")),
+                            ft.DataCell(ft.Text(f"{safe_round(r.get('vessel_density', 0)*100, 2)} %")),
+                        ]
+                    )
                     for idx, r in enumerate(batch_results)
                 ],
                 bgcolor=Colors.with_opacity(0.02, Colors.WHITE),
                 border_radius=15,
-            )
+            ),
         ], scroll=ft.ScrollMode.ADAPTIVE, spacing=10)
 
     def get_detail_content(idx):
@@ -155,7 +319,13 @@ async def get_results_view(ctx: AppContext):
                     ft.Text(res.get("source_filename", "Result Detail"), size=28, weight=FontWeight.BOLD),
                     ft.Text(f"Analysis Type: {'MNV' if is_mnv else 'VD'} | Timestamp: {res.get('analysis_timestamp', 'N/A')}", color=TEXT_MUTED),
                 ], expand=True),
-                ft.ElevatedButton("Save PDF Report", icon=Icons.PICTURE_AS_PDF_ROUNDED, bgcolor=PRIMARY, color=Colors.BLACK, on_click=lambda _: on_save_individual_pdf(res))
+                ft.ElevatedButton(
+                    "Save PDF Report",
+                    icon=Icons.PICTURE_AS_PDF_ROUNDED,
+                    bgcolor=PRIMARY,
+                    color=Colors.BLACK,
+                    on_click=lambda _: ctx.page.run_task(on_save_individual_pdf, res),
+                )
             ]),
             
             ft.Divider(height=20, color=Colors.TRANSPARENT),
@@ -212,7 +382,7 @@ async def get_results_view(ctx: AppContext):
             leading=ft.Icon(Icons.DASHBOARD_ROUNDED, color=PRIMARY if selected_index == -1 else TEXT_MUTED),
             title=ft.Text("Global Summary", color=Colors.WHITE if selected_index == -1 else TEXT_MUTED),
             selected=selected_index == -1,
-            on_click=lambda _: select_result(-1),
+            on_click=lambda _: ctx.page.run_task(select_result, -1),
             hover_color=Colors.with_opacity(0.1, PRIMARY),
         )
     ]
@@ -225,10 +395,63 @@ async def get_results_view(ctx: AppContext):
                 title=ft.Text(r.get("source_filename", f"Item {idx+1}")[:20] + "...", size=13,
                              color=Colors.WHITE if selected_index == idx else TEXT_MUTED),
                 selected=selected_index == idx,
-                on_click=lambda _, i=idx: select_result(i),
+                on_click=lambda _, i=idx: ctx.page.run_task(select_result, i),
                 hover_color=Colors.with_opacity(0.1, PRIMARY),
             )
         )
+
+    paths_mnv = ctx.page.session.get("mnv_batch_paths") or []
+    idx_mnv = int(ctx.page.session.get("mnv_batch_index") or 0)
+    qc_banner = None
+    # Current QC step is for image index idx_mnv (0-based); last folder image => open combined summary next.
+    is_final_mnv_image = awaiting_mnv_batch_qc and paths_mnv and (idx_mnv + 1 >= len(paths_mnv))
+    ok_button_label = "OK — open final report" if is_final_mnv_image else "OK — next image"
+    qc_help_text = (
+        "これがフォルダ内の最後の画像です。OK で全件サマリー（個別詳細との切り替え・Combined CSV・各PDF）に進みます。"
+        if is_final_mnv_image
+        else "Review this result. OK continues to the next image (ROI again). Redo ROI reopens the ROI editor for the same file without keeping this run."
+    )
+    if awaiting_mnv_batch_qc and paths_mnv:
+        qc_banner = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text(
+                        f"MNV batch — image {idx_mnv + 1} of {len(paths_mnv)}",
+                        size=18,
+                        weight=FontWeight.BOLD,
+                        color=PRIMARY,
+                    ),
+                    ft.Text(qc_help_text, size=12, color=TEXT_MUTED),
+                    ft.Row(
+                        [
+                            ft.ElevatedButton(
+                                ok_button_label,
+                                icon=Icons.FACT_CHECK_ROUNDED if is_final_mnv_image else Icons.CHECK_CIRCLE,
+                                bgcolor=PRIMARY,
+                                color=Colors.BLACK,
+                                on_click=lambda _: ctx.page.run_task(on_mnv_batch_ok),
+                            ),
+                            ft.OutlinedButton(
+                                "Redo ROI",
+                                icon=Icons.CROP_FREE,
+                                style=ft.ButtonStyle(color=Colors.AMBER_400),
+                                on_click=lambda _: ctx.page.run_task(on_mnv_batch_redo),
+                            ),
+                        ],
+                        spacing=16,
+                    ),
+                ],
+                spacing=10,
+            ),
+            padding=20,
+            bgcolor=Colors.with_opacity(0.12, PRIMARY),
+            border_radius=12,
+            border=ft.border.all(1, Colors.with_opacity(0.35, PRIMARY)),
+        )
+
+    main_body = get_summary_content() if selected_index == -1 else get_detail_content(selected_index)
+    if qc_banner is not None:
+        main_body = ft.Column([qc_banner, main_body], expand=True, spacing=20)
 
     return ft.Row([
         # Sidebar
@@ -241,7 +464,7 @@ async def get_results_view(ctx: AppContext):
         ),
         # Main Content
         ft.Container(
-            content=get_summary_content() if selected_index == -1 else get_detail_content(selected_index),
+            content=main_body,
             expand=True,
             padding=40,
         )

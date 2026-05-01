@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 from pathlib import Path
 
 # Add project root and src to sys.path
@@ -17,6 +18,7 @@ from src.api.schemas import AnalysisRequest, MNVResult, VDRequest, VDResult, Log
 from core.mnv_pipeline import MNVPipeline
 from core.vd_analysis import VDAnalyzer
 from utils.cv2_path import imread_grayscale
+from utils.mnv_imagej_csv import metrics_for_csv_export
 import shutil
 import cv2
 import numpy as np
@@ -29,6 +31,24 @@ app = FastAPI(title="ARIAKE OCTA Engine API")
 # Ensure uploads directory exists
 UPLOAD_DIR = ROOT / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+EXPORTS_DIR = UPLOAD_DIR / "exports"
+EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/download_export/{filename}")
+async def download_export_csv(filename: str):
+    """Serve UTF-8 BOM CSV from uploads/exports (Flet Web / Safari-friendly)."""
+    if not re.fullmatch(r"[A-Za-z0-9._-]+\.csv", filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    path = EXPORTS_DIR / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(
+        path=str(path),
+        filename=filename,
+        media_type="text/csv; charset=utf-8",
+    )
+
 
 @app.get("/download/{filename}")
 async def download_file(filename: str):
@@ -183,6 +203,7 @@ async def analyze_mnv(request: AnalysisRequest):
             # Base64 for Flet Web display
             visualization_base64=viz_b64,
             mask_base64=mask_b64_result,
+            csv_metrics=metrics_for_csv_export(res),
         )
     except Exception as e:
         import traceback

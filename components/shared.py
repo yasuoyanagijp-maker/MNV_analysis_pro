@@ -3,7 +3,7 @@ from flet import Colors, Icons, FontWeight, Animation, AnimationCurve
 import time
 import httpx
 from pathlib import Path
-from typing import List, Optional
+from typing import Awaitable, Callable, List, Optional
 
 # Custom Theme Colors
 PRIMARY = "#00E5FF"  # Cyan Neon
@@ -11,6 +11,13 @@ PRIMARY_GLOW = "#00B8D4"
 BG_DARK = "#050510"
 GLASS_BG = "#151B2B"
 TEXT_MUTED = "#8B9BB4"
+
+
+def session_discard(session, key: str) -> None:
+    """Remove key if present. Flet SessionStorage has remove() only (no dict-like pop())."""
+    if session.contains_key(key):
+        session.remove(key)
+
 
 class BackendClient:
     def __init__(self, base_url="http://127.0.0.1:8000"):
@@ -46,13 +53,26 @@ class BackendClient:
             except Exception as e:
                 return {"error": f"Connection Failed: {str(e)}"}
 
-    async def start_vd_analysis(self, input_dir: str, scale: float):
+    async def start_vd_analysis(
+        self,
+        input_dir: str,
+        scale: float,
+        *,
+        side: str = "right",
+        sup_suffix: str = "1.tif",
+        deep_suffix: str = "2.tif",
+        single_image_mode: bool = False,
+    ):
         async with httpx.AsyncClient(timeout=600.0) as client:
             try:
                 payload = {
                     "input_dir": str(input_dir),
-                    "output_dir": "auto", # Backend handles this
-                    "scale_mm": scale
+                    "output_dir": "auto",  # Backend handles this
+                    "scale_mm": scale,
+                    "side": side,
+                    "sup_suffix": sup_suffix,
+                    "deep_suffix": deep_suffix,
+                    "single_image_mode": single_image_mode,
                 }
                 response = await client.post(
                     f"{self.base_url}/analyze/vd",
@@ -120,6 +140,8 @@ class AppContext:
         self.directory_picker = None
         self.save_file_picker = None
         self.process_target_path = None # Function reference
+        # Wired by dashboard: async (folder_path_str) → queue & go ROI (web + manual path paste)
+        self.folder_batch_loader: Optional[Callable[[str], Awaitable[None]]] = None
 
     async def add_to_console(self, message, level="INFO"):
         colors = {"INFO": PRIMARY, "ERROR": Colors.RED_400, "WARN": Colors.AMBER_400}

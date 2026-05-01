@@ -57,10 +57,27 @@ async def main(page: ft.Page):
         path = path.strip().strip("'").strip('"')
         p = Path(path)
         print(f"DEBUG: Processing path: {path}", flush=True)
+        try:
+            is_dir = p.is_dir()
+        except OSError as ose:
+            await ctx.add_to_console(f"Cannot access path: {ose}", "ERROR")
+            return
+
         page.session.set("target_path", str(p.absolute()))
-        
-        if p.is_dir():
-            # Directory selection usually populates the batch table in dashboard
+
+        if is_dir:
+            loader = getattr(ctx, "folder_batch_loader", None)
+            if loader is not None:
+                try:
+                    await loader(str(p.resolve()))
+                except Exception as ex:
+                    print(f"DEBUG: folder_batch_loader failed: {ex}", flush=True)
+                    await ctx.add_to_console(f"Folder batch failed: {ex}", "ERROR")
+            else:
+                await ctx.add_to_console(
+                    "Folder path paste: open the dashboard (home), then paste again or use Select Folder.",
+                    "WARN",
+                )
             return
             
         # Single File Navigation
@@ -98,33 +115,34 @@ async def main(page: ft.Page):
         if is_navigating: return
         is_navigating = True
         
-        current_route = page.route
-        print(f"DEBUG: NAVIGATING TO {current_route}", flush=True)
-        
+        route_full = page.route or ""
+        base_route = route_full.split("?", 1)[0]
+        print(f"DEBUG: NAVIGATING TO {route_full}", flush=True)
+
         try:
             # Login Guard (Bypassed in DEV_MODE)
             if not DEV_MODE:
                 current_user = page.session.get("user") or page.session.get("username")
-                if not current_user and current_route != "/login":
-                    print(f"DEBUG: Redirecting to /login from {current_route}", flush=True)
+                if not current_user and base_route != "/login":
+                    print(f"DEBUG: Redirecting to /login from {route_full}", flush=True)
                     page.go("/login")
                     is_navigating = False
                     return
 
             page.views.clear()
-            
-            if current_route == "/login":
+
+            if base_route == "/login":
                 view_content = await get_login_view(ctx)
-            elif current_route == "/":
+            elif base_route == "/":
                 view_content = await get_dashboard_view(ctx)
-            elif current_route == "/results":
+            elif base_route == "/results":
                 view_content = await get_results_view(ctx)
-            elif current_route == "/roi":
+            elif base_route == "/roi":
                 view_content = await get_roi_view(ctx)
-            elif current_route == "/mnv":
+            elif base_route == "/mnv":
                 view_content = await get_mnv_view(ctx)
             else:
-                view_content = ft.Text(f"404: {current_route}")
+                view_content = ft.Text(f"404: {route_full}")
 
             # Custom Sidebar Implementation (Replacement for NavigationRail to avoid crashes)
             sidebar = ft.Container(
@@ -132,9 +150,9 @@ async def main(page: ft.Page):
                     ft.Container(height=20),
                     ft.Icon(Icons.AUTO_AWESOME_ROUNDED, color=PRIMARY, size=40),
                     ft.Container(height=30),
-                    ft.IconButton(Icons.HOME_ROUNDED, on_click=lambda _: page.go("/"), tooltip="Home", icon_color=PRIMARY if current_route == "/" else TEXT_MUTED),
-                    ft.IconButton(Icons.ANALYTICS_ROUNDED, on_click=lambda _: page.go("/"), tooltip="Analysis", icon_color=PRIMARY if current_route in ["/mnv", "/roi"] else TEXT_MUTED),
-                    ft.IconButton(Icons.REMOVE_RED_EYE_ROUNDED, on_click=lambda _: page.go("/results"), tooltip="Results", icon_color=PRIMARY if current_route == "/results" else TEXT_MUTED),
+                    ft.IconButton(Icons.HOME_ROUNDED, on_click=lambda _: page.go("/"), tooltip="Home", icon_color=PRIMARY if base_route == "/" else TEXT_MUTED),
+                    ft.IconButton(Icons.ANALYTICS_ROUNDED, on_click=lambda _: page.go("/"), tooltip="Analysis", icon_color=PRIMARY if base_route in ["/mnv", "/roi"] else TEXT_MUTED),
+                    ft.IconButton(Icons.REMOVE_RED_EYE_ROUNDED, on_click=lambda _: page.go("/results", rt=uuid.uuid4().hex[:10]), tooltip="Results", icon_color=PRIMARY if base_route == "/results" else TEXT_MUTED),
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=20),
                 width=80,
                 bgcolor="#0A0A15",
@@ -143,10 +161,10 @@ async def main(page: ft.Page):
 
             page.views.append(
                 ft.View(
-                    current_route,
+                    route_full,
                     [
                         ft.Row([
-                            sidebar if current_route != "/login" else ft.Container(width=0),
+                            sidebar if base_route != "/login" else ft.Container(width=0),
                             ft.Container(
                                 content=view_content,
                                 expand=True,

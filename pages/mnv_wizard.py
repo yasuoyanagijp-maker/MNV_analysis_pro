@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import base64
 from pathlib import Path
-from components.shared import PRIMARY, TEXT_MUTED, AppContext
+from components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
 from src.utils.cv2_path import imread_bgr
 
 async def get_mnv_view(ctx: AppContext):
@@ -78,6 +78,11 @@ async def get_mnv_view(ctx: AppContext):
         else:
             ctx.page.session.set("last_result", result)
             ctx.page.session.set("is_vd_result", False)
+            batch_paths = ctx.page.session.get("mnv_batch_paths")
+            if batch_paths and isinstance(batch_paths, list) and len(batch_paths) > 0:
+                ctx.page.session.set("mnv_batch_awaiting_qc", True)
+                session_discard(ctx.page.session, "batch_results")
+                ctx.page.session.set("results_selected_index", 0)
             await ctx.add_to_console(f"MNV Result Received - Type: {result.get('result_type', 'N/A')}", "INFO")
             await asyncio.sleep(0.15)
             ctx.page.go("/results")
@@ -143,10 +148,19 @@ async def get_mnv_view(ctx: AppContext):
     # ----------------------------------------------------
     # UI Layout Construction
     # ----------------------------------------------------
+    batch_paths = ctx.page.session.get("mnv_batch_paths") or []
+    batch_idx = int(ctx.page.session.get("mnv_batch_index") or 0)
+    batch_hint = ""
+    if batch_paths:
+        batch_hint = f"MNV folder batch — image {batch_idx + 1} of {len(batch_paths)}. "
+
     return ft.Container(
         content=ft.Column([
             ft.Text("Step 2: Confirm & Analyze", size=32, weight=FontWeight.BOLD, color=Colors.WHITE),
-            ft.Text("Please verify your selected ROI below and start the automated analysis pipeline.", color=TEXT_MUTED),
+            ft.Text(
+                batch_hint + "Please verify your selected ROI below and start the automated analysis pipeline.",
+                color=TEXT_MUTED,
+            ),
             ft.Container(height=20),
             
             ft.Row([
