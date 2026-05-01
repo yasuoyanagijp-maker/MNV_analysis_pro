@@ -1,6 +1,7 @@
 import flet as ft
 import uuid
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -18,6 +19,7 @@ from utils.mnv_imagej_csv import (
     metrics_from_session_result_row,
     qc_status_for_row,
 )
+from utils.report_generator import generate_pdf_report
 
 async def get_results_view(ctx: AppContext):
     # --- DATA INITIALIZATION ---
@@ -204,16 +206,64 @@ async def get_results_view(ctx: AppContext):
         ctx.page.go("/roi")
 
     async def on_save_individual_pdf(res):
-        from utils.report_generator import generate_pdf_report
         out_dir = _PROJECT_ROOT / "uploads"
         out_dir.mkdir(exist_ok=True)
-        out_path = out_dir / f"ARIAKE_Report_{res.get('source_filename', 'result')}_{uuid.uuid4().hex[:4]}.pdf"
+        raw_name = str(res.get("source_filename") or "result")
+        stem = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(raw_name).stem).strip("._") or "report"
+        stem = stem[:60]
+        fname = f"ARIAKE_Report_{stem}_{uuid.uuid4().hex[:8]}.pdf"
+        out_path = (out_dir / fname).resolve()
         try:
             generate_pdf_report(res, str(out_path))
+            is_web = bool(getattr(ctx.page, "web", False))
+            # Open download URL before any await — browsers block navigation opened after an
+            # async barrier (trusted user gesture is lost).
+            if is_web:
+                dl = f"{ctx.client.base_url.rstrip('/')}/download/{fname}"
+                ctx.page.launch_url(dl)
+                help_body = (
+                    "PDF をサーバーの uploads に保存し、ダウンロード用の URL を開きました。\n\n"
+                    f"{out_path}\n\n"
+                    f"{dl}\n\n"
+                    "ブラウザで保存が始まらない場合は上記 URL をコピーして開いてください。"
+                )
+            elif ctx.save_file_picker:
+                pdf_bytes = out_path.read_bytes()
+
+                async def on_pdf_save_pick(e: ft.FilePickerResultEvent):
+                    if not getattr(e, "path", None):
+                        return
+                    try:
+                        Path(e.path).write_bytes(pdf_bytes)
+                        await ctx.add_to_console(f"PDF saved: {Path(e.path).name}", "SUCCESS")
+                    except Exception as sav_ex:
+                        await ctx.add_to_console(f"PDF save failed: {sav_ex}", "ERROR")
+                    ctx.page.update()
+
+                def sync_pdf_pick(ev: ft.FilePickerResultEvent):
+                    ctx.page.run_task(on_pdf_save_pick, ev)
+
+                ctx.save_file_picker.on_result = sync_pdf_pick
+                ctx.save_file_picker.save_file(
+                    dialog_title="Save PDF report",
+                    file_name=fname,
+                    allowed_extensions=["pdf"],
+                )
+                help_body = (
+                    f"PDF を次に保存しました（コピーを任意の場所に保存できます）:\n\n{out_path}\n\n"
+                    "保存ダイアログで別名・別フォルダにも書き出せます。"
+                )
+            else:
+                help_body = f"PDF を保存しました:\n\n{out_path}"
+
             await ctx.add_to_console(f"Report saved: {out_path.name}", "SUCCESS")
+
             d = ft.AlertDialog(
                 title=ft.Text("PDF Saved", color=Colors.WHITE),
-                content=ft.Text(f"レポートを保存しました:\n{out_path.name}\n\n場所: {out_dir}", color=TEXT_MUTED),
+                content=ft.Container(
+                    content=ft.Text(help_body, selectable=True, size=12, color=TEXT_MUTED),
+                    width=520,
+                ),
                 bgcolor=GLASS_BG,
             )
             ctx.page.open(d)
@@ -225,19 +275,70 @@ async def get_results_view(ctx: AppContext):
     
     def metric_tile(label, value, unit, icon, color):
         return ft.Container(
-            content=ft.Column([
-                ft.Row([ft.Icon(icon, color=color, size=16), ft.Text(label, size=12, color=TEXT_MUTED)]),
-                ft.Row([
-                    ft.Text(str(value), size=24, weight=FontWeight.BOLD, color=Colors.WHITE),
-                    ft.Text(unit, size=12, color=TEXT_MUTED)
-                ], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.END)
-            ], spacing=2),
+            content=ft.Column(
+                [
+                    ft.Row(
+                        [
+                            ft.Icon(icon, color=color, size=16),
+                            ft.Container(
+                                content=ft.Text(
+                                    label,
+                                    size=11,
+                                    color=TEXT_MUTED,
+                                    max_lines=3,
+                                ),
+                                expand=True,
+                            ),
+                        ],
+                        vertical_alignment=ft.CrossAxisAlignment.START,
+                    ),
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=ft.Text(
+                                    str(value),
+                                    size=22,
+                                    weight=FontWeight.BOLD,
+                                    color=Colors.WHITE,
+                                ),
+                                expand=True,
+                            ),
+                            ft.Text(unit, size=12, color=TEXT_MUTED),
+                        ],
+                        alignment=ft.MainAxisAlignment.START,
+                        vertical_alignment=ft.CrossAxisAlignment.END,
+                    ),
+                ],
+                spacing=2,
+            ),
             bgcolor=Colors.with_opacity(0.05, Colors.WHITE),
             padding=15,
             border_radius=12,
             border=ft.border.all(1, Colors.with_opacity(0.1, Colors.WHITE)),
-            expand=True
+            expand=True,
         )
+
+    def _detail_pipeline_metrics(r: dict) -> dict:
+        return metrics_from_session_result_row(r)
+
+    def _detail_avdi(r: dict):
+        m = _detail_pipeline_metrics(r)
+        vd, mi = m.get("vessel_density"), m.get("mean_intensity")
+        if vd is not None and mi is not None:
+            try:
+                return safe_round(float(vd) * float(mi) * 100, 2)
+            except (TypeError, ValueError):
+                pass
+        return "—"
+
+    def _detail_float_metric(m: dict, key: str, digits: int = 2):
+        v = m.get(key)
+        if v is None:
+            return "—"
+        try:
+            return safe_round(float(v), digits)
+        except (TypeError, ValueError):
+            return str(v)
 
     # --- VIEWS ---
 
@@ -254,119 +355,159 @@ async def get_results_view(ctx: AppContext):
         avg_area = safe_round(sum(r.get("mnv_area_mm2", 0) for r in batch_results) / total if total > 0 else 0, 3)
         avg_vd = safe_round(sum(r.get("vessel_density", 0) for r in batch_results) / total * 100 if total > 0 else 0, 2)
 
-        return ft.Column([
-            ft.Row([
-                ft.Text("Batch Analytics Summary", size=32, weight=FontWeight.BOLD),
-                ft.Container(expand=True),
-                ft.ElevatedButton(
-                    "Export Combined CSV",
-                    icon=Icons.FILE_DOWNLOAD_ROUNDED,
-                    bgcolor=PRIMARY,
-                    color=Colors.BLACK,
-                    on_click=lambda _: ctx.page.run_task(on_export_batch_csv),
-                )
-            ]),
-            ft.Text(f"Overview of {total} processed images", color=TEXT_MUTED),
-            ft.Divider(height=40, color=Colors.TRANSPARENT),
-            
-            ft.Row([
-                metric_tile("Total Files", total, "items", Icons.FOLDER_ZIP_OUTLINED, Colors.BLUE_400),
-                metric_tile("Success Rate", int(success_count/total*100) if total>0 else 0, "%", Icons.CHECK_CIRCLE_OUTLINED, Colors.GREEN_400),
-                metric_tile("Mean Area", avg_area, "mm²", Icons.AREA_CHART_OUTLINED, Colors.CYAN_400),
-                metric_tile("Mean Density", avg_vd, "%", Icons.GRAIN_ROUNDED, Colors.AMBER_400),
-            ], spacing=15),
-            
-            ft.Divider(height=40, color=Colors.with_opacity(0.1, Colors.WHITE)),
-            ft.Text("File Breakdown", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-
-            ft.DataTable(
-                columns=[
-                    ft.DataColumn(ft.Text("Source File")),
-                    ft.DataColumn(ft.Text("Status")),
-                    ft.DataColumn(ft.Text("MNV Area")),
-                    ft.DataColumn(ft.Text("Vessel Density")),
-                ],
-                rows=[
-                    ft.DataRow(
-                        cells=[
-                            ft.DataCell(
-                                ft.Text(r.get("source_filename", "Unknown"), size=13),
-                                on_tap=_open_summary_row_detail(idx),
-                            ),
-                            ft.DataCell(
-                                ft.Icon(Icons.CHECK_CIRCLE, color=Colors.GREEN_400, size=18)
-                                if "error" not in r
-                                else ft.Icon(Icons.ERROR, color=Colors.RED_400, size=18)
-                            ),
-                            ft.DataCell(ft.Text(f"{safe_round(r.get('mnv_area_mm2', 0), 4)} mm²")),
-                            ft.DataCell(ft.Text(f"{safe_round(r.get('vessel_density', 0)*100, 2)} %")),
-                        ]
-                    )
-                    for idx, r in enumerate(batch_results)
-                ],
-                bgcolor=Colors.with_opacity(0.02, Colors.WHITE),
-                border_radius=15,
-            ),
-        ], scroll=ft.ScrollMode.ADAPTIVE, spacing=10)
+        return ft.ListView(
+            controls=[
+                ft.Row([
+                    ft.Text("Batch Analytics Summary", size=32, weight=FontWeight.BOLD),
+                    ft.Container(expand=True),
+                    ft.ElevatedButton(
+                        "Export Combined CSV",
+                        icon=Icons.FILE_DOWNLOAD_ROUNDED,
+                        bgcolor=PRIMARY,
+                        color=Colors.BLACK,
+                        on_click=lambda _: ctx.page.run_task(on_export_batch_csv),
+                    ),
+                ]),
+                ft.Text(f"Overview of {total} processed images", color=TEXT_MUTED),
+                ft.Divider(height=40, color=Colors.TRANSPARENT),
+                ft.Row([
+                    metric_tile("Total Files", total, "items", Icons.FOLDER_ZIP_OUTLINED, Colors.BLUE_400),
+                    metric_tile("Success Rate", int(success_count / total * 100) if total > 0 else 0, "%", Icons.CHECK_CIRCLE_OUTLINED, Colors.GREEN_400),
+                    metric_tile("Mean Area", avg_area, "mm²", Icons.AREA_CHART_OUTLINED, Colors.CYAN_400),
+                    metric_tile("Mean Density", avg_vd, "%", Icons.GRAIN_ROUNDED, Colors.AMBER_400),
+                ], spacing=15),
+                ft.Divider(height=40, color=Colors.with_opacity(0.1, Colors.WHITE)),
+                ft.Text("File Breakdown", size=20, weight=FontWeight.BOLD, color=PRIMARY),
+                ft.DataTable(
+                    columns=[
+                        ft.DataColumn(ft.Text("Source File")),
+                        ft.DataColumn(ft.Text("Status")),
+                        ft.DataColumn(ft.Text("MNV Area")),
+                        ft.DataColumn(ft.Text("Vessel Density")),
+                    ],
+                    rows=[
+                        ft.DataRow(
+                            cells=[
+                                ft.DataCell(
+                                    ft.Text(r.get("source_filename", "Unknown"), size=13),
+                                    on_tap=_open_summary_row_detail(idx),
+                                ),
+                                ft.DataCell(
+                                    ft.Icon(Icons.CHECK_CIRCLE, color=Colors.GREEN_400, size=18)
+                                    if "error" not in r
+                                    else ft.Icon(Icons.ERROR, color=Colors.RED_400, size=18),
+                                ),
+                                ft.DataCell(ft.Text(f"{safe_round(r.get('mnv_area_mm2', 0), 2)} mm²")),
+                                ft.DataCell(ft.Text(f"{safe_round(r.get('vessel_density', 0) * 100, 2)} %")),
+                            ],
+                        )
+                        for idx, r in enumerate(batch_results)
+                    ],
+                    bgcolor=Colors.with_opacity(0.02, Colors.WHITE),
+                    border_radius=15,
+                ),
+            ],
+            expand=True,
+            spacing=10,
+        )
 
     def get_detail_content(idx):
         res = batch_results[idx]
         is_mnv = res.get("result_type") == "MNV" or "mnv_area_mm2" in res
-        
-        return ft.Column([
-            ft.Row([
-                ft.Column([
-                    ft.Text(res.get("source_filename", "Result Detail"), size=28, weight=FontWeight.BOLD),
-                    ft.Text(f"Analysis Type: {'MNV' if is_mnv else 'VD'} | Timestamp: {res.get('analysis_timestamp', 'N/A')}", color=TEXT_MUTED),
-                ], expand=True),
-                ft.ElevatedButton(
-                    "Save PDF Report",
-                    icon=Icons.PICTURE_AS_PDF_ROUNDED,
-                    bgcolor=PRIMARY,
-                    color=Colors.BLACK,
-                    on_click=lambda _: ctx.page.run_task(on_save_individual_pdf, res),
-                )
-            ]),
-            
-            ft.Divider(height=20, color=Colors.TRANSPARENT),
-            
-            # --- SECTION: BASIC & TOPOLOGY ---
-            ft.Text("Basic Metrics & Topology", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-            ft.Row([
-                metric_tile("Area", safe_round(res.get("mnv_area_mm2", 0), 4), "mm²", Icons.AREA_CHART, Colors.CYAN_400),
-                metric_tile("Density", safe_round(res.get("vessel_density", 0) * 100, 2), "%", Icons.GRAIN, Colors.GREEN_400),
-                metric_tile("Branches", res.get("num_branches", 0), "pts", Icons.CALL_SPLIT, Colors.TEAL_400),
-                metric_tile("Maturity", safe_round(res.get("maturity_index", 0), 1), "Idx", Icons.VERIFIED, Colors.PINK_400),
-            ], spacing=15),
+        pm = _detail_pipeline_metrics(res)
+        subtype_display = str(res.get("mnv_subtype") or pm.get("mnv_subtype") or "—")
 
-            # --- SECTION: ADVANCED MORPHOMETRY ---
-            ft.Text("Advanced Morphometry (Spatial Distribution)", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-            ft.Row([
-                metric_tile("Center Diam", safe_round(res.get("diameter_center_mean", 0), 1), "μm", Icons.RADIO_BUTTON_CHECKED, Colors.BLUE_400),
-                metric_tile("Periph Diam", safe_round(res.get("diameter_periphery_mean", 0), 1), "μm", Icons.RADIO_BUTTON_UNCHECKED, Colors.BLUE_200),
-                metric_tile("Diam Ratio", safe_round(res.get("diameter_ratio", 1), 2), "x", Icons.COMPARE_ARROWS, Colors.PURPLE_400),
-                metric_tile("Uniformity", safe_round(res.get("radial_uniformity", 0), 2), "Idx", Icons.AUTO_GRAPH, Colors.AMBER_400),
-            ], spacing=15),
-            
-            ft.Container(
-                content=ft.Column([
-                    ft.Text("Vessel Analysis (Clinical Mode)", weight=FontWeight.BOLD, color=PRIMARY, size=16),
-                    ft.Image(src_base64=res.get("visualization_base64"), fit=ft.ImageFit.CONTAIN) if res.get("visualization_base64") else ft.Text("No Image")
-                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                bgcolor=Colors.BLACK, padding=20, border_radius=15, expand=True
-            ),
-
-            # --- SECTION: FLOW DEFICIT (SECTORS) ---
-            ft.Text("Flow Deficit Analysis (Regional)", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-            ft.Row([
-                metric_tile("FD R1 (Central)", safe_round(res.get("fd_percent_r1", 0), 2), "%", Icons.PIE_CHART_OUTLINE, Colors.RED_400),
-                metric_tile("FD R2 (Inner)", safe_round(res.get("fd_percent_r2", 0), 2), "%", Icons.PIE_CHART_OUTLINE, Colors.ORANGE_400),
-                metric_tile("FD R3 (Outer)", safe_round(res.get("fd_percent_r3", 0), 2), "%", Icons.PIE_CHART_OUTLINE, Colors.YELLOW_400),
-                metric_tile("Complexity", safe_round(res.get("complexity_score", 0), 1), "Score", Icons.INSIGHTS, Colors.PINK_400),
-            ], spacing=15),
-
-            ft.Divider(height=20, color=Colors.TRANSPARENT),
-        ], scroll=ft.ScrollMode.ADAPTIVE, spacing=20)
+        return ft.ListView(
+            controls=[
+                ft.Row([
+                    ft.Column([
+                        ft.Text(res.get("source_filename", "Result Detail"), size=28, weight=FontWeight.BOLD),
+                        ft.Text(
+                            f"Analysis Type: {'MNV' if is_mnv else 'VD'} | Timestamp: {res.get('analysis_timestamp', 'N/A')}",
+                            color=TEXT_MUTED,
+                        ),
+                    ], expand=True),
+                    ft.ElevatedButton(
+                        "Save PDF Report",
+                        icon=Icons.PICTURE_AS_PDF_ROUNDED,
+                        bgcolor=PRIMARY,
+                        color=Colors.BLACK,
+                        on_click=lambda _: ctx.page.run_task(on_save_individual_pdf, res),
+                    ),
+                ]),
+                ft.Divider(height=20, color=Colors.TRANSPARENT),
+                ft.Text("Basic Metrics & Topology", size=20, weight=FontWeight.BOLD, color=PRIMARY),
+                ft.Row([
+                    metric_tile("Area", safe_round(res.get("mnv_area_mm2", 0), 2), "mm²", Icons.AREA_CHART, Colors.CYAN_400),
+                    metric_tile("Subtype", subtype_display, "", Icons.CATEGORY_ROUNDED, Colors.TEAL_400),
+                    metric_tile(
+                        "Complexity",
+                        safe_round(res.get("complexity_score", 0), 2),
+                        "",
+                        Icons.HUB_ROUNDED,
+                        Colors.PURPLE_400,
+                    ),
+                    metric_tile(
+                        "Vsl Density",
+                        _detail_avdi(res),
+                        "",
+                        Icons.BUBBLE_CHART_ROUNDED,
+                        Colors.GREEN_400,
+                    ),
+                ], spacing=15),
+                ft.Text("Advanced Morphometry (Spatial Distribution)", size=20, weight=FontWeight.BOLD, color=PRIMARY),
+                ft.Row([
+                    metric_tile(
+                        "End Density",
+                        _detail_float_metric(pm, "endpoint_density"),
+                        "",
+                        Icons.TIMELINE_ROUNDED,
+                        Colors.BLUE_400,
+                    ),
+                    metric_tile(
+                        "Branch Density",
+                        _detail_float_metric(pm, "branch_density"),
+                        "",
+                        Icons.ACCOUNT_TREE_ROUNDED,
+                        Colors.BLUE_200,
+                    ),
+                    metric_tile(
+                        "Uniformity",
+                        safe_round(res.get("stability_score", 0), 2),
+                        "",
+                        Icons.BALANCE_ROUNDED,
+                        Colors.AMBER_400,
+                    ),
+                    metric_tile(
+                        "Maturity Index",
+                        safe_round(res.get("maturity_index", 0), 2),
+                        "",
+                        Icons.VERIFIED,
+                        Colors.PINK_400,
+                    ),
+                ], spacing=15),
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text("Vessel Analysis (Clinical Mode)", weight=FontWeight.BOLD, color=PRIMARY, size=16),
+                        ft.Image(src_base64=res.get("visualization_base64"), fit=ft.ImageFit.CONTAIN)
+                        if res.get("visualization_base64")
+                        else ft.Text("No Image"),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                    bgcolor=Colors.BLACK,
+                    padding=20,
+                    border_radius=15,
+                ),
+                ft.Text("Flow Deficit Analysis (Regional)", size=20, weight=FontWeight.BOLD, color=PRIMARY),
+                ft.Row([
+                    metric_tile("FD R1 (Central)", safe_round(res.get("fd_percent_r1", 0), 2), "%", Icons.PIE_CHART_OUTLINE, Colors.RED_400),
+                    metric_tile("FD R2 (Inner)", safe_round(res.get("fd_percent_r2", 0), 2), "%", Icons.PIE_CHART_OUTLINE, Colors.ORANGE_400),
+                    metric_tile("FD R3 (Outer)", safe_round(res.get("fd_percent_r3", 0), 2), "%", Icons.PIE_CHART_OUTLINE, Colors.YELLOW_400),
+                ], spacing=15),
+                ft.Divider(height=20, color=Colors.TRANSPARENT),
+            ],
+            expand=True,
+            spacing=20,
+        )
 
     # --- MAIN LAYOUT ASSEMBLY ---
 
@@ -449,23 +590,38 @@ async def get_results_view(ctx: AppContext):
             border=ft.border.all(1, Colors.with_opacity(0.35, PRIMARY)),
         )
 
-    main_body = get_summary_content() if selected_index == -1 else get_detail_content(selected_index)
+    main_scroll = get_summary_content() if selected_index == -1 else get_detail_content(selected_index)
     if qc_banner is not None:
-        main_body = ft.Column([qc_banner, main_body], expand=True, spacing=20)
-
-    return ft.Row([
-        # Sidebar
-        ft.Container(
-            content=ft.Column(sidebar_items, scroll=ft.ScrollMode.HIDDEN),
-            width=280,
-            bgcolor=Colors.with_opacity(0.05, Colors.WHITE),
-            padding=20,
-            border=ft.border.only(right=ft.border.BorderSide(1, Colors.with_opacity(0.1, Colors.WHITE)))
-        ),
-        # Main Content
-        ft.Container(
-            content=main_body,
+        main_body = ft.Column(
+            [
+                qc_banner,
+                ft.Container(content=main_scroll, expand=True),
+            ],
             expand=True,
-            padding=40,
+            spacing=20,
         )
-    ], expand=True, spacing=0)
+    else:
+        main_body = main_scroll
+
+    return ft.Row(
+        [
+            ft.Container(
+                content=ft.Column(sidebar_items, scroll=ft.ScrollMode.AUTO, expand=True),
+                width=280,
+                bgcolor=Colors.with_opacity(0.05, Colors.WHITE),
+                padding=20,
+                border=ft.border.only(
+                    right=ft.border.BorderSide(1, Colors.with_opacity(0.1, Colors.WHITE))
+                ),
+            ),
+            ft.Container(
+                content=main_body,
+                expand=True,
+                padding=40,
+                clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            ),
+        ],
+        expand=True,
+        spacing=0,
+        vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+    )

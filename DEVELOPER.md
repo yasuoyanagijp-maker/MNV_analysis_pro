@@ -24,7 +24,7 @@ components/shared.py # テーマ色、AppContext、BackendClient、共有 UI
 src/api/             # FastAPI: エンドポイント、スキーマ
 src/core/            # MNV/VD パイプライン呼び出し
 src/ariake_octa/     # 解析コア（画像処理多数）
-utils/               # 付属ユーティリティ（例: report_generator）
+src/utils/           # 共通ユーティリティ（mnv CSV、report_generator、cv2_path 等）
 uploads/             # 実行時アップロード先（.gitignore 想定）
 ```
 
