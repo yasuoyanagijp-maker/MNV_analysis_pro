@@ -18,6 +18,7 @@ from src.api.schemas import AnalysisRequest, MNVResult, VDRequest, VDResult, Log
 from core.mnv_pipeline import MNVPipeline
 from core.vd_analysis import VDAnalyzer
 from utils.cv2_path import imread_grayscale
+from utils.mnv_cc_resolve import resolve_flow_deficit_cc_path
 from utils.mnv_imagej_csv import metrics_for_csv_export
 import shutil
 import cv2
@@ -25,6 +26,8 @@ import numpy as np
 import uuid
 import uvicorn
 from datetime import datetime
+import base64
+from typing import List, Optional
 
 app = FastAPI(title="ARIAKE OCTA Engine API")
 
@@ -121,19 +124,23 @@ async def analyze_mnv(request: AnalysisRequest):
                 rw = max(1, min(request.roi.w, w - x))
                 rh = max(1, min(request.roi.h, h - y))
                 cv2.rectangle(roi_mask, (x, y), (x + rw, y + rh), 255, -1)
-        
+
+        cc_for_fd = resolve_flow_deficit_cc_path(request.image_path)
+        fd_path_opt = str(cc_for_fd) if cc_for_fd is not None else None
+
         pipeline = MNVPipeline(
             scale_mm=request.scale_mm,
             save_stages=request.save_stages,
             enable_roi_refinement=request.intelligent_roi,
             verbose=True
         )
-        
-        # Call the actual engine
+
+        # Call the actual engine (CC sibling → Flow Deficit R1–R3 when present)
         res = pipeline.analyze(
-            request.image_path, 
+            request.image_path,
             output_dir=str(output_dir),
-            roi_mask=roi_mask
+            roi_mask=roi_mask,
+            flow_deficit_image_path=fd_path_opt,
         )
         
         # Find visualization files on disk
@@ -230,6 +237,8 @@ async def analyze_vd(request: VDRequest):
         output_dir = ROOT / "output" / "vd" / run_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Baseline reproducibility — match mainstreamer.run_vd_batch VDAnalyzer knobs
+        # (mainstreamer.py ~813–833: Li=0.07, Hessian-opt on, baseline intref off).
         analyzer = VDAnalyzer(
             input_dir=Path(request.input_dir),
             output_dir=output_dir,
@@ -237,28 +246,66 @@ async def analyze_vd(request: VDRequest):
             side=request.side,
             sup_suffix=request.sup_suffix,
             deep_suffix=request.deep_suffix,
-            single_image_mode=request.single_image_mode
+            single_image_mode=request.single_image_mode,
+            single_image_explicit_path=request.single_image_explicit_path,
+            faz_li_threshold_scale=0.07,
+            use_optimized_preprocessing=True,
+            use_faz_intensity_refinement=False,
+            faz_intensity_percentile=40.0,
+            faz_center_roi_ratio=0.5,
+            faz_distance_trim_ratio=0.14,
+            faz_distance_min_px=1,
         )
         res = analyzer.analyze()
         
         if not res:
              raise ValueError("No valid file pairs or single images found for VD analysis.")
 
+        def _png_b64(p: Path) -> Optional[str]:
+            if not p.is_file():
+                return None
+            try:
+                return base64.b64encode(p.read_bytes()).decode("utf-8")
+            except Exception:
+                return None
+
+        pids = res.get("patient_ids", [])
+        sup_b64_list: List[Optional[str]] = []
+        deep_b64_list: List[Optional[str]] = []
+        for i, pid in enumerate(pids):
+            pid_safe = str(pid) if pid is not None else f"idx{i}"
+            sup_b64_list.append(
+                _png_b64(output_dir / f"{pid_safe}_superficial_visualization.png")
+            )
+            deep_b64_list.append(
+                _png_b64(output_dir / f"{pid_safe}_deep_visualization.png")
+            )
+
         return VDResult(
             result_type="VD",
             source_filename=Path(request.input_dir).name,
             analysis_timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            patient_ids=res.get("patient_ids", []),
+            patient_ids=pids,
             superficial_files=res.get("superficial_files", []),
             deep_files=res.get("deep_files", []),
             faz_areas=res.get("faz_areas", []),
             faz_circularities=res.get("faz_circularities", []),
             superficial_whole=res.get("superficial_whole", []),
             deep_whole=res.get("deep_whole", []),
+            superficial_superior=res.get("superficial_superior", []),
+            superficial_inferior=res.get("superficial_inferior", []),
+            superficial_temporal=res.get("superficial_temporal", []),
+            superficial_nasal=res.get("superficial_nasal", []),
+            deep_superior=res.get("deep_superior", []),
+            deep_inferior=res.get("deep_inferior", []),
+            deep_temporal=res.get("deep_temporal", []),
+            deep_nasal=res.get("deep_nasal", []),
             fractal_dimension_superficial=res.get("fractal_dimension_superficial", []),
             fractal_dimension_deep=res.get("fractal_dimension_deep", []),
             tortuosity_superficial=res.get("tortuosity_superficial", []),
-            tortuosity_deep=res.get("tortuosity_deep", [])
+            tortuosity_deep=res.get("tortuosity_deep", []),
+            superficial_visualization_b64=sup_b64_list,
+            deep_visualization_b64=deep_b64_list,
         )
     except Exception as e:
         import traceback

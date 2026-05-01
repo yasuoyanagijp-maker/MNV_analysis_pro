@@ -1,4 +1,5 @@
 import flet as ft
+import asyncio
 import uuid
 import json
 import re
@@ -20,6 +21,15 @@ from utils.mnv_imagej_csv import (
     qc_status_for_row,
 )
 from utils.report_generator import generate_pdf_report
+from utils.vd_display_helpers import get_vd_metrics_for_file
+from utils.vd_batch_csv import (
+    VD_LAYOUT_VSL_DENSITY_ONLY,
+    VD_SINGLE_CSV_COLUMNS,
+    build_vd_batch_csv_bytes,
+    is_vd_result_row,
+    merge_vd_batches_for_csv,
+    suggested_vd_csv_filename,
+)
 
 async def get_results_view(ctx: AppContext):
     # --- DATA INITIALIZATION ---
@@ -39,6 +49,15 @@ async def get_results_view(ctx: AppContext):
         selected_index = 0
         ctx.page.session.set("results_selected_index", 0)
 
+    _n_results = len(batch_results)
+    if _n_results == 0:
+        selected_index = -1
+        ctx.page.session.set("results_selected_index", -1)
+    elif isinstance(selected_index, int) and selected_index >= 0 and selected_index >= _n_results:
+        # Stale index (e.g. prior integrated batch) after VD-only wizard or shorter batch
+        selected_index = 0 if _n_results == 1 else -1
+        ctx.page.session.set("results_selected_index", selected_index)
+
     # --- ACTION HANDLERS ---
     async def select_result(index):
         ctx.page.session.set("results_selected_index", index)
@@ -49,22 +68,19 @@ async def get_results_view(ctx: AppContext):
         try:
             if not batch_results:
                 return
+
+            vd_chunks = [r for r in batch_results if is_vd_result_row(r)]
+            vd_vsl = [
+                r for r in vd_chunks if r.get("vd_layout") == VD_LAYOUT_VSL_DENSITY_ONLY
+            ]
+            vd_full = [r for r in vd_chunks if r not in vd_vsl]
+
             mnv_rows = [
                 r
                 for r in batch_results
                 if str(r.get("result_type") or "MNV") == "MNV"
             ]
-            if not mnv_rows:
-                await ctx.add_to_console(
-                    "Export combined CSV: no MNV rows in this batch (VD-only batches are skipped).",
-                    "WARN",
-                )
-                ctx.page.update()
-                return
-            ordered = sorted(
-                mnv_rows,
-                key=lambda x: str(x.get("source_filename") or ""),
-            )
+
             uname = (ctx.page.session.get("username") or "").strip()
             meta = {
                 "Analyst": uname if uname else "Unknown",
@@ -73,44 +89,101 @@ async def get_results_view(ctx: AppContext):
                 "Duration Sec": float(ctx.page.session.get("analysis_duration_sec") or 0.0),
                 "Session ID": str(ctx.page.session.get("session_id") or ""),
             }
-            rows = []
-            for idx, r in enumerate(ordered):
-                fn = str(r.get("source_filename") or "N/A")
-                success = "error" not in r
-                metrics = metrics_from_session_result_row(r)
-                rows.append(
-                    _metrics_to_imagej_row(
-                        fn,
-                        idx,
-                        qc_status_for_row(r),
-                        success,
-                        metrics,
+
+            vd_vsl_bytes = vd_vsl_fname = None
+            if vd_vsl:
+                merged_vsl = merge_vd_batches_for_csv(vd_vsl, VD_SINGLE_CSV_COLUMNS)
+                if len(merged_vsl.get("patient_ids") or []) > 0:
+                    vd_vsl_bytes = build_vd_batch_csv_bytes(
+                        merged_vsl, meta, VD_SINGLE_CSV_COLUMNS
                     )
+                    vd_vsl_fname = suggested_vd_csv_filename(
+                        merged_vsl, meta["Session ID"], VD_LAYOUT_VSL_DENSITY_ONLY
+                    )
+
+            vd_full_bytes = vd_full_fname = None
+            if vd_full:
+                merged_full = merge_vd_batches_for_csv(vd_full)
+                if len(merged_full.get("patient_ids") or []) > 0:
+                    vd_full_bytes = build_vd_batch_csv_bytes(merged_full, meta)
+                    vd_full_fname = suggested_vd_csv_filename(
+                        merged_full, meta["Session ID"], "full"
+                    )
+
+            mnv_bytes = None
+            mnv_fname = None
+            if mnv_rows:
+                ordered = sorted(
+                    mnv_rows,
+                    key=lambda x: str(x.get("source_filename") or ""),
                 )
-            csv_bytes = build_csv_bytes_from_imagej_rows(rows, meta)
+                rows = []
+                for idx, r in enumerate(ordered):
+                    fn = str(r.get("source_filename") or "N/A")
+                    success = "error" not in r
+                    metrics = metrics_from_session_result_row(r)
+                    rows.append(
+                        _metrics_to_imagej_row(
+                            fn,
+                            idx,
+                            qc_status_for_row(r),
+                            success,
+                            metrics,
+                        )
+                    )
+                mnv_bytes = build_csv_bytes_from_imagej_rows(rows, meta)
+                mnv_fname = f"mnv_batch_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.csv"
+
+            if not vd_vsl_bytes and not vd_full_bytes and not mnv_bytes:
+                await ctx.add_to_console(
+                    "Export CSV: no VD or MNV rows to export in this batch.",
+                    "WARN",
+                )
+                ctx.page.update()
+                return
+
             exports_dir = _PROJECT_ROOT / "uploads" / "exports"
             exports_dir.mkdir(parents=True, exist_ok=True)
-            fname = f"mnv_batch_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.csv"
-            out_path = (exports_dir / fname).resolve()
-            out_path.write_bytes(csv_bytes)
+            saved: list[tuple[str, str, Path, bytes]] = []
+            if mnv_bytes and mnv_fname:
+                p = (exports_dir / mnv_fname).resolve()
+                p.write_bytes(mnv_bytes)
+                saved.append(("MNV", mnv_fname, p, mnv_bytes))
+            if vd_vsl_bytes and vd_vsl_fname:
+                p = (exports_dir / vd_vsl_fname).resolve()
+                p.write_bytes(vd_vsl_bytes)
+                saved.append(("VD (single)", vd_vsl_fname, p, vd_vsl_bytes))
+            if vd_full_bytes and vd_full_fname:
+                p = (exports_dir / vd_full_fname).resolve()
+                p.write_bytes(vd_full_bytes)
+                saved.append(("VD (full)", vd_full_fname, p, vd_full_bytes))
 
             try:
-                ctx.page.set_clipboard(csv_bytes.decode("utf-8-sig"))
+                prefer = mnv_bytes or vd_full_bytes or vd_vsl_bytes
+                if prefer:
+                    ctx.page.set_clipboard(prefer.decode("utf-8-sig"))
             except Exception:
                 pass
 
             is_web = bool(getattr(ctx.page, "web", False))
+            base = ctx.client.base_url.rstrip("/")
             if is_web:
-                export_url = f"{ctx.client.base_url.rstrip('/')}/download_export/{fname}"
-                ctx.page.launch_url(export_url)
+                for _, fn, _, _ in saved:
+                    ctx.page.launch_url(f"{base}/download_export/{fn}")
+                    await asyncio.sleep(0.2)
+
             elif ctx.save_file_picker:
+                # One save dialog: MNV first if present (ImageJ batch), else VD (Streamlit-style VD table).
+                pick_label, pick_fname, pick_path, pick_bytes = saved[0]
 
                 async def on_csv_save_pick(e: ft.FilePickerResultEvent):
                     if not getattr(e, "path", None):
                         return
                     try:
-                        Path(e.path).write_bytes(csv_bytes)
-                        await ctx.add_to_console(f"CSV saved: {Path(e.path).name}", "SUCCESS")
+                        Path(e.path).write_bytes(pick_bytes)
+                        await ctx.add_to_console(
+                            f"{pick_label} CSV saved: {Path(e.path).name}", "SUCCESS"
+                        )
                     except Exception as sav_ex:
                         await ctx.add_to_console(f"CSV save failed: {sav_ex}", "ERROR")
                     ctx.page.update()
@@ -120,41 +193,42 @@ async def get_results_view(ctx: AppContext):
 
                 ctx.save_file_picker.on_result = sync_csv_pick
                 ctx.save_file_picker.save_file(
-                    dialog_title="Export combined CSV",
-                    file_name=fname,
+                    dialog_title=f"Save {pick_label} CSV",
+                    file_name=pick_fname,
                     allowed_extensions=["csv"],
                 )
 
-            if is_web:
-                help_body = (
-                    "ImageJ 互換の全列 CSV を uploads/exports に保存しました（UTF-8 BOM、mainstreamer と同一列）。\n\n"
-                    f"{out_path}\n\n"
-                    "ブラウザではバックエンドのダウンロード URL を開きます（Safari でも data: URL より表示・保存しやすいです）。\n"
-                    f"{ctx.client.base_url.rstrip('/')}/download_export/{fname}\n\n"
-                    "※ クリップボードへの自動コピーは環境によりブロックされることがあります。"
+            lines = [
+                "UTF-8 BOM。MNV: ImageJ 互換列。VD (full): mainstreamer VD バッチ相当。VD (single): 浅層のみ・Vsl Density 列構成。",
+                "",
+            ]
+            for kind, fn, outp, _ in saved:
+                lines.append(f"[{kind}] {outp}")
+                if is_web:
+                    lines.append(f"  → {base}/download_export/{fn}")
+            if not is_web and len(saved) > 1:
+                lines.append("")
+                lines.append(
+                    f"保存ダイアログは先頭（{saved[0][0]}）用です。"
+                    f"もう一方は上記パス（uploads/exports）を参照してください。"
                 )
-            else:
-                help_body = (
-                    "ImageJ 互換の全列 CSV を次のファイルに書き出しました（mainstreamer と同一列）:\n\n"
-                    f"{out_path}\n\n"
-                    "保存ダイアログで任意の場所にもコピーを保存できます。\n"
-                    "（クリップボードへの転送も試みましたが、環境により無効です。）"
-                )
+            lines.append("")
+            lines.append("※ クリップボードは MNV があれば MNV の内容を優先してコピーします。")
 
-            d = ft.AlertDialog(
-                title=ft.Text("Batch CSV Export", color=Colors.WHITE),
-                content=ft.Container(
-                    content=ft.Text(
-                        help_body,
-                        selectable=True,
-                        size=12,
-                        color=TEXT_MUTED,
+            help_body = "\n".join(lines)
+            ctx.page.open(
+                ft.AlertDialog(
+                    title=ft.Text("CSV export (MNV / VD)", color=Colors.WHITE),
+                    content=ft.Container(
+                        content=ft.Text(help_body, selectable=True, size=12, color=TEXT_MUTED),
+                        width=560,
                     ),
-                    width=520,
-                ),
-                bgcolor=GLASS_BG,
+                    bgcolor=GLASS_BG,
+                )
             )
-            ctx.page.open(d)
+
+            kinds = ",".join(s[0] for s in saved)
+            await ctx.add_to_console(f"CSV export ready ({kinds})", "SUCCESS")
         except Exception as ex:
             await ctx.add_to_console(f"Batch Export Error: {ex}", "ERROR")
         ctx.page.update()
@@ -186,13 +260,22 @@ async def get_results_view(ctx: AppContext):
             await ctx.add_to_console(f"MNV batch: accepted. Opening ROI for file {next_i + 1}/{len(paths)}.", "INFO")
             ctx.page.go("/roi")
         else:
-            ctx.page.session.set("batch_results", acc)
+            vd_hdr = ctx.page.session.get("integrated_vd_result")
+            merged = [vd_hdr] + acc if vd_hdr is not None else acc
+            if vd_hdr is not None:
+                session_discard(ctx.page.session, "integrated_vd_result")
+            ctx.page.session.set("batch_results", merged)
             session_discard(ctx.page.session, "mnv_batch_paths")
             session_discard(ctx.page.session, "mnv_batch_index")
             session_discard(ctx.page.session, "mnv_batch_results")
             session_discard(ctx.page.session, "mnv_batch_names_preview")
             ctx.page.session.set("results_selected_index", -1)
-            await ctx.add_to_console(f"MNV batch complete: {len(acc)} file(s).", "SUCCESS")
+            if vd_hdr is not None:
+                await ctx.add_to_console(
+                    f"Integrated batch complete: VD + {len(acc)} MNV file(s).", "SUCCESS"
+                )
+            else:
+                await ctx.add_to_console(f"MNV batch complete: {len(acc)} file(s).", "SUCCESS")
             ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
 
     async def on_mnv_batch_redo(_=None):
@@ -340,6 +423,31 @@ async def get_results_view(ctx: AppContext):
         except (TypeError, ValueError):
             return str(v)
 
+    def _vd_at(lst, idx, default=None):
+        if not isinstance(lst, list):
+            return default
+        if idx < 0 or idx >= len(lst):
+            return default
+        return lst[idx]
+
+    def _vd_density_pct_str(val):
+        """Same unit as VDAnalyzer/_measure_vessel_density (% of ROI) and mainstreamer VD QC."""
+        if val is None:
+            return "—"
+        try:
+            x = float(val)
+        except (TypeError, ValueError):
+            return "—"
+        return f"{safe_round(x, 2)}%"
+
+    def _vd_plain_str(val, digits: int = 3):
+        if val is None:
+            return "—"
+        try:
+            return str(safe_round(float(val), digits))
+        except (TypeError, ValueError):
+            return "—"
+
     # --- VIEWS ---
 
     def get_summary_content():
@@ -349,11 +457,23 @@ async def get_results_view(ctx: AppContext):
 
             return _tap
 
-        # Calculate stats
+        # Calculate stats (average area/density limited to rows that are clearly MNV)
         total = len(batch_results)
         success_count = len([r for r in batch_results if "error" not in r])
-        avg_area = safe_round(sum(r.get("mnv_area_mm2", 0) for r in batch_results) / total if total > 0 else 0, 3)
-        avg_vd = safe_round(sum(r.get("vessel_density", 0) for r in batch_results) / total * 100 if total > 0 else 0, 2)
+        mnv_rows = [
+            r
+            for r in batch_results
+            if str(r.get("result_type") or "").upper() == "MNV"
+        ]
+        nm = len(mnv_rows)
+        avg_area = safe_round(
+            sum(r.get("mnv_area_mm2", 0) for r in mnv_rows) / nm if nm > 0 else 0,
+            3,
+        )
+        avg_vd = safe_round(
+            sum(r.get("vessel_density", 0) for r in mnv_rows) / nm * 100 if nm > 0 else 0,
+            2,
+        )
 
         return ft.ListView(
             controls=[
@@ -361,7 +481,7 @@ async def get_results_view(ctx: AppContext):
                     ft.Text("Batch Analytics Summary", size=32, weight=FontWeight.BOLD),
                     ft.Container(expand=True),
                     ft.ElevatedButton(
-                        "Export Combined CSV",
+                        "Export CSV (MNV / VD)",
                         icon=Icons.FILE_DOWNLOAD_ROUNDED,
                         bgcolor=PRIMARY,
                         color=Colors.BLACK,
@@ -397,8 +517,20 @@ async def get_results_view(ctx: AppContext):
                                     if "error" not in r
                                     else ft.Icon(Icons.ERROR, color=Colors.RED_400, size=18),
                                 ),
-                                ft.DataCell(ft.Text(f"{safe_round(r.get('mnv_area_mm2', 0), 2)} mm²")),
-                                ft.DataCell(ft.Text(f"{safe_round(r.get('vessel_density', 0) * 100, 2)} %")),
+                                ft.DataCell(
+                                    ft.Text(
+                                        "—"
+                                        if str(r.get("result_type") or "").upper() == "VD"
+                                        else f"{safe_round(r.get('mnv_area_mm2', 0), 2)} mm²"
+                                    )
+                                ),
+                                ft.DataCell(
+                                    ft.Text(
+                                        "—"
+                                        if str(r.get("result_type") or "").upper() == "VD"
+                                        else f"{safe_round(r.get('vessel_density', 0) * 100, 2)} %"
+                                    )
+                                ),
                             ],
                         )
                         for idx, r in enumerate(batch_results)
@@ -411,103 +543,643 @@ async def get_results_view(ctx: AppContext):
             spacing=10,
         )
 
-    def get_detail_content(idx):
+    def get_vd_detail_content(idx):
+        """
+        VD結果: mainstreamer VD QC と同じ `get_vd_metrics_for_file` 由来の数値／％表記。
+        オーバーレイは API が PNG を base64 で返した場合のみ表示（Streamlit の vd_visualizations 相当）。
+        """
         res = batch_results[idx]
-        is_mnv = res.get("result_type") == "MNV" or "mnv_area_mm2" in res
+        vsl_only = res.get("vd_layout") == VD_LAYOUT_VSL_DENSITY_ONLY
+        _vd_detail_blurb = (
+            "Superficial (SCP) Vsl Density only — deep-layer metrics hidden in UI; pairing still runs in engine."
+            if vsl_only
+            else "aligned with VDAnalyzer densities (%) & mainstreamer.run_vd_batch-style engine settings."
+        )
+        ctrls = [
+            ft.Row(
+                [
+                    ft.Column(
+                        [
+                            ft.Text(
+                                res.get("source_filename", "VD Result"),
+                                size=28,
+                                weight=FontWeight.BOLD,
+                                color=Colors.WHITE,
+                            ),
+                            ft.Text(
+                                f"Analysis type: VD | Timestamp: {res.get('analysis_timestamp', 'N/A')} — "
+                                + _vd_detail_blurb,
+                                color=TEXT_MUTED,
+                                size=12,
+                            ),
+                        ],
+                        expand=True,
+                    ),
+                    ft.Column(
+                        [
+                            ft.ElevatedButton(
+                                "Save PDF Report",
+                                icon=Icons.PICTURE_AS_PDF_ROUNDED,
+                                bgcolor=PRIMARY,
+                                color=Colors.BLACK,
+                                on_click=lambda _, r=res: ctx.page.run_task(on_save_individual_pdf, r),
+                            ),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.END,
+                        spacing=6,
+                    ),
+                ]
+            ),
+            ft.Divider(height=20, color=Colors.TRANSPARENT),
+        ]
+
+        if "error" in res:
+            ctrls.append(
+                ft.Text(
+                    f"Engine error: {res.get('error')}",
+                    color=Colors.RED_400,
+                )
+            )
+            return ft.ListView(controls=ctrls, expand=True, spacing=16)
+
+        pids = res.get("patient_ids") or []
+        n_cases = len(pids)
+        if n_cases == 0:
+            ctrls.append(ft.Text("No VD cases returned from the API.", color=TEXT_MUTED))
+            return ft.ListView(controls=ctrls, expand=True, spacing=16)
+
+        ctrls.append(
+            ft.Text(
+                f"{n_cases} scan(s) processed",
+                color=PRIMARY,
+                weight=FontWeight.W_600,
+            ),
+        )
+
+        superf_files = res.get("superficial_files") or []
+
+        for ci in range(n_cases):
+            pid = _vd_at(pids, ci, "?")
+            sf_name = _vd_at(superf_files, ci, "")
+            dcp_fn = _vd_at(res.get("deep_files"), ci, "") or ""
+
+            data = get_vd_metrics_for_file(res, sf_name) if sf_name else {}
+            sw_val = None
+            dw_val = None
+            if data:
+                faz_a = data.get("faz_area")
+                faz_circ = data.get("faz_circularity")
+                sw_val = data.get("superficial_whole")
+                dw_val = data.get("deep_whole")
+                s_sec = data.get("superficial_sectors") or {}
+                d_sec = data.get("deep_sectors") or {}
+                if vsl_only:
+                    region_rows_vsl = [
+                        ("Whole image", sw_val),
+                        ("Superior", s_sec.get("superior")),
+                        ("Temporal", s_sec.get("temporal")),
+                        ("Nasal", s_sec.get("nasal")),
+                        ("Inferior", s_sec.get("inferior")),
+                    ]
+                    region_pct_rows = None
+                else:
+                    region_rows_vsl = None
+                    region_pct_rows = (
+                        ("Whole image", sw_val, dw_val),
+                        ("Superior", s_sec.get("superior"), d_sec.get("superior")),
+                        ("Temporal", s_sec.get("temporal"), d_sec.get("temporal")),
+                        ("Nasal", s_sec.get("nasal"), d_sec.get("nasal")),
+                        ("Inferior", s_sec.get("inferior"), d_sec.get("inferior")),
+                    )
+            else:
+                faz_a = _vd_at(res.get("faz_areas"), ci)
+                faz_circ = _vd_at(res.get("faz_circularities"), ci)
+                sw_val = _vd_at(res.get("superficial_whole"), ci)
+                dw_val = _vd_at(res.get("deep_whole"), ci)
+                if vsl_only:
+                    region_rows_vsl = [
+                        ("Whole image", _vd_at(res.get("superficial_whole"), ci)),
+                        ("Superior", _vd_at(res.get("superficial_superior"), ci)),
+                        ("Temporal", _vd_at(res.get("superficial_temporal"), ci)),
+                        ("Nasal", _vd_at(res.get("superficial_nasal"), ci)),
+                        ("Inferior", _vd_at(res.get("superficial_inferior"), ci)),
+                    ]
+                    region_pct_rows = None
+                else:
+                    region_rows_vsl = None
+                    region_pct_rows = (
+                        (
+                            "Whole image",
+                            _vd_at(res.get("superficial_whole"), ci),
+                            _vd_at(res.get("deep_whole"), ci),
+                        ),
+                        (
+                            "Superior",
+                            _vd_at(res.get("superficial_superior"), ci),
+                            _vd_at(res.get("deep_superior"), ci),
+                        ),
+                        (
+                            "Temporal",
+                            _vd_at(res.get("superficial_temporal"), ci),
+                            _vd_at(res.get("deep_temporal"), ci),
+                        ),
+                        (
+                            "Nasal",
+                            _vd_at(res.get("superficial_nasal"), ci),
+                            _vd_at(res.get("deep_nasal"), ci),
+                        ),
+                        (
+                            "Inferior",
+                            _vd_at(res.get("superficial_inferior"), ci),
+                            _vd_at(res.get("deep_inferior"), ci),
+                        ),
+                    )
+
+            fd_s = _vd_at(res.get("fractal_dimension_superficial"), ci)
+            fd_d = _vd_at(res.get("fractal_dimension_deep"), ci)
+            tor_s = _vd_at(res.get("tortuosity_superficial"), ci)
+            tor_d = _vd_at(res.get("tortuosity_deep"), ci)
+
+            ctrls.append(
+                ft.Text(
+                    f"Case {ci + 1} — Patient / ID: {pid}",
+                    size=18,
+                    weight=FontWeight.BOLD,
+                    color=PRIMARY,
+                )
+            )
+            if vsl_only:
+                ctrls.append(
+                    ft.Text(
+                        f"SCP file: {sf_name or '—'}",
+                        size=12,
+                        color=TEXT_MUTED,
+                    ),
+                )
+            else:
+                ctrls.append(
+                    ft.Text(
+                        f"SCP file: {sf_name or '—'}   |   DCP file: {dcp_fn or '—'}",
+                        size=12,
+                        color=TEXT_MUTED,
+                    ),
+                )
+
+            tile_row_a = [
+                metric_tile(
+                    "FAZ Area (mm²)",
+                    _vd_plain_str(faz_a, 3),
+                    "",
+                    Icons.LENS_ROUNDED,
+                    Colors.CYAN_400,
+                ),
+                metric_tile(
+                    "FAZ Circularity",
+                    _vd_plain_str(faz_circ, 3),
+                    "(0–1)",
+                    Icons.CIRCLE_ROUNDED,
+                    Colors.TEAL_400,
+                ),
+            ]
+            if vsl_only:
+                tile_row_a.append(
+                    metric_tile(
+                        "Vsl Density",
+                        _vd_density_pct_str(sw_val),
+                        "",
+                        Icons.GRAIN_ROUNDED,
+                        Colors.GREEN_400,
+                    ),
+                )
+                ctrls.append(ft.Row(tile_row_a, spacing=15))
+                ctrls.append(
+                    ft.Row(
+                        [
+                            metric_tile(
+                                "Fractal dimension",
+                                _vd_plain_str(fd_s, 3),
+                                "",
+                                Icons.INSIGHTS_ROUNDED,
+                                Colors.BLUE_GREY,
+                            ),
+                            metric_tile(
+                                "Tortuosity",
+                                _vd_plain_str(tor_s, 3),
+                                "",
+                                Icons.SCATTER_PLOT_ROUNDED,
+                                Colors.AMBER_400,
+                            ),
+                        ],
+                        spacing=15,
+                    ),
+                )
+            else:
+                tile_row_a.extend(
+                    [
+                        metric_tile(
+                            "Superficial VD (whole)",
+                            _vd_density_pct_str(sw_val),
+                            "",
+                            Icons.GRAIN_ROUNDED,
+                            Colors.GREEN_400,
+                        ),
+                        metric_tile(
+                            "Deep VD (whole)",
+                            _vd_density_pct_str(dw_val),
+                            "",
+                            Icons.GRAIN_ROUNDED,
+                            Colors.BLUE_400,
+                        ),
+                    ],
+                )
+                ctrls.append(ft.Row(tile_row_a, spacing=15))
+                ctrls.append(
+                    ft.Row(
+                        [
+                            metric_tile(
+                                "Fractal dim. SCP",
+                                _vd_plain_str(fd_s, 3),
+                                "",
+                                Icons.INSIGHTS_ROUNDED,
+                                Colors.BLUE_GREY,
+                            ),
+                            metric_tile(
+                                "Fractal dim. DCP",
+                                _vd_plain_str(fd_d, 3),
+                                "",
+                                Icons.INSIGHTS_ROUNDED,
+                                Colors.BLUE_200,
+                            ),
+                            metric_tile(
+                                "Tortuosity SCP",
+                                _vd_plain_str(tor_s, 3),
+                                "",
+                                Icons.SCATTER_PLOT_ROUNDED,
+                                Colors.AMBER_400,
+                            ),
+                            metric_tile(
+                                "Tortuosity DCP",
+                                _vd_plain_str(tor_d, 3),
+                                "",
+                                Icons.SCATTER_PLOT_ROUNDED,
+                                Colors.ORANGE_400,
+                            ),
+                        ],
+                        spacing=15,
+                    ),
+                )
+
+            ctrls.append(
+                ft.Text(
+                    "Vsl Density by region (%)" if vsl_only else "Vessel density by region (%)",
+                    size=17,
+                    weight=FontWeight.BOLD,
+                    color=PRIMARY,
+                )
+            )
+
+            vd_rows_tbl = []
+            if vsl_only and region_rows_vsl:
+                tbl_columns = [
+                    ft.DataColumn(ft.Text("Region", color=PRIMARY)),
+                    ft.DataColumn(ft.Text("Vsl Density", color=PRIMARY)),
+                ]
+                for label, sv in region_rows_vsl:
+                    vd_rows_tbl.append(
+                        ft.DataRow(
+                            cells=[
+                                ft.DataCell(ft.Text(label, color=Colors.WHITE)),
+                                ft.DataCell(ft.Text(_vd_density_pct_str(sv))),
+                            ],
+                        ),
+                    )
+                foot = (
+                    "Regional Vsl Density uses VDAnalyzer superficial (SCP) % scale (same engine as folder VD)."
+                )
+            else:
+                tbl_columns = [
+                    ft.DataColumn(ft.Text("Region", color=PRIMARY)),
+                    ft.DataColumn(ft.Text("SCP (superficial) VD", color=PRIMARY)),
+                    ft.DataColumn(ft.Text("DCP (deep) VD", color=PRIMARY)),
+                ]
+                for label, sv, dv in region_pct_rows or ():
+                    vd_rows_tbl.append(
+                        ft.DataRow(
+                            cells=[
+                                ft.DataCell(ft.Text(label, color=Colors.WHITE)),
+                                ft.DataCell(ft.Text(_vd_density_pct_str(sv))),
+                                ft.DataCell(ft.Text(_vd_density_pct_str(dv))),
+                            ],
+                        ),
+                    )
+                foot = (
+                    "Regional values use the same % scale as VDAnalyzer._measure_vessel_density "
+                    "and mainstreamer VD QC charts."
+                )
+
+            ctrls.append(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.DataTable(
+                                columns=tbl_columns,
+                                rows=vd_rows_tbl,
+                                bgcolor=Colors.with_opacity(0.03, Colors.WHITE),
+                                border=ft.border.all(
+                                    1,
+                                    Colors.with_opacity(0.12, Colors.WHITE),
+                                ),
+                                border_radius=10,
+                                heading_row_height=42,
+                                data_row_min_height=40,
+                                horizontal_lines=ft.border.BorderSide(
+                                    1,
+                                    Colors.with_opacity(0.06, Colors.WHITE),
+                                ),
+                            ),
+                            ft.Text(foot, size=11, color=TEXT_MUTED),
+                        ],
+                        spacing=8,
+                        tight=True,
+                    ),
+                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                )
+            )
+
+            sup_vis = _vd_at(res.get("superficial_visualization_b64"), ci)
+            deep_vis = _vd_at(res.get("deep_visualization_b64"), ci)
+            if vsl_only:
+                overlay_title = "Overlay (superficial / Vsl Density)"
+                overlay_body = ft.Column(
+                    [
+                        ft.Text("Superficial", color=TEXT_MUTED, size=12),
+                        (
+                            ft.Image(
+                                src="",
+                                src_base64=sup_vis,
+                                fit=ft.ImageFit.CONTAIN,
+                                width=520,
+                                height=520,
+                            )
+                            if sup_vis
+                            else ft.Text("—", color=TEXT_MUTED)
+                        ),
+                    ],
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=8,
+                    tight=True,
+                )
+            else:
+                overlay_title = "Overlay (Streamlit VD QC equivalent)"
+                overlay_body = ft.Row(
+                    [
+                        ft.Column(
+                            [
+                                ft.Text("Superficial", color=TEXT_MUTED, size=12),
+                                (
+                                    ft.Image(
+                                        src="",
+                                        src_base64=sup_vis,
+                                        fit=ft.ImageFit.CONTAIN,
+                                        width=380,
+                                        height=380,
+                                    )
+                                    if sup_vis
+                                    else ft.Text("—", color=TEXT_MUTED)
+                                ),
+                            ],
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            expand=True,
+                        ),
+                        ft.Column(
+                            [
+                                ft.Text("Deep", color=TEXT_MUTED, size=12),
+                                (
+                                    ft.Image(
+                                        src="",
+                                        src_base64=deep_vis,
+                                        fit=ft.ImageFit.CONTAIN,
+                                        width=380,
+                                        height=380,
+                                    )
+                                    if deep_vis
+                                    else ft.Text("—", color=TEXT_MUTED)
+                                ),
+                            ],
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            expand=True,
+                        ),
+                    ],
+                    spacing=20,
+                )
+            ctrls.append(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Text(
+                                overlay_title,
+                                weight=FontWeight.BOLD,
+                                color=PRIMARY,
+                                size=16,
+                            ),
+                            overlay_body,
+                        ],
+                        spacing=12,
+                        tight=True,
+                    ),
+                    bgcolor=Colors.BLACK,
+                    padding=20,
+                    border_radius=15,
+                    border=ft.border.all(
+                        1,
+                        Colors.with_opacity(0.15, Colors.WHITE),
+                    ),
+                )
+            )
+
+            ctrls.append(ft.Divider(height=28, color=Colors.TRANSPARENT))
+
+        return ft.ListView(controls=ctrls, expand=True, spacing=12)
+
+    def get_mnv_detail_content(idx):
+        res = batch_results[idx]
         pm = _detail_pipeline_metrics(res)
         subtype_display = str(res.get("mnv_subtype") or pm.get("mnv_subtype") or "—")
 
         return ft.ListView(
             controls=[
-                ft.Row([
-                    ft.Column([
-                        ft.Text(res.get("source_filename", "Result Detail"), size=28, weight=FontWeight.BOLD),
-                        ft.Text(
-                            f"Analysis Type: {'MNV' if is_mnv else 'VD'} | Timestamp: {res.get('analysis_timestamp', 'N/A')}",
-                            color=TEXT_MUTED,
+                ft.Row(
+                    [
+                        ft.Column(
+                            [
+                                ft.Text(
+                                    res.get("source_filename", "Result Detail"),
+                                    size=28,
+                                    weight=FontWeight.BOLD,
+                                    color=Colors.WHITE,
+                                ),
+                                ft.Text(
+                                    f"Analysis type: MNV | Timestamp: {res.get('analysis_timestamp', 'N/A')}",
+                                    color=TEXT_MUTED,
+                                ),
+                            ],
+                            expand=True,
                         ),
-                    ], expand=True),
-                    ft.ElevatedButton(
-                        "Save PDF Report",
-                        icon=Icons.PICTURE_AS_PDF_ROUNDED,
-                        bgcolor=PRIMARY,
-                        color=Colors.BLACK,
-                        on_click=lambda _: ctx.page.run_task(on_save_individual_pdf, res),
-                    ),
-                ]),
+                        ft.ElevatedButton(
+                            "Save PDF Report",
+                            icon=Icons.PICTURE_AS_PDF_ROUNDED,
+                            bgcolor=PRIMARY,
+                            color=Colors.BLACK,
+                            on_click=lambda _: ctx.page.run_task(on_save_individual_pdf, res),
+                        ),
+                    ]
+                ),
                 ft.Divider(height=20, color=Colors.TRANSPARENT),
-                ft.Text("Basic Metrics & Topology", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-                ft.Row([
-                    metric_tile("Area", safe_round(res.get("mnv_area_mm2", 0), 2), "mm²", Icons.AREA_CHART, Colors.CYAN_400),
-                    metric_tile("Subtype", subtype_display, "", Icons.CATEGORY_ROUNDED, Colors.TEAL_400),
-                    metric_tile(
-                        "Complexity",
-                        safe_round(res.get("complexity_score", 0), 2),
-                        "",
-                        Icons.HUB_ROUNDED,
-                        Colors.PURPLE_400,
-                    ),
-                    metric_tile(
-                        "Vsl Density",
-                        _detail_avdi(res),
-                        "",
-                        Icons.BUBBLE_CHART_ROUNDED,
-                        Colors.GREEN_400,
-                    ),
-                ], spacing=15),
-                ft.Text("Advanced Morphometry (Spatial Distribution)", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-                ft.Row([
-                    metric_tile(
-                        "End Density",
-                        _detail_float_metric(pm, "endpoint_density"),
-                        "",
-                        Icons.TIMELINE_ROUNDED,
-                        Colors.BLUE_400,
-                    ),
-                    metric_tile(
-                        "Branch Density",
-                        _detail_float_metric(pm, "branch_density"),
-                        "",
-                        Icons.ACCOUNT_TREE_ROUNDED,
-                        Colors.BLUE_200,
-                    ),
-                    metric_tile(
-                        "Uniformity",
-                        safe_round(res.get("stability_score", 0), 2),
-                        "",
-                        Icons.BALANCE_ROUNDED,
-                        Colors.AMBER_400,
-                    ),
-                    metric_tile(
-                        "Maturity Index",
-                        safe_round(res.get("maturity_index", 0), 2),
-                        "",
-                        Icons.VERIFIED,
-                        Colors.PINK_400,
-                    ),
-                ], spacing=15),
+                ft.Text(
+                    "Basic Metrics & Topology",
+                    size=20,
+                    weight=FontWeight.BOLD,
+                    color=PRIMARY,
+                ),
+                ft.Row(
+                    [
+                        metric_tile(
+                            "Area",
+                            safe_round(res.get("mnv_area_mm2", 0), 2),
+                            "mm²",
+                            Icons.AREA_CHART,
+                            Colors.CYAN_400,
+                        ),
+                        metric_tile(
+                            "Subtype",
+                            subtype_display,
+                            "",
+                            Icons.CATEGORY_ROUNDED,
+                            Colors.TEAL_400,
+                        ),
+                        metric_tile(
+                            "Complexity",
+                            safe_round(res.get("complexity_score", 0), 2),
+                            "",
+                            Icons.HUB_ROUNDED,
+                            Colors.PURPLE_400,
+                        ),
+                        metric_tile(
+                            "Vsl Density",
+                            _detail_avdi(res),
+                            "",
+                            Icons.BUBBLE_CHART_ROUNDED,
+                            Colors.GREEN_400,
+                        ),
+                    ],
+                    spacing=15,
+                ),
+                ft.Text(
+                    "Advanced Morphometry (Spatial Distribution)",
+                    size=20,
+                    weight=FontWeight.BOLD,
+                    color=PRIMARY,
+                ),
+                ft.Row(
+                    [
+                        metric_tile(
+                            "End Density",
+                            _detail_float_metric(pm, "endpoint_density"),
+                            "",
+                            Icons.TIMELINE_ROUNDED,
+                            Colors.BLUE_400,
+                        ),
+                        metric_tile(
+                            "Branch Density",
+                            _detail_float_metric(pm, "branch_density"),
+                            "",
+                            Icons.ACCOUNT_TREE_ROUNDED,
+                            Colors.BLUE_200,
+                        ),
+                        metric_tile(
+                            "Uniformity",
+                            safe_round(res.get("stability_score", 0), 2),
+                            "",
+                            Icons.BALANCE_ROUNDED,
+                            Colors.AMBER_400,
+                        ),
+                        metric_tile(
+                            "Maturity Index",
+                            safe_round(res.get("maturity_index", 0), 2),
+                            "",
+                            Icons.VERIFIED,
+                            Colors.PINK_400,
+                        ),
+                    ],
+                    spacing=15,
+                ),
                 ft.Container(
-                    content=ft.Column([
-                        ft.Text("Vessel Analysis (Clinical Mode)", weight=FontWeight.BOLD, color=PRIMARY, size=16),
-                        ft.Image(src_base64=res.get("visualization_base64"), fit=ft.ImageFit.CONTAIN)
-                        if res.get("visualization_base64")
-                        else ft.Text("No Image"),
-                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                    content=ft.Column(
+                        [
+                            ft.Text(
+                                "Vessel Analysis (Clinical Mode)",
+                                weight=FontWeight.BOLD,
+                                color=PRIMARY,
+                                size=16,
+                            ),
+                            ft.Image(
+                                src_base64=res.get("visualization_base64"),
+                                fit=ft.ImageFit.CONTAIN,
+                            )
+                            if res.get("visualization_base64")
+                            else ft.Text("No Image"),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
                     bgcolor=Colors.BLACK,
                     padding=20,
                     border_radius=15,
                 ),
-                ft.Text("Flow Deficit Analysis (Regional)", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-                ft.Row([
-                    metric_tile("FD R1 (Central)", safe_round(res.get("fd_percent_r1", 0), 2), "%", Icons.PIE_CHART_OUTLINE, Colors.RED_400),
-                    metric_tile("FD R2 (Inner)", safe_round(res.get("fd_percent_r2", 0), 2), "%", Icons.PIE_CHART_OUTLINE, Colors.ORANGE_400),
-                    metric_tile("FD R3 (Outer)", safe_round(res.get("fd_percent_r3", 0), 2), "%", Icons.PIE_CHART_OUTLINE, Colors.YELLOW_400),
-                ], spacing=15),
+                ft.Text(
+                    "Flow Deficit Analysis (Regional)",
+                    size=20,
+                    weight=FontWeight.BOLD,
+                    color=PRIMARY,
+                ),
+                ft.Row(
+                    [
+                        metric_tile(
+                            "FD R1 (Central)",
+                            safe_round(res.get("fd_percent_r1", 0), 2),
+                            "%",
+                            Icons.PIE_CHART_OUTLINE,
+                            Colors.RED_400,
+                        ),
+                        metric_tile(
+                            "FD R2 (Inner)",
+                            safe_round(res.get("fd_percent_r2", 0), 2),
+                            "%",
+                            Icons.PIE_CHART_OUTLINE,
+                            Colors.ORANGE_400,
+                        ),
+                        metric_tile(
+                            "FD R3 (Outer)",
+                            safe_round(res.get("fd_percent_r3", 0), 2),
+                            "%",
+                            Icons.PIE_CHART_OUTLINE,
+                            Colors.YELLOW_400,
+                        ),
+                    ],
+                    spacing=15,
+                ),
                 ft.Divider(height=20, color=Colors.TRANSPARENT),
             ],
             expand=True,
             spacing=20,
         )
+
+    def get_detail_content(idx):
+        if not batch_results or idx < 0 or idx >= len(batch_results):
+            return get_summary_content()
+        res = batch_results[idx]
+        if str(res.get("result_type") or "").upper() == "VD":
+            return get_vd_detail_content(idx)
+        return get_mnv_detail_content(idx)
 
     # --- MAIN LAYOUT ASSEMBLY ---
 

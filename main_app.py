@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 # Components
-from components.shared import PRIMARY, PRIMARY_GLOW, BG_DARK, TEXT_MUTED, BackendClient, AppContext
+from components.shared import PRIMARY, PRIMARY_GLOW, BG_DARK, TEXT_MUTED, BackendClient, AppContext, session_discard
 from pages.login import get_login_view
 from pages.dashboard import get_dashboard_view
 from pages.results_screen import get_results_view
@@ -63,8 +63,6 @@ async def main(page: ft.Page):
             await ctx.add_to_console(f"Cannot access path: {ose}", "ERROR")
             return
 
-        page.session.set("target_path", str(p.absolute()))
-
         if is_dir:
             loader = getattr(ctx, "folder_batch_loader", None)
             if loader is not None:
@@ -79,16 +77,32 @@ async def main(page: ft.Page):
                     "WARN",
                 )
             return
-            
-        # Single File Navigation
-        atype = "MNV" # Default
+
+        # Single file
+        atype = "MNV"
         if ctx.analysis_type_ref.current:
-            atype = ctx.analysis_type_ref.current.value
-            
+            atype = ctx.analysis_type_ref.current.value or "MNV"
+
+        if atype == "INTEGRATED":
+            await ctx.add_to_console(
+                "Integrated Analysis (VD + MNV) requires a folder. Use Select Folder or paste a directory path.",
+                "WARN",
+            )
+            return
+
+        page.session.set("target_path", str(p.absolute()))
+
         if atype == "MNV":
+            session_discard(page.session, "vd_analysis_explicit_path")
             page.go("/roi")
-        else:
+            return
+
+        if atype == "VD_SINGLE":
+            session_discard(page.session, "roi")
+            session_discard(page.session, "roi_mask_b64")
+            page.session.set("vd_analysis_explicit_path", str(p.resolve()))
             page.go("/mnv")
+            return
 
     ctx.process_target_path = process_target_path
 

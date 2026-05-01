@@ -7,7 +7,7 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -70,6 +70,7 @@ class VDAnalyzer:
         faz_distance_trim_ratio: float = 0.14,
         faz_distance_min_px: int = 1,
         single_image_mode: bool = False,
+        single_image_explicit_path: Optional[Union[str, Path]] = None,
     ):
         """
         Parameters:
@@ -110,6 +111,8 @@ class VDAnalyzer:
             距離変換ベース正則化の最小トリム半径（px）
         single_image_mode : bool
             True: File Upload用。ペアなしで単一画像ごとにFAZを同定して処理
+        single_image_explicit_path : str | Path | None
+            single_image_mode 時に入力ディレクトリ内のこのファイルだけを処理する
         """
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
@@ -144,6 +147,11 @@ class VDAnalyzer:
         self.faz_distance_trim_ratio = faz_distance_trim_ratio
         self.faz_distance_min_px = faz_distance_min_px
         self.single_image_mode = single_image_mode
+        self.single_image_explicit_path = (
+            Path(single_image_explicit_path).expanduser().resolve()
+            if single_image_explicit_path is not None
+            else None
+        )
 
         # 出力ディレクトリ作成
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -178,6 +186,17 @@ class VDAnalyzer:
         t0 = time.perf_counter()
         if self.single_image_mode:
             single_files = self._find_single_images()
+            if self.single_image_explicit_path is not None:
+                esp = self.single_image_explicit_path.resolve()
+                selected = [
+                    f for f in single_files if f.expanduser().resolve() == esp
+                ]
+                if selected:
+                    single_files = selected
+                elif esp.is_file():
+                    single_files = [esp]
+                else:
+                    single_files = []
             if len(single_files) == 0:
                 print("No image files found for single-image mode.")
                 return {}

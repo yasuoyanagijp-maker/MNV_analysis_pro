@@ -15,6 +15,8 @@ from typing import List
 def filter_mnv_files_for_roi_selection(
     image_files: List[Path],
     analysis_type: str = "MNV",
+    *,
+    fallback_all_if_empty: bool = True,
 ) -> List[Path]:
     """
     MNV folder batch: exclude *1 / *2 / *4 extensions and image1/2/4 name patterns.
@@ -43,6 +45,8 @@ def filter_mnv_files_for_roi_selection(
         filtered_files.append(file_path)
 
     if not filtered_files and len(image_files) > 0:
-        return list(image_files)
+        if fallback_all_if_empty:
+            return list(image_files)
+        return []
 
     return filtered_files

@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import asyncio
 from pathlib import Path
-from components.shared import PRIMARY, TEXT_MUTED, AppContext
+from components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
 from src.core.fast_region_growing import fast_region_growing
 from src.utils.cv2_path import (
     BGR_READ_DECODE,
@@ -298,6 +298,7 @@ async def get_roi_view(ctx: AppContext):
         
         ctx.page.session.set("roi", roi)
         ctx.page.session.set("roi_mask_b64", mask_b64)
+        session_discard(ctx.page.session, "vd_analysis_explicit_path")
         ctx.page.go("/mnv")
 
     async def load_image_async():

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 
 class ROI(BaseModel):
@@ -13,7 +13,7 @@ class AnalysisRequest(BaseModel):
     save_stages: bool = True
     roi: Optional[ROI] = None
     roi_mask_b64: Optional[str] = None  # Base64-encoded pixel-accurate mask (priority over roi bbox)
-    intelligent_roi: bool = True
+    intelligent_roi: bool = False  # ROI contour refinement after auto-detection only (manual ROI ignores)
 
 class MNVResult(BaseModel):
     result_type: str = "MNV"
@@ -76,6 +76,7 @@ class VDRequest(BaseModel):
     sup_suffix: str = "1.tif"
     deep_suffix: str = "2.tif"
     single_image_mode: bool = False
+    single_image_explicit_path: Optional[str] = None  # constrain single_image_mode to this file within input_dir
 
 class VDResult(BaseModel):
     result_type: str = "VD"
@@ -88,10 +89,21 @@ class VDResult(BaseModel):
     faz_circularities: List[float]
     superficial_whole: List[float]
     deep_whole: List[float]
+    superficial_superior: List[float] = Field(default_factory=list)
+    superficial_inferior: List[float] = Field(default_factory=list)
+    superficial_temporal: List[float] = Field(default_factory=list)
+    superficial_nasal: List[float] = Field(default_factory=list)
+    deep_superior: List[float] = Field(default_factory=list)
+    deep_inferior: List[float] = Field(default_factory=list)
+    deep_temporal: List[float] = Field(default_factory=list)
+    deep_nasal: List[float] = Field(default_factory=list)
     fractal_dimension_superficial: List[float]
     fractal_dimension_deep: List[float]
     tortuosity_superficial: List[float]
     tortuosity_deep: List[float]
+    # Same overlay PNGs Streamlit reads from VDAnalyzer output ({pid}_*_visualization.png)
+    superficial_visualization_b64: List[Optional[str]] = Field(default_factory=list)
+    deep_visualization_b64: List[Optional[str]] = Field(default_factory=list)
 
 class LoginRequest(BaseModel):
     researcher_name: str

@@ -31,13 +31,13 @@ class BackendClient:
             except Exception as e:
                 return {"type": "unknown", "error": str(e)}
 
-    async def start_mnv_analysis(self, image_path: str, scale: float, roi: dict = None, roi_mask_b64: str = None, intelligent_roi: bool = True):
+    async def start_mnv_analysis(self, image_path: str, scale: float, roi: dict = None, roi_mask_b64: str = None, intelligent_roi: bool = False):
         async with httpx.AsyncClient(timeout=300.0) as client:
             try:
                 payload = {
-                    "image_path": image_path, 
+                    "image_path": image_path,
                     "scale_mm": scale,
-                    "intelligent_roi": bool(intelligent_roi)
+                    "intelligent_roi": bool(intelligent_roi),
                 }
                 if roi_mask_b64:
                     payload["roi_mask_b64"] = roi_mask_b64
@@ -62,6 +62,7 @@ class BackendClient:
         sup_suffix: str = "1.tif",
         deep_suffix: str = "2.tif",
         single_image_mode: bool = False,
+        single_image_explicit_path: str = None,
     ):
         async with httpx.AsyncClient(timeout=600.0) as client:
             try:
@@ -74,6 +75,8 @@ class BackendClient:
                     "deep_suffix": deep_suffix,
                     "single_image_mode": single_image_mode,
                 }
+                if single_image_explicit_path:
+                    payload["single_image_explicit_path"] = single_image_explicit_path
                 response = await client.post(
                     f"{self.base_url}/analyze/vd",
                     json=payload
@@ -133,9 +136,11 @@ class AppContext:
         self.page = page
         self.client = client
         self.log_console_ref = ft.Ref()
-        self.intelligent_roi_ref = ft.Ref()
         self.scale_mm_ref = ft.Ref()
         self.analysis_type_ref = ft.Ref()
+        self.vd_sup_suffix_ref = ft.Ref()
+        self.vd_deep_suffix_ref = ft.Ref()
+        self.vd_side_ref = ft.Ref()
         self.file_picker = None
         self.directory_picker = None
         self.save_file_picker = None
