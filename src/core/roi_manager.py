@@ -968,3 +968,92 @@ class FAZDetector:
         cv2.fillPoly(mask, [pts], 255)
 
         return mask
+
+
+class ROIEnclosure:
+    """
+    ROIの包絡領域（Enclosure）を生成するクラス。
+    疎な血管網（枯れ枝型）でも病変全体の広がりを定義するため、凸包とスプライン平滑化を用いる。
+    """
+    
+    @staticmethod
+    def generate_enclosed_mask(roi_mask: np.ndarray, smoothing_factor: float = 1.0) -> np.ndarray:
+        """
+        ROIマスクから滑らかな包絡領域マスクを生成する。
+        
+        Parameters:
+        -----------
+        roi_mask : np.ndarray
+            元のROIマスク（0/255 または bool）
+        smoothing_factor : float
+            スプライン平滑化の強さ (0.0=平滑化なし)
+            
+        Returns:
+        --------
+        enclosed_mask : np.ndarray
+            生成された包絡領域マスク (0/255)
+        """
+        import cv2
+        import numpy as np
+        from scipy.interpolate import splprep, splev
+
+        if roi_mask is None or not np.any(roi_mask):
+            return np.zeros_like(roi_mask, dtype=np.uint8) if roi_mask is not None else None
+
+        binary = (roi_mask > 0).astype(np.uint8) * 255
+        
+        # 1. 輪郭抽出
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return binary
+            
+        # 全ての輪郭の点を集める（分散した血管網をひとまとめにするため）
+        all_points = np.vstack(contours)
+        
+        if len(all_points) < 3:
+            return binary
+            
+        # 2. 全体に対する凸包（Convex Hull）の計算
+        hull = cv2.convexHull(all_points)
+        
+        # 3. スプライン曲線による平滑化 (点が十分ある場合)
+        if len(hull) >= 4 and smoothing_factor > 0:
+            x = hull[:, 0, 0]
+            y = hull[:, 0, 1]
+            
+            try:
+                # 距離が近い点（重複点や密接点）を間引く
+                unique_pts = []
+                for i in range(len(x)):
+                    if i == 0 or (x[i]-unique_pts[-1][0])**2 + (y[i]-unique_pts[-1][1])**2 > 4.0:
+                        unique_pts.append((x[i], y[i]))
+                if unique_pts[0] != unique_pts[-1]:
+                    unique_pts.append(unique_pts[0])
+                    
+                pts_arr = np.array(unique_pts)
+                x_u = pts_arr[:, 0]
+                y_u = pts_arr[:, 1]
+
+                if len(x_u) >= 4:
+                    # sパラメータは平滑化の度合い
+                    tck, u = splprep([x_u, y_u], s=smoothing_factor * len(x_u), per=True)
+                    unew = np.linspace(0, 1, len(x_u) * 5)
+                    out = splev(unew, tck)
+                    smooth_hull = np.stack(out, axis=1).astype(np.int32).reshape((-1, 1, 2))
+                else:
+                    smooth_hull = hull
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Spline smoothing failed: {e}")
+                smooth_hull = hull
+        else:
+            smooth_hull = hull
+            
+        # 4. マスクの生成
+        enclosed_mask = np.zeros_like(binary)
+        cv2.fillPoly(enclosed_mask, [smooth_hull], 255)
+        
+        # 元のROI領域を確実に含める（スプラインが内側に入り込むのを防ぐ）
+        enclosed_mask = cv2.bitwise_or(enclosed_mask, binary)
+        
+        return enclosed_mask

@@ -744,6 +744,7 @@ class RegionalAnalyzer:
           最も近い ROI 内ピクセルを少なくとも1つ含める。
         """
         from scipy.ndimage import distance_transform_edt
+        from core.roi_manager import ROIEnclosure
 
         radial_means = np.zeros(num_bins, dtype=float)
         roi_binary = np.asarray(roi_mask, dtype=bool)
@@ -755,8 +756,12 @@ class RegionalAnalyzer:
                 float(self.calculate_stability_metrics(radial_means)),
             )
 
-        # Distance from each ROI pixel to nearest boundary (ROI shape preserved)
-        dist = distance_transform_edt(roi_binary.astype(np.uint8))
+        # ROIEnclosureを用いて病変全体を包むマスクを生成
+        enclosed_mask = ROIEnclosure.generate_enclosed_mask(roi_binary.astype(np.uint8)*255, smoothing_factor=1.0)
+        enclosed_binary = (enclosed_mask > 0)
+
+        # Distance from each ENCLOSED pixel to nearest boundary
+        dist = distance_transform_edt(enclosed_binary.astype(np.uint8))
         max_d = float(np.max(dist))
 
         if max_d <= 0:
