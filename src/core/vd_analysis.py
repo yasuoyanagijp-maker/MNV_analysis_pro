@@ -548,9 +548,19 @@ class VDAnalyzer:
 
             binary_mask_for_faz = faz_skeleton > 0
 
+            # 設定されたサフィックスに基づいてレイヤー種別を判定
+            is_dcp = any(single_file.name.lower().endswith(s.lower()) for s in self.deep_suffixes)
+            is_scp = any(single_file.name.lower().endswith(s.lower()) for s in self.sup_suffixes)
+            
+            if is_dcp and not is_scp:
+                layer_type = "DCP"
+            else:
+                # SCPサフィックスに一致するか、あるいはデフォルトとしてSCPモード（統合用）
+                layer_type = "SCP"
+
             improved_detector = ImprovedFAZDetector(
                 min_area_mm2=0.1,
-                min_circularity=0.15,
+                min_circularity=0.03,
                 distance_trim_ratio=self.faz_distance_trim_ratio,
                 distance_min_px=self.faz_distance_min_px,
             )
@@ -559,6 +569,7 @@ class VDAnalyzer:
                 combined_for_faz,
                 binary_mask_for_faz,
                 mm_per_pixel=pixel_size_mm,
+                layer_type=layer_type,
             )
             logger.info(
                 "[VD timing]     faz_improved_detect: %.3f s",
@@ -835,7 +846,7 @@ class VDAnalyzer:
             # 改善案1: まず ImprovedFAZDetector を試す（強度精査の効果が反映される）
             improved_detector = ImprovedFAZDetector(
                 min_area_mm2=0.1,
-                min_circularity=0.15,
+                min_circularity=0.03,
                 distance_trim_ratio=self.faz_distance_trim_ratio,
                 distance_min_px=self.faz_distance_min_px,
             )
@@ -844,6 +855,7 @@ class VDAnalyzer:
                 combined_for_faz,
                 binary_mask_for_faz,
                 mm_per_pixel=pixel_size_mm,
+                layer_type="INTEGRATED",
             )
             logger.info(
                 "[VD timing]     faz_improved_detect: %.3f s",

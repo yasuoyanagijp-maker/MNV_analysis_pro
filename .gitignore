@@ -47,3 +47,7 @@ resources/reference_metrics/REF_JSON_INTEGRITY.md
 *.zip
 *.dmg
 *.app
+
+# Local debug and scratch files
+scratch/
+backend.log
