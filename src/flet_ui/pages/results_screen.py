@@ -288,6 +288,25 @@ async def get_results_view(ctx: AppContext):
         await ctx.add_to_console("MNV batch: redo ROI for the same image.", "INFO")
         ctx.page.go("/roi")
 
+    async def on_reanalyze_mnv(idx):
+        res = batch_results[idx]
+        abs_path = res.get("_absolute_source_path")
+        if not abs_path or not Path(abs_path).exists():
+            ctx.show_alpha_error(
+                "Cannot Re-analyze", 
+                "Original image path was not saved in this result or file no longer exists."
+            )
+            return
+
+        ctx.page.session.set("target_path", abs_path)
+        session_discard(ctx.page.session, "roi")
+        session_discard(ctx.page.session, "roi_mask_b64")
+        ctx.page.session.set("is_reanalysis_mode", True)
+        ctx.page.session.set("reanalysis_index", idx)
+        
+        await ctx.add_to_console("Entering ROI re-analysis mode for a specific result.", "INFO")
+        ctx.page.go("/roi")
+
     async def on_save_individual_pdf(res):
         out_dir = _PROJECT_ROOT / "uploads"
         out_dir.mkdir(exist_ok=True)
@@ -1031,6 +1050,14 @@ async def get_results_view(ctx: AppContext):
                             bgcolor=PRIMARY,
                             color=Colors.BLACK,
                             on_click=lambda _: ctx.page.run_task(on_save_individual_pdf, res),
+                        ),
+                        ft.ElevatedButton(
+                            "ROI再指定・再解析",
+                            icon=Icons.CROP_FREE,
+                            bgcolor=Colors.AMBER_400,
+                            color=Colors.BLACK,
+                            tooltip="ROI（抽出領域）を選択し直して、この画像の解析をやり直します",
+                            on_click=lambda _: ctx.page.run_task(on_reanalyze_mnv, idx),
                         ),
                     ]
                 ),
