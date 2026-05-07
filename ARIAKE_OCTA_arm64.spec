@@ -15,13 +15,11 @@ libtiff_path = os.path.join(venv_site_packages, 'PIL', '.dylibs', 'libtiff.6.dyl
 datas = [
     (os.path.join(project_root, 'src'), 'src'),
     (os.path.join(project_root, 'resources'), 'resources'),
-    (os.path.join(project_root, 'mainstreamer.py'), '.'),
-    (os.path.join(project_root, 'scrollfree_roi_ui.py'), '.'),
-    (os.path.join(project_root, '.streamlit'), '.'),
+    (os.path.join(project_root, 'main_app.py'), '.'),
 ]
 
 # Streamlit関連のメタデータとフロントエンドを追加
-datas += copy_metadata('streamlit')
+# No copy_metadata for streamlit
 
 # ── FORCED PLAIN-FILE COLLECTION ──────────────────────────────────────
 # tifffileをデータとしてコピー（解凍エラー回避のため）
@@ -37,13 +35,7 @@ if os.path.exists(libtiff_path):
     ])
 
 hiddenimports = [
-    'streamlit.runtime.scriptrunner.magic_funcs',
-    'streamlit.runtime.caching.storage.dummy_cache_storage',
-    'streamlit.runtime.caching.storage.local_storage',
-    'streamlit.web.server.browser_websocket_handler',
-    'streamlit.components.v1.components',
-    'streamlit_drawable_canvas',
-    'scipy.spatial.transform._rotation_groups',
+    'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto', 'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan.on', 'uvicorn.lifespan.off', 'scipy.spatial.transform._rotation_groups',
     'scipy.special.cython_special',
     'sklearn.utils._cython_blas',
     'PIL._tkinter_finder',
@@ -52,7 +44,7 @@ hiddenimports = [
 ]
 
 # 一般的なパッケージの収集（imagecodecs/tifffile は LZW 圧縮 TIFF 用に必須）
-for pkg in ['streamlit', 'cv2', 'skimage', 'networkx', 'shapely', 'imageio', 'blinker', 'streamlit_drawable_canvas', 'imagecodecs']:
+for pkg in ['flet', 'fastapi', 'uvicorn', 'multipart', 'cv2', 'skimage', 'networkx', 'shapely', 'imageio', 'imagecodecs']:
     tmp_ret = collect_all(pkg)
     datas += tmp_ret[0]
     binaries += tmp_ret[1]

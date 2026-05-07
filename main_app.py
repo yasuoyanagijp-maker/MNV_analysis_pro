@@ -40,7 +40,8 @@ async def main(page: ft.Page):
     page.window.height = 900
     page.padding = 0
     
-    ctx = AppContext(page, BackendClient())
+    api_port = os.environ.get("ARIAKE_API_PORT", "8000")
+    ctx = AppContext(page, BackendClient(base_url=f"http://127.0.0.1:{api_port}"))
     
     # Initialize Global Pickers
     # Initialize Global Pickers
