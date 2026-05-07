@@ -7,14 +7,14 @@ import base64
 import sys
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SRC = _PROJECT_ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
+from src.utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
 
-from components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
+from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
 from src.utils.cv2_path import imread_bgr
 
 

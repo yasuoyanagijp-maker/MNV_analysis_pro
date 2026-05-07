@@ -6,7 +6,7 @@ from typing import List
 import shutil
 from datetime import datetime
 import asyncio
-from components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, session_discard
+from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, session_discard
 from src.utils.cv2_path import (
     BGR_READ_OK,
     BGR_READ_PERMISSION,

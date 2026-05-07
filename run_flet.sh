@@ -22,6 +22,8 @@ export FLET_SERVER_IP
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$DIR"
 
+export PYTHONPATH=".:src"
+
 # --- PORT CLEANUP FUNCTION ---
 cleanup_port() {
     local port=$1

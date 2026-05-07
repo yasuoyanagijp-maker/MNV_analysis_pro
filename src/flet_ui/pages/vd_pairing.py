@@ -1,7 +1,7 @@
 import flet as ft
 from flet import Colors, Icons, FontWeight
 from pathlib import Path
-from components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext
+from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext
 
 async def get_vd_view(ctx: AppContext):
     target_path = ctx.page.session.get("target_path")

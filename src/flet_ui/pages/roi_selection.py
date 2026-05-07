@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import asyncio
 from pathlib import Path
-from components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
+from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
 from src.core.fast_region_growing import fast_region_growing
 from src.utils.cv2_path import (
     BGR_READ_DECODE,

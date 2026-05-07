@@ -7,22 +7,22 @@ import sys
 import time
 from pathlib import Path
 from flet import Colors, Icons, FontWeight
-from components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, safe_round, session_discard
+from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, safe_round, session_discard
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SRC = _PROJECT_ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from utils.mnv_imagej_csv import (
+from src.utils.mnv_imagej_csv import (
     _metrics_to_imagej_row,
     build_csv_bytes_from_imagej_rows,
     metrics_from_session_result_row,
     qc_status_for_row,
 )
-from utils.report_generator import generate_pdf_report
-from utils.vd_display_helpers import get_vd_metrics_for_file
-from utils.vd_batch_csv import (
+from src.utils.report_generator import generate_pdf_report
+from src.utils.vd_display_helpers import get_vd_metrics_for_file
+from src.utils.vd_batch_csv import (
     VD_LAYOUT_VSL_DENSITY_ONLY,
     VD_SINGLE_CSV_COLUMNS,
     build_vd_batch_csv_bytes,
