@@ -5,16 +5,17 @@ import cv2
 import numpy as np
 import base64
 import sys
+import uuid
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SRC = _PROJECT_ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
+from src.utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
 
-from components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
+from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
 from src.utils.cv2_path import imread_bgr
 
 
@@ -127,29 +128,49 @@ async def get_mnv_view(ctx: AppContext):
             else:
                 auto_start_btn.disabled = False
         else:
-            if is_vd and isinstance(result, dict):
+            if isinstance(result, dict):
                 result = dict(result)
-                result["vd_layout"] = VD_LAYOUT_VSL_DENSITY_ONLY
-            ctx.page.session.set("last_result", result)
-            ctx.page.session.set("is_vd_result", bool(is_vd))
-            batch_paths = ctx.page.session.get("mnv_batch_paths")
-            if (
-                not is_vd
-                and batch_paths
-                and isinstance(batch_paths, list)
-                and len(batch_paths) > 0
-            ):
-                ctx.page.session.set("mnv_batch_awaiting_qc", True)
-                session_discard(ctx.page.session, "batch_results")
-                ctx.page.session.set("results_selected_index", 0)
-            if is_vd:
-                session_discard(ctx.page.session, "vd_analysis_explicit_path")
-            await ctx.add_to_console(
-                f"Result received — type: {result.get('result_type', 'N/A')}",
-                "INFO",
-            )
-            await asyncio.sleep(0.15)
-            ctx.page.go("/results")
+                if is_vd:
+                    result["vd_layout"] = VD_LAYOUT_VSL_DENSITY_ONLY
+                if scan_path and str(scan_path) != "None":
+                    result["_absolute_source_path"] = str(scan_path)
+
+            if ctx.page.session.get("is_reanalysis_mode"):
+                re_idx = ctx.page.session.get("reanalysis_index")
+                b_results = ctx.page.session.get("batch_results") or []
+                if re_idx is not None and 0 <= int(re_idx) < len(b_results):
+                    b_results[int(re_idx)] = result
+                    ctx.page.session.set("batch_results", b_results)
+                
+                session_discard(ctx.page.session, "is_reanalysis_mode")
+                session_discard(ctx.page.session, "reanalysis_index")
+                session_discard(ctx.page.session, "roi")
+                session_discard(ctx.page.session, "roi_mask_b64")
+                
+                await ctx.add_to_console("Re-analysis complete. Overwriting previous result.", "SUCCESS")
+                await asyncio.sleep(0.15)
+                ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
+            else:
+                ctx.page.session.set("last_result", result)
+                ctx.page.session.set("is_vd_result", bool(is_vd))
+                batch_paths = ctx.page.session.get("mnv_batch_paths")
+                if (
+                    not is_vd
+                    and batch_paths
+                    and isinstance(batch_paths, list)
+                    and len(batch_paths) > 0
+                ):
+                    ctx.page.session.set("mnv_batch_awaiting_qc", True)
+                    session_discard(ctx.page.session, "batch_results")
+                    ctx.page.session.set("results_selected_index", 0)
+                if is_vd:
+                    session_discard(ctx.page.session, "vd_analysis_explicit_path")
+                await ctx.add_to_console(
+                    f"Result received — type: {result.get('result_type', 'N/A')}",
+                    "INFO",
+                )
+                await asyncio.sleep(0.15)
+                ctx.page.go("/results")
 
         progress_bar.visible = False
         if e:

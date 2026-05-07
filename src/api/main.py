@@ -373,4 +373,5 @@ async def list_directory(path: str = None):
         return {"error": str(e)}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    port = int(os.environ.get("ARIAKE_API_PORT", 8000))
+    uvicorn.run(app, host="127.0.0.1", port=port)

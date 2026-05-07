@@ -9,9 +9,9 @@ from fpdf import FPDF
 from fpdf.enums import Align, XPos, YPos
 from PIL import Image
 
-from utils.mnv_imagej_csv import metrics_from_session_result_row
-from utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
-from utils.vd_display_helpers import get_vd_metrics_for_file
+from src.utils.mnv_imagej_csv import metrics_from_session_result_row
+from src.utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
+from src.utils.vd_display_helpers import get_vd_metrics_for_file
 
 
 def _dash() -> str:

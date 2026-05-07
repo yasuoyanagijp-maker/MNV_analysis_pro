@@ -7,12 +7,12 @@ import os
 from pathlib import Path
 
 # Components
-from components.shared import PRIMARY, PRIMARY_GLOW, BG_DARK, TEXT_MUTED, BackendClient, AppContext, session_discard
-from pages.login import get_login_view
-from pages.dashboard import get_dashboard_view
-from pages.results_screen import get_results_view
-from pages.roi_selection import get_roi_view
-from pages.mnv_wizard import get_mnv_view
+from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, BG_DARK, TEXT_MUTED, BackendClient, AppContext, session_discard
+from src.flet_ui.pages.login import get_login_view
+from src.flet_ui.pages.dashboard import get_dashboard_view
+from src.flet_ui.pages.results_screen import get_results_view
+from src.flet_ui.pages.roi_selection import get_roi_view
+from src.flet_ui.pages.mnv_wizard import get_mnv_view
 
 # Configure Uploads
 UPLOAD_ROOT = Path("uploads")
@@ -40,7 +40,8 @@ async def main(page: ft.Page):
     page.window.height = 900
     page.padding = 0
     
-    ctx = AppContext(page, BackendClient())
+    api_port = os.environ.get("ARIAKE_API_PORT", "8000")
+    ctx = AppContext(page, BackendClient(base_url=f"http://127.0.0.1:{api_port}"))
     
     # Initialize Global Pickers
     # Initialize Global Pickers

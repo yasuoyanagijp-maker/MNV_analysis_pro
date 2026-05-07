@@ -1,6 +1,6 @@
 import flet as ft
 from flet import Colors, Icons, FontWeight
-from components.shared import PRIMARY, PRIMARY_GLOW, TEXT_MUTED, GLASS_BG, AppContext
+from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, TEXT_MUTED, GLASS_BG, AppContext
 
 async def get_login_view(ctx: AppContext):
     username_field = ft.TextField(

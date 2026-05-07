@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import asyncio
 from pathlib import Path
-from components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
+from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
 from src.core.fast_region_growing import fast_region_growing
 from src.utils.cv2_path import (
     BGR_READ_DECODE,
@@ -394,6 +394,10 @@ async def get_roi_view(ctx: AppContext):
         if isinstance(preview_names, list) and preview_names:
             batch_caption += "\nキュー · " + " · ".join(str(n) for n in preview_names) + " （いずれも MNV）"
 
+    is_reanalysis = ctx.page.session.get("is_reanalysis_mode")
+    if is_reanalysis:
+        batch_caption = f"Re-analysis Mode: {Path(target_path).name}\nROIを再指定すると、古い結果が新しい解析結果に上書きされます。"
+        
     return ft.Container(
         content=ft.Column([
             ft.Row([
@@ -401,12 +405,14 @@ async def get_roi_view(ctx: AppContext):
                     ft.Text("Step 1: ROI Refinement (Subtraction)", size=32, weight=FontWeight.BOLD, color=PRIMARY),
                     ft.Text(
                         batch_caption or "Draw ROI and click dark areas to erase background noise.",
-                        color=TEXT_MUTED,
+                        color=Colors.AMBER_400 if is_reanalysis else TEXT_MUTED,
                     ),
                 ]),
                 ft.ElevatedButton(
-                    "Confirm ROI & Proceed", icon=Icons.CHECK_CIRCLE,
-                    height=50, bgcolor=PRIMARY, color=Colors.BLACK, on_click=confirm_roi
+                    "Confirm & Re-analyze" if is_reanalysis else "Confirm ROI & Proceed", 
+                    icon=Icons.CHECK_CIRCLE,
+                    height=50, bgcolor=Colors.AMBER_400 if is_reanalysis else PRIMARY, 
+                    color=Colors.BLACK, on_click=confirm_roi
                 )
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Divider(height=20, color=Colors.TRANSPARENT),
