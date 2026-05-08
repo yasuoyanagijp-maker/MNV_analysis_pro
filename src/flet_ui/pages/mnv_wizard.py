@@ -99,6 +99,7 @@ async def get_mnv_view(ctx: AppContext):
                 f"Starting MNV Analysis for {Path(target_path).name}...", "INFO"
             )
             clean_path = str(target_path).strip().strip("'").strip('"')
+            _fd_self = bool(ctx.page.session.get("mnv_fd_self_ref") or False)
             try:
                 result = await ctx.client.start_mnv_analysis(
                     clean_path,
@@ -106,6 +107,7 @@ async def get_mnv_view(ctx: AppContext):
                     roi=roi_bbox,
                     roi_mask_b64=roi_mask_b64,
                     intelligent_roi=False,
+                    use_self_as_fd=_fd_self,
                 )
             except Exception as api_err:
                 result = {"error": f"Internal UI/API Connection Crash: {str(api_err)}"}

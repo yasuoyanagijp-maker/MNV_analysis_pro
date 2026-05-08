@@ -4,6 +4,7 @@ import asyncio
 import uuid
 import traceback
 import os
+import sys
 from pathlib import Path
 
 # Components
@@ -14,9 +15,10 @@ from src.flet_ui.pages.results_screen import get_results_view
 from src.flet_ui.pages.roi_selection import get_roi_view
 from src.flet_ui.pages.mnv_wizard import get_mnv_view
 
+from src.utils.app_paths import get_upload_dir, sanitize_path_component
+
 # Configure Uploads
-UPLOAD_ROOT = Path("uploads")
-UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+UPLOAD_ROOT = get_upload_dir()
 
 DEV_MODE = os.environ.get("DEV_MODE") == "1"
 
@@ -41,6 +43,7 @@ async def main(page: ft.Page):
     page.padding = 0
     
     api_port = os.environ.get("ARIAKE_API_PORT", "8000")
+    print(f"MAIN_START: Initializing app. Target API Port: {api_port}", flush=True)
     ctx = AppContext(page, BackendClient(base_url=f"http://127.0.0.1:{api_port}"))
     
     # Initialize Global Pickers
@@ -66,6 +69,7 @@ async def main(page: ft.Page):
             return
 
         if is_dir:
+            ctx.page.session.set("original_input_dir", str(p.resolve()))
             loader = getattr(ctx, "folder_batch_loader", None)
             if loader is not None:
                 try:
@@ -93,6 +97,7 @@ async def main(page: ft.Page):
             return
 
         page.session.set("target_path", str(p.absolute()))
+        page.session.set("original_input_dir", str(p.parent.resolve()))
 
         if atype == "MNV":
             session_discard(page.session, "vd_analysis_explicit_path")

@@ -33,25 +33,31 @@ def collect_libtiff():
     return [(str(f), ".") for f in dlls]
 
 # ── 資産収集 ────────────────────────────────────────────────────
-# Streamlit と主要プラグインの依存関係をすべて収集
 datas = [
-    ("mainstreamer.py", "."),
-    ("scrollfree_roi_ui.py", "."),
+    ("main_app.py", "."),
     ("src", "src"),
-    (".streamlit", ".streamlit"),
+    ("resources", "resources"),
 ]
 binaries = collect_libtiff()
-hiddenimports = []
+hiddenimports = [
+    'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto', 'uvicorn.protocols.http.auto', 
+    'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan.on', 'uvicorn.lifespan.off'
+]
 
-# collect_all を使用して Streamlit 関連を統合
+# collect_all を使用して主要パッケージを統合
 to_collect = [
-    "streamlit",
-    "streamlit_drawable_canvas",
+    "flet",
+    "fastapi",
+    "uvicorn",
+    "multipart",
     "cv2",
     "skimage",
     "PIL",
     "imagecodecs",
     "tifffile",
+    "shapely",
+    "networkx",
+    "imageio",
 ]
 
 for pkg in to_collect:

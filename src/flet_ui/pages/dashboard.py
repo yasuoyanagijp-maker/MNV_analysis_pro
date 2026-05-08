@@ -7,6 +7,7 @@ import shutil
 from datetime import datetime
 import asyncio
 from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, session_discard
+from src.utils.app_paths import get_upload_dir, sanitize_path_component
 from src.utils.cv2_path import (
     BGR_READ_OK,
     BGR_READ_PERMISSION,
@@ -116,35 +117,24 @@ async def get_dashboard_view(ctx: AppContext):
     ctx.output_directory_picker.on_result = _on_output_picker_result
 
     async def handle_select_output_folder(_=None):
-        if _is_web():
-            async def _set_out_path(p):
-                output_path_input.value = p
-                ctx.page.session.set("output_folder", p)
-                ctx.page.update()
-            await show_folder_explorer("Select Output Folder", on_select=_set_out_path)
-            return
-        ctx.output_directory_picker.get_directory_path()
+        print("DEBUG: [OUTPUT_FOLDER] Clicked", flush=True)
+        async def _set_out_path(p):
+            output_path_input.value = p
+            ctx.page.session.set("output_folder", p)
+            ctx.page.update()
+        # Always allow server explorer as fallback or primary in restricted environments
+        await show_folder_explorer("Select Output Folder (Server Path)", on_select=_set_out_path)
 
     async def start_unified_analysis(e):
+        print(f"DEBUG: [START_ANALYSIS] Clicked. Mode: {analysis_type.value}", flush=True)
         if manual_path.value:
             await ctx.process_target_path(manual_path.value)
-        elif analysis_type.value == "INTEGRATED":
-            if _is_web():
-                print("DEBUG: [INTEGRATED] web — server folder explorer", flush=True)
-                await show_folder_explorer(
-                    "Select folder for Integrated (VD+MNV)",
-                    on_select=load_batch_from_directory,
-                )
-            elif ctx.directory_picker:
-                ctx.directory_picker.get_directory_path()
         else:
-            if _is_web():
-                await show_folder_explorer(
-                    "Select folder or file path (server)",
-                    on_select=ctx.process_target_path,
-                )
-            elif ctx.directory_picker:
-                ctx.directory_picker.get_directory_path()
+            # Native OS pickers can be flaky in frozen apps; use server explorer by default
+            await show_folder_explorer(
+                "Select folder/file (Server Path Explorer)",
+                on_select=ctx.process_target_path,
+            )
 
     async def show_folder_explorer(title="Select Folder", on_select=None):
         explorer_list = ft.ListView(expand=True, spacing=5)
@@ -354,9 +344,11 @@ async def get_dashboard_view(ctx: AppContext):
             
             try:
                 if analysis_mode == "MNV":
+                    _fd_self = ctx.page.session.get("mnv_fd_self_ref") or False
                     res = await ctx.client.start_mnv_analysis(
                         image_path=file_path,
                         scale=float(scale_mm.value),
+                        use_self_as_fd=bool(_fd_self),
                     )
                 else:
                     pfp = Path(file_path)
@@ -549,7 +541,12 @@ async def get_dashboard_view(ctx: AppContext):
         await asyncio.sleep(0.35)
         ctx.page.go("/roi")
 
-    async def load_batch_from_directory(fspath: str):
+    async def load_batch_from_directory(fspath):
+        if not fspath:
+            return
+        
+        # Save original input directory for output path determination later
+        ctx.page.session.set("original_input_dir", fspath)
         """Build batch queue from a server-side directory path. Used by desktop FilePicker and web explorer."""
         p = Path(fspath)
         if not p.is_dir():
@@ -568,7 +565,7 @@ async def get_dashboard_view(ctx: AppContext):
             return
 
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        staging_root = Path("uploads") / "batch_staging" / stamp
+        staging_root = get_upload_dir() / "batch_staging" / stamp
         staging_root.mkdir(parents=True, exist_ok=True)
         await ctx.add_to_console(
             f"OneDrive-safe staging: copying {len(files)} file(s) to {staging_root}", "INFO",
@@ -720,21 +717,283 @@ async def get_dashboard_view(ctx: AppContext):
     ctx.directory_picker.on_result = _directory_picker_result
 
     async def handle_select_folder(_=None):
-        print("DEBUG: [FOLDER] Launching directory picker...", flush=True)
-        if _is_web():
-            print(
-                "DEBUG: [FOLDER] page.web=True — native get_directory_path is not supported in browser; using server path explorer",
-                flush=True,
+        print("DEBUG: [SELECT_FOLDER] Clicked", flush=True)
+        await show_folder_explorer("Select batch folder (Server Path)", on_select=load_batch_from_directory)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Guided Launch Analysis Wizard
+    # ─────────────────────────────────────────────────────────────────────
+    async def show_launch_wizard(_=None):
+        """3-step modal that enforces analysis type + scale before folder selection."""
+        wizard = {
+            "step": 1,
+            "analysis_type": analysis_type.value or "MNV",
+            "scale_mm": scale_mm.value or "6.0",
+            "vd_sup": vd_sup_suffix.value or "1.tif",
+            "vd_deep": vd_deep_suffix.value or "2.tif",
+            "vd_side_val": vd_side.value or "right",
+            "mnv_fd_self_ref": bool(ctx.page.session.get("mnv_fd_self_ref") or False),
+        }
+        ACCENT = PRIMARY
+        CARD_W = 158
+
+        def _type_card(label, subtitle, icon_name, key):
+            sel = wizard["analysis_type"] == key
+            async def _pick(_=None):
+                wizard["analysis_type"] = key
+                _refresh()
+            return ft.GestureDetector(
+                on_tap=lambda _: ctx.page.run_task(_pick),
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Icon(icon_name, size=34,
+                                color=ACCENT if sel else Colors.WHITE70),
+                        ft.Text(label, size=13, weight=FontWeight.BOLD,
+                                color=Colors.WHITE, text_align=ft.TextAlign.CENTER),
+                        ft.Text(subtitle, size=10, color=TEXT_MUTED,
+                                text_align=ft.TextAlign.CENTER),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+                    width=CARD_W, padding=18,
+                    border=ft.border.all(2 if sel else 1,
+                                        ACCENT if sel else Colors.with_opacity(0.2, Colors.WHITE)),
+                    border_radius=16,
+                    bgcolor=Colors.with_opacity(0.12 if sel else 0.04,
+                                               ACCENT if sel else Colors.WHITE),
+                    animate=ft.Animation(150, ft.AnimationCurve.EASE_OUT),
+                ),
             )
-            await show_folder_explorer("Select batch folder (server path)", on_select=load_batch_from_directory)
-            return
-        if hasattr(ctx, "directory_picker") and ctx.directory_picker is not None:
-            print(f"DEBUG: DirectoryPicker found: {ctx.directory_picker}", flush=True)
-            print(f"DEBUG: Picker attached to page: {ctx.directory_picker.page is not None}", flush=True)
-            ctx.directory_picker.get_directory_path()
+
+        scale_field = ft.TextField(
+            value=wizard["scale_mm"], label="Scale (mm)", width=130,
+            border_color=ACCENT, suffix_text="mm",
+            keyboard_type=ft.KeyboardType.NUMBER,
+            on_change=lambda e: wizard.update({"scale_mm": e.control.value or "6.0"}),
+        )
+
+        def _scale_btn(label, val):
+            sel = wizard["scale_mm"] == val
+            async def _pick(_=None):
+                wizard["scale_mm"] = val
+                scale_field.value = val
+                _refresh()
+            return ft.ElevatedButton(
+                label,
+                bgcolor=ACCENT if sel else Colors.with_opacity(0.1, Colors.WHITE),
+                color=Colors.BLACK if sel else Colors.WHITE,
+                width=105,
+                on_click=lambda _: ctx.page.run_task(_pick),
+                style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)),
+            )
+
+        vd_sup_f = ft.TextField(label="Superficial suffix", value=wizard["vd_sup"],
+                                width=160, border_color=ACCENT,
+                                on_change=lambda e: wizard.update({"vd_sup": e.control.value}))
+        vd_deep_f = ft.TextField(label="Deep suffix", value=wizard["vd_deep"],
+                                 width=160, border_color=ACCENT,
+                                 on_change=lambda e: wizard.update({"vd_deep": e.control.value}))
+        vd_side_dd = ft.Dropdown(
+            label="Eye side", value=wizard["vd_side_val"],
+            options=[ft.dropdown.Option("right"), ft.dropdown.Option("left")],
+            width=130, border_color=ACCENT,
+            on_change=lambda e: wizard.update({"vd_side_val": e.control.value}),
+        )
+        fd_switch = ft.Switch(
+            value=wizard["mnv_fd_self_ref"], active_color=ACCENT,
+            on_change=lambda e: wizard.update({"mnv_fd_self_ref": e.control.value}),
+        )
+
+        def _build_content():
+            step = wizard["step"]
+            atype = wizard["analysis_type"]
+            if step == 1:
+                return ft.Column([
+                    ft.Text("Select the analysis type:", color=TEXT_MUTED, size=13),
+                    ft.Row([
+                        _type_card("MNV Analysis", "Neovascularization\nsingle image",
+                                   Icons.BLUR_CIRCULAR_ROUNDED, "MNV"),
+                        _type_card("VD Analysis", "Vessel density\nSCP/DCP pairs",
+                                   Icons.GRID_ON_ROUNDED, "VD_SINGLE"),
+                        _type_card("Integrated\nVD + MNV", "Full pipeline\nboth analyses",
+                                   Icons.AUTO_AWESOME_ROUNDED, "INTEGRATED"),
+                    ], spacing=14, alignment=ft.MainAxisAlignment.CENTER),
+                ], spacing=20)
+            elif step == 2:
+                return ft.Column([
+                    ft.Text("Select image capture scale:", color=TEXT_MUTED, size=13),
+                    ft.Text("Quick select:", color=TEXT_MUTED, size=12),
+                    ft.Row([_scale_btn("3 mm", "3.0"),
+                            _scale_btn("4.5 mm", "4.5"),
+                            _scale_btn("6 mm", "6.0")], spacing=10),
+                    ft.Text("Or enter manually:", color=TEXT_MUTED, size=12),
+                    scale_field,
+                ], spacing=14)
+            elif step == 2.5:
+                if atype == "MNV":
+                    return ft.Column([
+                        ft.Text("Flow Deficit (FD) Analysis Options", size=15,
+                                weight=FontWeight.BOLD, color=Colors.WHITE),
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Row([
+                                    ft.Icon(Icons.INFO_OUTLINE_ROUNDED,
+                                            color=Colors.AMBER_400, size=18),
+                                    ft.Text(
+                                        "Single MNV mode: no paired CC image (*4.tif) required.",
+                                        color=Colors.AMBER_400, size=12),
+                                ], spacing=8),
+                                ft.Divider(color=Colors.with_opacity(0.1, Colors.WHITE)),
+                                ft.Row([
+                                    ft.Column([
+                                        ft.Text("Use same image for FD Analysis",
+                                                size=14, weight=FontWeight.W_500,
+                                                color=Colors.WHITE),
+                                        ft.Text(
+                                            "Self-referential CC: FD R1/R2/R3 computed\n"
+                                            "using the MNV image itself as CC source.",
+                                            size=11, color=TEXT_MUTED),
+                                    ], expand=True),
+                                    fd_switch,
+                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                            ], spacing=10),
+                            padding=18,
+                            bgcolor=Colors.with_opacity(0.05, Colors.WHITE),
+                            border_radius=12,
+                            border=ft.border.all(1, Colors.with_opacity(0.1, Colors.WHITE)),
+                        ),
+                        ft.Text("• OFF: All FD values = 0 (standard when no CC image).",
+                                size=11, color=TEXT_MUTED),
+                        ft.Text("• ON: Useful for standalone scans without a dedicated CC image.",
+                                size=11, color=TEXT_MUTED),
+                    ], spacing=12)
+                else:
+                    return ft.Column([
+                        ft.Text("VD Analysis Settings", size=15,
+                                weight=FontWeight.BOLD, color=Colors.WHITE),
+                        ft.Text("Configure file suffixes for SCP/DCP image pairs:",
+                                color=TEXT_MUTED, size=13),
+                        ft.Row([vd_sup_f, vd_deep_f, vd_side_dd], spacing=14),
+                        ft.Text(
+                            "Default: superficial=1.tif, deep=2.tif. "
+                            "Adjust if your files use different naming.",
+                            size=11, color=TEXT_MUTED),
+                    ], spacing=14)
+            else:  # step == 3
+                _labels = {"MNV": "MNV Analysis",
+                           "VD_SINGLE": "VD Analysis (single folder)",
+                           "INTEGRATED": "Integrated VD + MNV"}
+                def _row(icon, lbl, val):
+                    return ft.Row([
+                        ft.Icon(icon, size=16, color=ACCENT),
+                        ft.Text(f"{lbl}:", size=13, color=TEXT_MUTED, width=120),
+                        ft.Text(val, size=13, weight=FontWeight.W_500,
+                                color=Colors.WHITE),
+                    ], spacing=8)
+                rows = [
+                    _row(Icons.SCIENCE_ROUNDED, "Analysis", _labels[atype]),
+                    _row(Icons.STRAIGHTEN_ROUNDED, "Scale",
+                         f"{wizard['scale_mm']} mm"),
+                ]
+                if atype == "MNV":
+                    fd_lbl = ("ON (self-referential)"
+                              if wizard["mnv_fd_self_ref"] else "OFF (FD = 0)")
+                    rows.append(_row(Icons.WATER_DROP_ROUNDED, "FD Analysis", fd_lbl))
+                elif atype in ("VD_SINGLE", "INTEGRATED"):
+                    rows.append(_row(Icons.SETTINGS_ROUNDED, "VD suffixes",
+                                     f"sup={wizard['vd_sup']}  deep={wizard['vd_deep']}"))
+                    rows.append(_row(Icons.REMOVE_RED_EYE_ROUNDED, "Eye side",
+                                     wizard["vd_side_val"]))
+                return ft.Column([
+                    ft.Text("Settings confirmed — select your data folder:",
+                            color=TEXT_MUTED, size=13),
+                    ft.Container(
+                        content=ft.Column(rows, spacing=10), padding=16,
+                        bgcolor=Colors.with_opacity(0.05, Colors.WHITE),
+                        border_radius=12,
+                        border=ft.border.all(1, Colors.with_opacity(0.15, ACCENT)),
+                    ),
+                    ft.Text("Click  'Select Folder →'  to open the folder browser.",
+                            size=12, color=TEXT_MUTED),
+                ], spacing=14)
+
+        def _step_lbl():
+            atype = wizard["analysis_type"]
+            return {
+                1: "Step 1 of 3 — Analysis Type",
+                2: "Step 2 of 3 — Image Scale",
+                2.5: ("Step 2.5 — FD Options" if atype == "MNV"
+                      else "Step 2.5 — VD Settings"),
+                3: "Step 3 of 3 — Confirm & Select Folder",
+            }.get(wizard["step"], "")
+
+        dlg = ft.AlertDialog(
+            modal=True, bgcolor=GLASS_BG,
+            title=ft.Text("", size=18, weight=FontWeight.BOLD, color=Colors.WHITE),
+            content=ft.Container(width=560, height=380),
+            actions=[], actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        )
+
+        async def _cancel(_=None):
+            ctx.page.close(dlg)
+
+        async def _back(_=None):
+            s = wizard["step"]
+            wizard["step"] = {2: 1, 2.5: 2, 3: 2.5}.get(s, 1)
+            _refresh()
+
+        async def _next(_=None):
+            s = wizard["step"]
+            if s == 2:
+                try:
+                    v = float(wizard["scale_mm"])
+                    wizard["scale_mm"] = str(v) if v > 0 else "6.0"
+                except (ValueError, TypeError):
+                    wizard["scale_mm"] = "6.0"
+            wizard["step"] = {1: 2, 2: 2.5, 2.5: 3}.get(s, 3)
+            _refresh()
+
+        async def _select_folder(_=None):
+            analysis_type.value = wizard["analysis_type"]
+            scale_mm.value = wizard["scale_mm"]
+            vd_sup_suffix.value = wizard["vd_sup"]
+            vd_deep_suffix.value = wizard["vd_deep"]
+            vd_side.value = wizard["vd_side_val"]
+            ctx.page.session.set("mnv_fd_self_ref", wizard["mnv_fd_self_ref"])
+            ctx.page.close(dlg)
+            await show_folder_explorer("Select Analysis Folder",
+                                       on_select=load_batch_from_directory)
+
+        HEIGHT = {1: 310, 2: 330, 2.5: 370, 3: 340}
+
+        def _refresh():
+            step = wizard["step"]
+            dlg.title = ft.Text(_step_lbl(), size=18,
+                                weight=FontWeight.BOLD, color=Colors.WHITE)
+            dlg.content = ft.Container(
+                content=_build_content(), width=560,
+                height=HEIGHT.get(step, 340),
+                padding=ft.padding.symmetric(vertical=10, horizontal=4),
+            )
+            back_btn = (ft.TextButton("← Back",
+                                      on_click=lambda _: ctx.page.run_task(_back))
+                        if step > 1 else ft.Container(width=80))
+            if step == 3:
+                act = ft.ElevatedButton(
+                    "Select Folder →", icon=Icons.FOLDER_OPEN,
+                    bgcolor=ACCENT, color=Colors.BLACK,
+                    on_click=lambda _: ctx.page.run_task(_select_folder))
+            else:
+                act = ft.ElevatedButton(
+                    "Next →", bgcolor=ACCENT, color=Colors.BLACK,
+                    on_click=lambda _: ctx.page.run_task(_next))
+            dlg.actions = [
+                ft.TextButton("Cancel",
+                              on_click=lambda _: ctx.page.run_task(_cancel)),
+                ft.Row([back_btn, act], spacing=10),
+            ]
             ctx.page.update()
-        else:
-            print("ERROR: directory_picker is None or missing from Context", flush=True)
+
+        _refresh()
+        ctx.page.open(dlg)
 
     return ft.Container(
         content=ft.Column([
@@ -748,48 +1007,15 @@ async def get_dashboard_view(ctx: AppContext):
             
             ft.Container(
                 content=ft.Column([
-                    ft.Text("1. Configure Engine", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-                    ft.Row([
-                        analysis_type,
-                        scale_mm,
-                        manual_path,
-                    ], spacing=20, vertical_alignment=ft.CrossAxisAlignment.END),
-                    ft.Row([
-                        output_path_input,
-                        ft.IconButton(
-                            Icons.FOLDER_OPEN,
-                            on_click=lambda _: ctx.page.run_task(handle_select_output_folder),
-                            tooltip="Select Output Folder"
-                        )
-                    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                    ft.Row(
-                        [
-                            vd_sup_suffix,
-                            vd_deep_suffix,
-                            vd_side,
-                        ],
-                        spacing=16,
-                        vertical_alignment=ft.CrossAxisAlignment.END,
-                    ),
-                    ft.Text(
-                        "Use Select Folder for batch runs (MNV / VD single-folder / Integrated). "
-                        "Files are always copied into uploads/batch_staging (OneDrive-safe) before queueing. "
-                        "Optional path: paste a host folder path above if the picker is inconvenient. "
-                        "MNV: filtered list, ROI per slice. VD single-folder: folder scan + Start Batch. "
-                        "Integrated: VD pair pass then ROI queue for each MNV candidate. "
-                        "Sup/deep suffixes apply to VD and Integrated VD phase.",
-                        size=11,
-                        color=TEXT_MUTED,
-                    ),
-                    ft.Divider(height=40, color=Colors.TRANSPARENT),
-                    ft.Text("2. Launch Analytics", size=20, weight=FontWeight.BOLD, color=PRIMARY),
+                    # ── Primary action ────────────────────────────────────
+                    ft.Text("Launch Analysis", size=20,
+                            weight=FontWeight.BOLD, color=PRIMARY),
                     ft.Container(
                         visible=_is_web(),
-                        padding=ft.padding.only(bottom=4),
                         content=ft.Text(
-                            "Web mode: the OS file/folder dialog is not available (Flet). Buttons open a server-side path browser; paths must exist on the host running the API.",
-                            size=12,
-                            color=TEXT_MUTED,
+                            "Web mode: folder browser uses server-side paths. "
+                            "Paths must exist on the host running the API.",
+                            size=12, color=TEXT_MUTED,
                         ),
                     ),
                     ft.Row(
@@ -797,38 +1023,103 @@ async def get_dashboard_view(ctx: AppContext):
                             ft.Container(
                                 content=ft.Column(
                                     [
-                                        ft.Icon(Icons.DRIVE_FOLDER_UPLOAD_ROUNDED, size=60, color=PRIMARY),
-                                        ft.Text("Select batch folder", size=16, color=Colors.WHITE),
+                                        ft.Icon(Icons.ROCKET_LAUNCH_ROUNDED,
+                                                size=64, color=PRIMARY),
+                                        ft.Text("Guided Analysis Wizard",
+                                                size=17, color=Colors.WHITE,
+                                                weight=FontWeight.BOLD),
+                                        ft.Text(
+                                            "Select analysis type, scale, and options\n"
+                                            "before choosing your data folder.",
+                                            size=12, color=TEXT_MUTED,
+                                            text_align=ft.TextAlign.CENTER,
+                                        ),
                                         ft.ElevatedButton(
-                                            "Select Folder",
-                                            icon=Icons.FOLDER_OPEN,
+                                            "Launch Analysis",
+                                            icon=Icons.PLAY_ARROW_ROUNDED,
                                             bgcolor=PRIMARY,
                                             color=Colors.BLACK,
-                                            on_click=lambda _: ctx.page.run_task(handle_select_folder),
+                                            on_click=lambda _: ctx.page.run_task(
+                                                show_launch_wizard),
                                             width=280,
-                                        ),
-                                        ft.Text(
-                                            "Single-scan MNV / VD file: set type above and paste path, or pick a folder.",
-                                            size=11,
-                                            color=TEXT_MUTED,
-                                            text_align=ft.TextAlign.CENTER,
+                                            style=ft.ButtonStyle(
+                                                shape=ft.RoundedRectangleBorder(
+                                                    radius=12)),
                                         ),
                                     ],
                                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                                    spacing=12,
+                                    spacing=14,
                                 ),
-                                padding=30,
-                                bgcolor=Colors.with_opacity(0.05, PRIMARY),
-                                border=ft.border.all(1, Colors.with_opacity(0.2, PRIMARY)),
-                                border_radius=20,
+                                padding=36,
+                                bgcolor=Colors.with_opacity(0.07, PRIMARY),
+                                border=ft.border.all(
+                                    2, Colors.with_opacity(0.35, PRIMARY)),
+                                border_radius=24,
                                 width=560,
                             ),
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
                     ),
-                    ft.Divider(height=40, color=Colors.TRANSPARENT),
-                    batch_container
-                ], spacing=10),
+
+                    ft.Divider(height=20, color=Colors.TRANSPARENT),
+
+                    # ── Advanced Settings (collapsible) ───────────────────
+                    ft.ExpansionTile(
+                        title=ft.Text("⚙  Advanced Settings",
+                                      size=14, color=TEXT_MUTED),
+                        subtitle=ft.Text(
+                            "Direct access to analysis type, scale, VD suffixes, "
+                            "and output path — for expert use.",
+                            size=11, color=Colors.with_opacity(0.5, TEXT_MUTED),
+                        ),
+                        initially_expanded=False,
+                        tile_padding=ft.padding.symmetric(horizontal=0),
+                        controls=[
+                            ft.Column([
+                                ft.Row([
+                                    analysis_type,
+                                    scale_mm,
+                                    manual_path,
+                                ], spacing=20,
+                                    vertical_alignment=ft.CrossAxisAlignment.END),
+                                ft.Row([
+                                    output_path_input,
+                                    ft.IconButton(
+                                        Icons.FOLDER_OPEN,
+                                        on_click=lambda _: ctx.page.run_task(
+                                            handle_select_output_folder),
+                                        tooltip="Select Output Folder",
+                                    ),
+                                ], spacing=10,
+                                    vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                                ft.Row(
+                                    [vd_sup_suffix, vd_deep_suffix, vd_side],
+                                    spacing=16,
+                                    vertical_alignment=ft.CrossAxisAlignment.END,
+                                ),
+                                ft.Text(
+                                    "MNV: filtered list, ROI per slice.  "
+                                    "VD: SCP/DCP pair folder scan.  "
+                                    "Integrated: VD first, then ROI queue for MNV candidates.  "
+                                    "Sup/deep suffixes apply to VD and Integrated VD phase.",
+                                    size=11, color=TEXT_MUTED,
+                                ),
+                                ft.ElevatedButton(
+                                    "Select Folder (Advanced)",
+                                    icon=Icons.FOLDER_OPEN,
+                                    bgcolor=Colors.with_opacity(0.15, PRIMARY),
+                                    color=PRIMARY,
+                                    on_click=lambda _: ctx.page.run_task(
+                                        handle_select_folder),
+                                    width=260,
+                                ),
+                            ], spacing=12),
+                        ],
+                    ),
+
+                    ft.Divider(height=20, color=Colors.TRANSPARENT),
+                    batch_container,
+                ], spacing=14),
                 padding=30,
                 bgcolor=GLASS_BG,
                 border_radius=20,

@@ -10,6 +10,7 @@ from pathlib import Path
 from flet import Colors, Icons, FontWeight
 from datetime import datetime
 from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, safe_round, session_discard
+from src.utils.app_paths import get_exports_dir
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SRC = _PROJECT_ROOT / "src"
@@ -71,16 +72,15 @@ async def get_results_view(ctx: AppContext):
         if out_folder:
             return Path(out_folder)
             
-        if batch_results:
-            first_abs = batch_results[0].get("_absolute_source_path")
-            if first_abs:
-                input_dir = Path(first_abs).parent
-                now = datetime.now()
-                # Using YYYY_MM_DD for better sorting, but following user's "date/month/year" spirit with underscores
-                folder_name = f"output_folder_{now.strftime('%Y_%m_%d')}"
-                return input_dir / folder_name
-        
-        return _PROJECT_ROOT / "uploads" / "exports"
+        # Use original input directory if available (avoids saving into hidden staging area)
+        original_dir = ctx.page.session.get("original_input_dir")
+        if original_dir:
+            input_dir = Path(original_dir)
+            now = datetime.now()
+            folder_name = f"output_folder_{now.strftime('%Y_%m_%d')}"
+            return input_dir / folder_name
+            
+        return get_exports_dir()
 
     async def on_export_batch_csv(_=None):
         try:
@@ -188,7 +188,7 @@ async def get_results_view(ctx: AppContext):
             base = ctx.client.base_url.rstrip("/")
             if is_web:
                 # Copy to internal exports so web server can serve them
-                internal_exports = _PROJECT_ROOT / "uploads" / "exports"
+                internal_exports = get_exports_dir()
                 internal_exports.mkdir(parents=True, exist_ok=True)
                 for kind, fn, _, b in saved:
                     (internal_exports / fn).write_bytes(b)

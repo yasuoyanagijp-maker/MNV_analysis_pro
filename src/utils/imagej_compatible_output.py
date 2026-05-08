@@ -11,6 +11,19 @@ import cv2
 import numpy as np
 import pandas as pd
 
+try:
+    from utils.app_paths import sanitize_path_component
+except ImportError:
+    try:
+        from src.utils.app_paths import sanitize_path_component
+    except ImportError:
+        import re
+        def sanitize_path_component(name: str) -> str:  # type: ignore
+            name = name.replace("\u3000", "_").replace(" ", "_")
+            name = re.sub(r'[<>:"/\\|?*]', '_', name)
+            name = re.sub(r'_+', '_', name)
+            return name.strip('_')
+
 
 class ImageJOutputManager:
     """
@@ -78,10 +91,11 @@ class ImageJOutputManager:
         stage_name : str
             ステージ名 ("original", "processed"など)
         """
+        safe_pid = sanitize_path_component(patient_id)
         if stage_name == "original":
-            filename = f"{patient_id}_original.jpg"
+            filename = f"{safe_pid}_original.jpg"
         else:
-            filename = f"{patient_id}_{stage_name}.jpg"
+            filename = f"{safe_pid}_{stage_name}.jpg"
 
         filepath = self.vd_output_dir / filename
 
@@ -171,7 +185,8 @@ class ImageJOutputManager:
             画像タイプ ("MNV", "FD")
         """
         # ファイル名: MNV_{patient_id}.jpg or FD_{patient_id}.jpg
-        filename = f"{image_type}_{patient_id}.jpg"
+        safe_pid = sanitize_path_component(patient_id)
+        filename = f"{image_type}_{safe_pid}.jpg"
         filepath = self.mnv_output_dir / filename
 
         # cv2.imwrite は BGR を期待するため、RGB→BGR 変換

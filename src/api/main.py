@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from src.api.schemas import AnalysisRequest, MNVResult, VDRequest, VDResult, LoginRequest, AuthResponse
 from core.mnv_pipeline import MNVPipeline
 from core.vd_analysis import VDAnalyzer
+from src.utils.app_paths import get_upload_dir, get_output_dir, get_exports_dir, sanitize_path_component
 from utils.cv2_path import imread_grayscale
 from utils.mnv_cc_resolve import resolve_flow_deficit_cc_path
 from utils.mnv_imagej_csv import metrics_for_csv_export
@@ -32,10 +33,9 @@ from typing import List, Optional
 app = FastAPI(title="ARIAKE OCTA Engine API")
 
 # Ensure uploads directory exists
-UPLOAD_DIR = ROOT / "uploads"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-EXPORTS_DIR = UPLOAD_DIR / "exports"
-EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR = get_upload_dir()
+EXPORTS_DIR = get_exports_dir()
+OUTPUT_BASE = get_output_dir()
 
 
 @app.get("/download_export/{filename}")
@@ -97,7 +97,7 @@ async def analyze_mnv(request: AnalysisRequest):
         import base64
         # Create unique output directory for this run
         run_id = str(uuid.uuid4())
-        output_dir = ROOT / "output" / "mnv" / run_id
+        output_dir = OUTPUT_BASE / "mnv" / run_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Handle ROI — priority: roi_mask_b64 > roi bbox > None (auto-detect)
@@ -126,7 +126,13 @@ async def analyze_mnv(request: AnalysisRequest):
                 cv2.rectangle(roi_mask, (x, y), (x + rw, y + rh), 255, -1)
 
         cc_for_fd = resolve_flow_deficit_cc_path(request.image_path)
-        fd_path_opt = str(cc_for_fd) if cc_for_fd is not None else None
+        if cc_for_fd is not None:
+            fd_path_opt = str(cc_for_fd)
+        elif request.use_self_as_fd:
+            # Self-referential FD: no paired CC image, use the MNV image itself
+            fd_path_opt = request.image_path
+        else:
+            fd_path_opt = None
 
         pipeline = MNVPipeline(
             scale_mm=request.scale_mm,
@@ -234,7 +240,7 @@ async def analyze_vd(request: VDRequest):
     try:
         # Create unique output directory
         run_id = str(uuid.uuid4())
-        output_dir = ROOT / "output" / "vd" / run_id
+        output_dir = OUTPUT_BASE / "vd" / run_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Baseline reproducibility — match mainstreamer.run_vd_batch VDAnalyzer knobs
@@ -273,7 +279,7 @@ async def analyze_vd(request: VDRequest):
         sup_b64_list: List[Optional[str]] = []
         deep_b64_list: List[Optional[str]] = []
         for i, pid in enumerate(pids):
-            pid_safe = str(pid) if pid is not None else f"idx{i}"
+            pid_safe = sanitize_path_component(str(pid) if pid is not None else f"idx{i}")
             sup_b64_list.append(
                 _png_b64(output_dir / f"{pid_safe}_superficial_visualization.png")
             )

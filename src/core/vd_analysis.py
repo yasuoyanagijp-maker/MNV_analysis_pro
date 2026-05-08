@@ -30,6 +30,7 @@ try:
     from ..utils.file_handler import FileHandler
     from ..utils.image_utils import ImageProcessor, ScaleManager
     from ..utils.imagej_compatible_output import ImageJOutputManager
+    from ..utils.app_paths import sanitize_path_component
     from .roi_manager import FAZDetector
     from .vessel_detection import VDProcessor
 except ImportError:
@@ -40,6 +41,7 @@ except ImportError:
     from utils.file_handler import FileHandler
     from utils.image_utils import ImageProcessor, ScaleManager
     from utils.imagej_compatible_output import ImageJOutputManager
+    from utils.app_paths import sanitize_path_component
     from core.roi_manager import FAZDetector
     from core.vessel_detection import VDProcessor
 
@@ -1184,7 +1186,7 @@ class VDAnalyzer:
         stage_name : str
             段階名
         """
-        output_path = self.output_dir / f"{patient_id}_{stage_name}.png"
+        output_path = self.output_dir / f"{sanitize_path_component(patient_id)}_{stage_name}.png"
         cv2.imwrite(str(output_path), image)
 
     def _save_visualization(
@@ -1237,8 +1239,9 @@ class VDAnalyzer:
             -1,
         )
 
-        # 保存
-        output_path = self.output_dir / f"{patient_id}_{layer_name}_visualization.png"
+        # 保存 (patient_id をサニタイズしてスペースを含むパスでの Error 2 を防止)
+        safe_pid = sanitize_path_component(patient_id)
+        output_path = self.output_dir / f"{safe_pid}_{layer_name}_visualization.png"
         cv2.imwrite(str(output_path), vis)
 
     def _save_results_csv(self, results: Dict) -> Path:

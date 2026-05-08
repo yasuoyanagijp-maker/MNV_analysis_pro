@@ -31,13 +31,14 @@ class BackendClient:
             except Exception as e:
                 return {"type": "unknown", "error": str(e)}
 
-    async def start_mnv_analysis(self, image_path: str, scale: float, roi: dict = None, roi_mask_b64: str = None, intelligent_roi: bool = False):
+    async def start_mnv_analysis(self, image_path: str, scale: float, roi: dict = None, roi_mask_b64: str = None, intelligent_roi: bool = False, use_self_as_fd: bool = False):
         async with httpx.AsyncClient(timeout=300.0) as client:
             try:
                 payload = {
                     "image_path": image_path,
                     "scale_mm": scale,
                     "intelligent_roi": bool(intelligent_roi),
+                    "use_self_as_fd": bool(use_self_as_fd),
                 }
                 if roi_mask_b64:
                     payload["roi_mask_b64"] = roi_mask_b64

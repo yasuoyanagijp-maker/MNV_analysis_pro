@@ -14,6 +14,7 @@ class AnalysisRequest(BaseModel):
     roi: Optional[ROI] = None
     roi_mask_b64: Optional[str] = None  # Base64-encoded pixel-accurate mask (priority over roi bbox)
     intelligent_roi: bool = False  # ROI contour refinement after auto-detection only (manual ROI ignores)
+    use_self_as_fd: bool = False  # Use the same MNV image as CC source for FD when no 4.tif sibling exists
 
 class MNVResult(BaseModel):
     result_type: str = "MNV"

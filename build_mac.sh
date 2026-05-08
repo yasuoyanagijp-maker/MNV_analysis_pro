@@ -115,6 +115,12 @@ if [[ "$PLACEHOLDER_FOUND" == true && "$SKIP_NOTARIZE" != true ]]; then
     log_warn "開発者情報が未設定のため --skip-notarize モードで続行します"
     SKIP_NOTARIZE=true
 fi
+
+# ── アドホック署名のフォールバック ──────────────────────────────────────────────
+if [[ "$SKIP_NOTARIZE" == true && "$PLACEHOLDER_FOUND" == true ]]; then
+    log_info "開発者情報が未設定かつ公証スキップのため、アドホック署名 (-) を使用します"
+    DEVELOPER_ID="-"
+fi
 log_success "設定確認完了"
 
 # ── 必須ツール確認 ────────────────────────────────────────────────────────────
@@ -332,7 +338,7 @@ codesign \
     "${APP_PATH}"
 
 log_info "署名の検証..."
-codesign --verify --deep --strict --verbose=2 "${APP_PATH}" 2>&1 | head -5
+codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
 log_success "署名完了"
 
 # ── DMG 作成 ─────────────────────────────────────────────────────────────────
@@ -340,21 +346,13 @@ log_step "DMG 作成"
 
 [[ -f "$DMG_PATH" ]] && rm -f "$DMG_PATH"
 
-if [[ -f "$DMG_SETTINGS" ]]; then
-    log_info "dmgbuild で DMG を作成中..."
-    dmgbuild \
-        -s "${DMG_SETTINGS}" \
-        "${APP_NAME}" \
-        "${DMG_PATH}"
-else
-    log_warn "dmgbuild_settings.py が見つかりません。hdiutil でシンプル DMG を作成..."
-    hdiutil create \
-        -volname "${APP_NAME}" \
-        -srcfolder "${APP_PATH}" \
-        -ov \
-        -format UDZO \
-        "${DMG_PATH}"
-fi
+log_info "hdiutil で DMG を作成中..."
+hdiutil create \
+    -volname "${APP_NAME}" \
+    -srcfolder "${APP_PATH}" \
+    -ov \
+    -format UDZO \
+    "${DMG_PATH}"
 
 if [[ ! -f "$DMG_PATH" ]]; then
     log_error "DMG 作成に失敗しました"

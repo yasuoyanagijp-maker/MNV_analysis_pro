@@ -4,7 +4,10 @@
 import os
 from pathlib import Path
 
-DIST_DIR = Path(__file__).parent / "dist"
+# dmgbuild から exec() で呼ばれる際、__file__ が未定義になることがあるため
+# カレントディレクトリ（通常プロジェクトルート）を基準にします
+current_dir = Path(os.getcwd())
+DIST_DIR = current_dir / "dist"
 APP_PATH = str(DIST_DIR / "ARIAKE_OCTA.app")
 
 # ── DMG 基本設定 ──────────────────────────────────────────────────────────────
@@ -21,12 +24,12 @@ text_size = 14
 
 # ── アイコン配置 ──────────────────────────────────────────────────────────────
 contents = [
-    ("ARIAKE OCTA.app", (160, 200), "file", APP_PATH),
+    ("ARIAKE_OCTA.app", (160, 200), "file", APP_PATH),
     ("Applications",    (420, 200), "link", "/Applications"),
 ]
 
 # ── 背景画像（オプション: assets/dmg_background.png を用意した場合に有効化） ──
-# background = str(Path(__file__).parent / "assets" / "dmg_background.png")
+# background = str(current_dir / "assets" / "dmg_background.png")
 
 # ── ライセンス（オプション） ─────────────────────────────────────────────────
 # license = {"default-language": "ja", "licenses": {"ja": "LICENSE"}}

@@ -72,6 +72,20 @@ except ImportError:
     except ImportError:
         get_vd_metrics_for_file = get_vd_summary_value = None
 
+# Path sanitizer — prevents Error 2 when filenames contain spaces
+try:
+    from utils.app_paths import sanitize_path_component
+except ImportError:
+    try:
+        from src.utils.app_paths import sanitize_path_component
+    except ImportError:
+        def sanitize_path_component(name: str) -> str:  # type: ignore
+            import re
+            name = name.replace("\u3000", "_").replace(" ", "_")
+            name = re.sub(r'[<>:"/\\|?*]', '_', name)
+            name = re.sub(r'_+', '_', name)
+            return name.strip('_')
+
 # スクロールレスROI UI
 from scrollfree_roi_ui import ScrollFreeROICanvas, inject_scrollfree_css
 
@@ -264,8 +278,8 @@ def ensure_persistent_output_dir() -> Path:
     if len(patient_ids) == 1:
         # 単一患者の場合
         patient_id = list(patient_ids)[0]
-        # ファイル名に使用できない文字を置換（スラッシュ、バックスラッシュ、コロンなど）
-        safe_patient_id = re.sub(r'[<>:"/\\|?*]', '_', patient_id)
+        # ファイル名に使用できない文字を置換（スペース・スラッシュ・バックスラッシュ・コロンなど）
+        safe_patient_id = sanitize_path_component(re.sub(r'[<>:"/\\|?*]', '_', patient_id))
         session_dir = base / f"session_{safe_patient_id}_{session_id}"
     else:
         # 複数患者またはファイルキューが空の場合
@@ -671,7 +685,7 @@ def run_mnv_analysis(
             else:
                 resized_roi = roi_mask.copy()
 
-        with tempfile.TemporaryDirectory(prefix=f"mnv_{file_stem}_{ts}_") as tmp_dir:
+        with tempfile.TemporaryDirectory(prefix=f"mnv_{sanitize_path_component(file_stem)}_{ts}_") as tmp_dir:
             tmp_path = Path(tmp_dir)
             # リサイズ後の画像を保存（pipelineはimage_pathを要求）
             ext = Path(filename).suffix or ".tif"
@@ -842,9 +856,10 @@ def run_vd_batch(
                     if i < len(patient_ids) and patient_ids[i] is not None
                     else extract_patient_id_from_filename(sf)
                 )
-                sup_img = output_dir / f"{pid}_superficial_visualization.png"
-                deep_img = output_dir / f"{pid}_deep_visualization.png"
-                vis_payload: Dict[str, Any] = {"patient_id": pid}
+                safe_pid = sanitize_path_component(pid)
+                sup_img = output_dir / f"{safe_pid}_superficial_visualization.png"
+                deep_img = output_dir / f"{safe_pid}_deep_visualization.png"
+                vis_payload: Dict[str, Any] = {"patient_id": pid}  # raw pid kept for display
                 if sup_img.exists():
                     vis_payload["superficial"] = sup_img.read_bytes()
                 if deep_img.exists():
@@ -1246,18 +1261,19 @@ def save_vd_visualization_images(export_root: Path) -> list[str]:
         if not isinstance(payload, dict):
             continue
         patient_id = str(payload.get("patient_id") or extract_patient_id_from_filename(filename))
-        patient_dir = vis_dir / patient_id
+        safe_patient_id = sanitize_path_component(patient_id)
+        patient_dir = vis_dir / safe_patient_id
         patient_dir.mkdir(parents=True, exist_ok=True)
 
         superficial = payload.get("superficial")
         if isinstance(superficial, (bytes, bytearray)):
-            sup_out = patient_dir / f"{patient_id}_superficial_visualization.png"
+            sup_out = patient_dir / f"{safe_patient_id}_superficial_visualization.png"
             sup_out.write_bytes(bytes(superficial))
             saved_paths.append(str(sup_out))
 
         deep = payload.get("deep")
         if isinstance(deep, (bytes, bytearray)):
-            deep_out = patient_dir / f"{patient_id}_deep_visualization.png"
+            deep_out = patient_dir / f"{safe_patient_id}_deep_visualization.png"
             deep_out.write_bytes(bytes(deep))
             saved_paths.append(str(deep_out))
 
