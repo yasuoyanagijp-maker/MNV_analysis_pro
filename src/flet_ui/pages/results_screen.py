@@ -5,8 +5,10 @@ import json
 import re
 import sys
 import time
+import shutil
 from pathlib import Path
 from flet import Colors, Icons, FontWeight
+from datetime import datetime
 from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, safe_round, session_discard
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -63,6 +65,22 @@ async def get_results_view(ctx: AppContext):
         ctx.page.session.set("results_selected_index", index)
         # Bump query so Page.go fires route_change while already on /results (SPA same-path no-op otherwise)
         ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
+
+    def get_target_output_dir():
+        out_folder = ctx.page.session.get("output_folder")
+        if out_folder:
+            return Path(out_folder)
+            
+        if batch_results:
+            first_abs = batch_results[0].get("_absolute_source_path")
+            if first_abs:
+                input_dir = Path(first_abs).parent
+                now = datetime.now()
+                # Using YYYY_MM_DD for better sorting, but following user's "date/month/year" spirit with underscores
+                folder_name = f"output_folder_{now.strftime('%Y_%m_%d')}"
+                return input_dir / folder_name
+        
+        return _PROJECT_ROOT / "uploads" / "exports"
 
     async def on_export_batch_csv(_=None):
         try:
@@ -142,19 +160,20 @@ async def get_results_view(ctx: AppContext):
                 ctx.page.update()
                 return
 
-            exports_dir = _PROJECT_ROOT / "uploads" / "exports"
-            exports_dir.mkdir(parents=True, exist_ok=True)
+            target_dir = get_target_output_dir()
+            target_dir.mkdir(parents=True, exist_ok=True)
+            
             saved: list[tuple[str, str, Path, bytes]] = []
             if mnv_bytes and mnv_fname:
-                p = (exports_dir / mnv_fname).resolve()
+                p = (target_dir / mnv_fname).resolve()
                 p.write_bytes(mnv_bytes)
                 saved.append(("MNV", mnv_fname, p, mnv_bytes))
             if vd_vsl_bytes and vd_vsl_fname:
-                p = (exports_dir / vd_vsl_fname).resolve()
+                p = (target_dir / vd_vsl_fname).resolve()
                 p.write_bytes(vd_vsl_bytes)
                 saved.append(("VD (single)", vd_vsl_fname, p, vd_vsl_bytes))
             if vd_full_bytes and vd_full_fname:
-                p = (exports_dir / vd_full_fname).resolve()
+                p = (target_dir / vd_full_fname).resolve()
                 p.write_bytes(vd_full_bytes)
                 saved.append(("VD (full)", vd_full_fname, p, vd_full_bytes))
 
@@ -168,35 +187,14 @@ async def get_results_view(ctx: AppContext):
             is_web = bool(getattr(ctx.page, "web", False))
             base = ctx.client.base_url.rstrip("/")
             if is_web:
-                for _, fn, _, _ in saved:
+                # Copy to internal exports so web server can serve them
+                internal_exports = _PROJECT_ROOT / "uploads" / "exports"
+                internal_exports.mkdir(parents=True, exist_ok=True)
+                for kind, fn, _, b in saved:
+                    (internal_exports / fn).write_bytes(b)
                     ctx.page.launch_url(f"{base}/download_export/{fn}")
                     await asyncio.sleep(0.2)
-
-            elif ctx.save_file_picker:
-                # One save dialog: MNV first if present (ImageJ batch), else VD (Streamlit-style VD table).
-                pick_label, pick_fname, pick_path, pick_bytes = saved[0]
-
-                async def on_csv_save_pick(e: ft.FilePickerResultEvent):
-                    if not getattr(e, "path", None):
-                        return
-                    try:
-                        Path(e.path).write_bytes(pick_bytes)
-                        await ctx.add_to_console(
-                            f"{pick_label} CSV saved: {Path(e.path).name}", "SUCCESS"
-                        )
-                    except Exception as sav_ex:
-                        await ctx.add_to_console(f"CSV save failed: {sav_ex}", "ERROR")
-                    ctx.page.update()
-
-                def sync_csv_pick(ev: ft.FilePickerResultEvent):
-                    ctx.page.run_task(on_csv_save_pick, ev)
-
-                ctx.save_file_picker.on_result = sync_csv_pick
-                ctx.save_file_picker.save_file(
-                    dialog_title=f"Save {pick_label} CSV",
-                    file_name=pick_fname,
-                    allowed_extensions=["csv"],
-                )
+            # In non-web mode, we don't open save_file_picker anymore because we saved directly to output_folder
 
             lines = [
                 "UTF-8 BOM。MNV: ImageJ 互換列。VD (full): mainstreamer VD バッチ相当。VD (single): 浅層のみ・Vsl Density 列構成。",
@@ -204,14 +202,9 @@ async def get_results_view(ctx: AppContext):
             ]
             for kind, fn, outp, _ in saved:
                 lines.append(f"[{kind}] {outp}")
-                if is_web:
-                    lines.append(f"  → {base}/download_export/{fn}")
-            if not is_web and len(saved) > 1:
+            if not is_web:
                 lines.append("")
-                lines.append(
-                    f"保存ダイアログは先頭（{saved[0][0]}）用です。"
-                    f"もう一方は上記パス（uploads/exports）を参照してください。"
-                )
+                lines.append(f"ファイルを指定の出力フォルダに直接保存しました。")
             lines.append("")
             lines.append("※ クリップボードは MNV があれば MNV の内容を優先してコピーします。")
 
@@ -288,6 +281,36 @@ async def get_results_view(ctx: AppContext):
         await ctx.add_to_console("MNV batch: redo ROI for the same image.", "INFO")
         ctx.page.go("/roi")
 
+    async def on_mnv_batch_stop(_=None):
+        res = ctx.page.session.get("last_result")
+        if not res:
+            return
+            
+        acc = list(ctx.page.session.get("mnv_batch_results") or [])
+        acc.append(res)
+        
+        session_discard(ctx.page.session, "mnv_batch_awaiting_qc")
+        session_discard(ctx.page.session, "roi")
+        session_discard(ctx.page.session, "roi_mask_b64")
+        session_discard(ctx.page.session, "last_result")
+        session_discard(ctx.page.session, "batch_results")
+        
+        vd_hdr = ctx.page.session.get("integrated_vd_result")
+        merged = [vd_hdr] + acc if vd_hdr is not None else acc
+        if vd_hdr is not None:
+            session_discard(ctx.page.session, "integrated_vd_result")
+            
+        ctx.page.session.set("batch_results", merged)
+        
+        session_discard(ctx.page.session, "mnv_batch_paths")
+        session_discard(ctx.page.session, "mnv_batch_index")
+        session_discard(ctx.page.session, "mnv_batch_results")
+        session_discard(ctx.page.session, "mnv_batch_names_preview")
+        ctx.page.session.set("results_selected_index", -1)
+        
+        await ctx.add_to_console(f"MNV batch stopped early: {len(acc)} file(s) saved.", "SUCCESS")
+        ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
+
     async def on_reanalyze_mnv(idx):
         res = batch_results[idx]
         abs_path = res.get("_absolute_source_path")
@@ -321,42 +344,21 @@ async def get_results_view(ctx: AppContext):
             # Open download URL before any await — browsers block navigation opened after an
             # async barrier (trusted user gesture is lost).
             if is_web:
+                # Copy to internal downloads so web server can serve it
+                (out_dir / fname).write_bytes(out_path.read_bytes())
                 dl = f"{ctx.client.base_url.rstrip('/')}/download/{fname}"
                 ctx.page.launch_url(dl)
                 help_body = (
-                    "PDF をサーバーの uploads に保存し、ダウンロード用の URL を開きました。\n\n"
-                    f"{out_path}\n\n"
+                    "PDF をダウンロード用に準備しました。\n\n"
                     f"{dl}\n\n"
                     "ブラウザで保存が始まらない場合は上記 URL をコピーして開いてください。"
                 )
-            elif ctx.save_file_picker:
-                pdf_bytes = out_path.read_bytes()
-
-                async def on_pdf_save_pick(e: ft.FilePickerResultEvent):
-                    if not getattr(e, "path", None):
-                        return
-                    try:
-                        Path(e.path).write_bytes(pdf_bytes)
-                        await ctx.add_to_console(f"PDF saved: {Path(e.path).name}", "SUCCESS")
-                    except Exception as sav_ex:
-                        await ctx.add_to_console(f"PDF save failed: {sav_ex}", "ERROR")
-                    ctx.page.update()
-
-                def sync_pdf_pick(ev: ft.FilePickerResultEvent):
-                    ctx.page.run_task(on_pdf_save_pick, ev)
-
-                ctx.save_file_picker.on_result = sync_pdf_pick
-                ctx.save_file_picker.save_file(
-                    dialog_title="Save PDF report",
-                    file_name=fname,
-                    allowed_extensions=["pdf"],
-                )
-                help_body = (
-                    f"PDF を次に保存しました（コピーを任意の場所に保存できます）:\n\n{out_path}\n\n"
-                    "保存ダイアログで別名・別フォルダにも書き出せます。"
-                )
             else:
-                help_body = f"PDF を保存しました:\n\n{out_path}"
+                target_dir = get_target_output_dir()
+                target_dir.mkdir(parents=True, exist_ok=True)
+                final_out = target_dir / fname
+                shutil.copy2(out_path, final_out)
+                help_body = f"PDF を指定の出力フォルダに保存しました:\n\n{final_out}"
 
             await ctx.add_to_console(f"Report saved: {out_path.name}", "SUCCESS")
 
@@ -1024,51 +1026,77 @@ async def get_results_view(ctx: AppContext):
         res = batch_results[idx]
         pm = _detail_pipeline_metrics(res)
         subtype_display = str(res.get("mnv_subtype") or pm.get("mnv_subtype") or "—")
+        
+        # Check for abnormal stability (Uniformity)
+        stability_val = res.get("stability_score") or pm.get("stability_score")
+        is_abnormal_uniformity = False
+        try:
+            if stability_val is not None and float(stability_val) == 25.0:
+                is_abnormal_uniformity = True
+        except:
+            pass
 
-        return ft.ListView(
-            controls=[
-                ft.Row(
-                    [
-                        ft.Column(
-                            [
-                                ft.Text(
-                                    res.get("source_filename", "Result Detail"),
-                                    size=28,
-                                    weight=FontWeight.BOLD,
-                                    color=Colors.WHITE,
-                                ),
-                                ft.Text(
-                                    f"Analysis type: MNV | Timestamp: {res.get('analysis_timestamp', 'N/A')}",
-                                    color=TEXT_MUTED,
-                                ),
-                            ],
-                            expand=True,
-                        ),
-                        ft.ElevatedButton(
-                            "Save PDF Report",
-                            icon=Icons.PICTURE_AS_PDF_ROUNDED,
-                            bgcolor=PRIMARY,
-                            color=Colors.BLACK,
-                            on_click=lambda _: ctx.page.run_task(on_save_individual_pdf, res),
-                        ),
-                        ft.ElevatedButton(
-                            "ROI再指定・再解析",
-                            icon=Icons.CROP_FREE,
-                            bgcolor=Colors.AMBER_400,
-                            color=Colors.BLACK,
-                            tooltip="ROI（抽出領域）を選択し直して、この画像の解析をやり直します",
-                            on_click=lambda _: ctx.page.run_task(on_reanalyze_mnv, idx),
-                        ),
-                    ]
-                ),
-                ft.Divider(height=20, color=Colors.TRANSPARENT),
-                ft.Text(
-                    "Basic Metrics & Topology",
-                    size=20,
-                    weight=FontWeight.BOLD,
-                    color=PRIMARY,
-                ),
-                ft.Row(
+        ctrls = [
+            ft.Row(
+                [
+                    ft.Column(
+                        [
+                            ft.Text(
+                                res.get("source_filename", "Result Detail"),
+                                size=28,
+                                weight=FontWeight.BOLD,
+                                color=Colors.WHITE,
+                            ),
+                            ft.Text(
+                                f"Analysis type: MNV | Timestamp: {res.get('analysis_timestamp', 'N/A')}",
+                                color=TEXT_MUTED,
+                            ),
+                        ],
+                        expand=True,
+                    ),
+                    ft.ElevatedButton(
+                        "Save PDF Report",
+                        icon=Icons.PICTURE_AS_PDF_ROUNDED,
+                        bgcolor=PRIMARY,
+                        color=Colors.BLACK,
+                        on_click=lambda _: ctx.page.run_task(on_save_individual_pdf, res),
+                    ),
+                    ft.ElevatedButton(
+                        "ROI再指定・再解析",
+                        icon=Icons.CROP_FREE,
+                        bgcolor=Colors.AMBER_400,
+                        color=Colors.BLACK,
+                        tooltip="ROI（抽出領域）を選択し直して、この画像の解析をやり直します",
+                        on_click=lambda _: ctx.page.run_task(on_reanalyze_mnv, idx),
+                    ),
+                ]
+            )
+        ]
+
+        if is_abnormal_uniformity:
+            ctrls.append(
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(Icons.WARNING_AMBER_ROUNDED, color=Colors.BLACK),
+                        ft.Text("Caliber uniformity 異常値（25.0）です。再解析を勧めます", 
+                                color=Colors.BLACK, weight=FontWeight.BOLD)
+                    ], alignment=ft.MainAxisAlignment.CENTER),
+                    bgcolor=Colors.AMBER_400,
+                    padding=10,
+                    border_radius=10,
+                    margin=ft.margin.only(top=10)
+                )
+            )
+
+        ctrls.extend([
+            ft.Divider(height=20, color=Colors.TRANSPARENT),
+            ft.Text(
+                "Basic Metrics & Topology",
+                size=20,
+                weight=FontWeight.BOLD,
+                color=PRIMARY,
+            ),
+            ft.Row(
                     [
                         metric_tile(
                             "Area",
@@ -1196,9 +1224,9 @@ async def get_results_view(ctx: AppContext):
                 ),
                 ft.Divider(height=20, color=Colors.TRANSPARENT),
             ],
-            expand=True,
-            spacing=20,
         )
+
+        return ft.ListView(controls=ctrls, expand=True, spacing=20)
 
     def get_detail_content(idx):
         if not batch_results or idx < 0 or idx >= len(batch_results):
@@ -1276,6 +1304,14 @@ async def get_results_view(ctx: AppContext):
                                 icon=Icons.CROP_FREE,
                                 style=ft.ButtonStyle(color=Colors.AMBER_400),
                                 on_click=lambda _: ctx.page.run_task(on_mnv_batch_redo),
+                            ),
+                            ft.OutlinedButton(
+                                "Stop Here",
+                                icon=Icons.STOP_CIRCLE,
+                                style=ft.ButtonStyle(color=Colors.RED_400),
+                                tooltip="以降の画像をキャンセルし、ここまでの結果でサマリー画面へ進みます",
+                                on_click=lambda _: ctx.page.run_task(on_mnv_batch_stop),
+                                visible=not is_final_mnv_image,
                             ),
                         ],
                         spacing=16,

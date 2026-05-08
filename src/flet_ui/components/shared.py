@@ -143,6 +143,7 @@ class AppContext:
         self.vd_side_ref = ft.Ref()
         self.file_picker = None
         self.directory_picker = None
+        self.output_directory_picker = None
         self.save_file_picker = None
         self.process_target_path = None # Function reference
         # Wired by dashboard: async (folder_path_str) → queue & go ROI (web + manual path paste)

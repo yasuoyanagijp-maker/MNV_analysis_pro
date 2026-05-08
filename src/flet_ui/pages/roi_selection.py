@@ -4,6 +4,7 @@ import base64
 import cv2
 import numpy as np
 import asyncio
+import uuid
 from pathlib import Path
 from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
 from src.core.fast_region_growing import fast_region_growing
@@ -34,6 +35,8 @@ async def get_roi_view(ctx: AppContext):
         "new_w": 500,
         "new_h": 500,
         "drag_start": None,
+        "crop_start": None,
+        "crop_end": None,
     }
 
     # UI Controls
@@ -93,43 +96,71 @@ async def get_roi_view(ctx: AppContext):
 
     # Interaction Events
     async def on_pan_start(e: ft.DragStartEvent):
-        if state["mode"] != "draw": return
-        state["drag_start"] = True
-        state["freehand_points"] = [(int(e.local_x), int(e.local_y))]
+        if state["mode"] == "crop":
+            state["drag_start"] = True
+            state["crop_start"] = (e.local_x, e.local_y)
+            state["crop_end"] = (e.local_x, e.local_y)
+            selection_box.left = e.local_x
+            selection_box.top = e.local_y
+            selection_box.width = 0
+            selection_box.height = 0
+            selection_box.visible = True
+            ctx.page.update()
+        elif state["mode"] == "draw":
+            state["drag_start"] = True
+            state["freehand_points"] = [(int(e.local_x), int(e.local_y))]
 
     async def on_pan_update(e: ft.DragUpdateEvent):
-        if state["mode"] != "draw" or not state["drag_start"]: return
-        cx = np.clip(int(e.local_x), 0, state["new_w"])
-        cy = np.clip(int(e.local_y), 0, state["new_h"])
-        state["freehand_points"].append((cx, cy))
+        if not state.get("drag_start"): return
         
-        # Live render of the line
-        if len(state["freehand_points"]) > 1:
-            pts = np.array(state["freehand_points"], np.int32).reshape((-1, 1, 2))
-            temp_mask = state["current_mask"].copy()
-            cv2.polylines(temp_mask, [pts], False, 255, 2)
-            
-            # Temporary render
-            base = state["base_img"].copy()
-            overlay = base.copy()
-            overlay[temp_mask == 255] = [0, 255, 0]
-            blended = cv2.addWeighted(overlay, 0.4, base, 0.6, 0)
-            img_control.src_base64 = encode_img_b64(blended)
+        if state["mode"] == "crop":
+            x, y = e.local_x, e.local_y
+            sx, sy = state["crop_start"]
+            selection_box.left = min(sx, x)
+            selection_box.top = min(sy, y)
+            selection_box.width = abs(x - sx)
+            selection_box.height = abs(y - sy)
+            state["crop_end"] = (x, y)
             ctx.page.update()
+        elif state["mode"] == "draw":
+            cx = np.clip(int(e.local_x), 0, state["new_w"])
+            cy = np.clip(int(e.local_y), 0, state["new_h"])
+            state["freehand_points"].append((cx, cy))
+            
+            # Live render of the line
+            if len(state["freehand_points"]) > 1:
+                pts = np.array(state["freehand_points"], np.int32).reshape((-1, 1, 2))
+                temp_mask = state["current_mask"].copy()
+                cv2.polylines(temp_mask, [pts], False, 255, 2)
+                
+                # Temporary render
+                base = state["base_img"].copy()
+                overlay = base.copy()
+                overlay[temp_mask == 255] = [0, 255, 0]
+                blended = cv2.addWeighted(overlay, 0.4, base, 0.6, 0)
+                img_control.src_base64 = encode_img_b64(blended)
+                ctx.page.update()
 
     async def on_pan_end(e: ft.DragEndEvent):
         if state["mode"] == "erase":
             await on_tap_up(None)
             return
             
-        if state["mode"] != "draw" or not state.get("drag_start"): return
+        if not state.get("drag_start"): return
         state["drag_start"] = False
-        if len(state["freehand_points"]) > 2:
-            new_mask = state["current_mask"].copy()
-            pts = np.array(state["freehand_points"], np.int32)
-            cv2.fillPoly(new_mask, [pts], 255)
-            await save_state(new_mask)
-            await ctx.add_to_console("Freehand ROI section added.", "INFO")
+        
+        if state["mode"] == "crop":
+            # Just leave the box visible until user confirms
+            pass
+        elif state["mode"] == "draw":
+            if len(state["freehand_points"]) > 2:
+                new_mask = state["current_mask"].copy()
+                pts = np.array(state["freehand_points"], np.int32)
+                cv2.fillPoly(new_mask, [pts], 255)
+                await save_state(new_mask)
+                await ctx.add_to_console("Freehand ROI section added.", "INFO")
+                # Automatically switch to erase mode after drawing ROI
+                await set_mode("erase")
 
     async def continuous_erase(x, y):
         a_power = 0.5
@@ -190,7 +221,69 @@ async def get_roi_view(ctx: AppContext):
     undo_button = ft.IconButton(Icons.UNDO, on_click=handle_undo, disabled=True, tooltip="Undo Last Action")
     reset_button = ft.IconButton(Icons.REFRESH, on_click=handle_reset, tooltip="Reset All")
 
-    # Replaced SegmentedButton with two robust explicit buttons
+    async def confirm_crop(e):
+        if not state.get("crop_start") or not state.get("crop_end"):
+            await ctx.add_to_console("クロップ領域が選択されていません。", "WARN")
+            return
+            
+        x1, y1 = state["crop_start"]
+        x2, y2 = state["crop_end"]
+        
+        if abs(x2 - x1) < 10 or abs(y2 - y1) < 10:
+            await ctx.add_to_console("領域が小さすぎます。もう少し大きく囲んでください。", "WARN")
+            return
+            
+        scale = state["scale"]
+        orig_x1, orig_y1 = int(min(x1, x2) / scale), int(min(y1, y2) / scale)
+        orig_x2, orig_y2 = int(max(x1, x2) / scale), int(max(y1, y2) / scale)
+        
+        orig_path = ctx.page.session.get("target_path")
+        if not ctx.page.session.get("original_target_path"):
+            ctx.page.session.set("original_target_path", orig_path)
+            
+        try:
+            from src.utils.cv2_path import imread_bgr
+            full_img = imread_bgr(orig_path)
+            if full_img is None: raise Exception("Failed to load original image.")
+            
+            # Ensure coordinates are within image bounds
+            orig_h, orig_w = full_img.shape[:2]
+            orig_x1, orig_x2 = np.clip([orig_x1, orig_x2], 0, orig_w)
+            orig_y1, orig_y2 = np.clip([orig_y1, orig_y2], 0, orig_h)
+            
+            cropped = full_img[orig_y1:orig_y2, orig_x1:orig_x2]
+            # Resize using Bicubic interpolation for high quality preservation of edges
+            resized = cv2.resize(cropped, (800, 800), interpolation=cv2.INTER_CUBIC)
+            
+            out_path = str(Path(orig_path).with_name(f"{Path(orig_path).stem}_cropped.png"))
+            # Save using imencode to handle non-ascii paths properly
+            success, buf = cv2.imencode('.png', resized)
+            if success:
+                with open(out_path, 'wb') as f:
+                    f.write(buf)
+            
+            ctx.page.session.set("target_path", out_path)
+            await ctx.add_to_console("Bicubic補間を用いて800x800pxにクロップ・拡大しました。", "SUCCESS")
+            
+            ctx.page.go("/roi", rt=uuid.uuid4().hex[:12])
+        except Exception as ex:
+            await ctx.add_to_console(f"クロップ処理に失敗しました: {ex}", "ERROR")
+
+    async def redo_crop(e):
+        orig = ctx.page.session.get("original_target_path")
+        if orig:
+            ctx.page.session.set("target_path", orig)
+            ctx.page.session.set("original_target_path", None)
+            ctx.page.go("/roi", rt=uuid.uuid4().hex[:12])
+
+    crop_btn = ft.ElevatedButton(
+        "0. Crop Image", 
+        icon=Icons.CROP,
+        bgcolor=Colors.TRANSPARENT, 
+        color=TEXT_MUTED,
+        on_click=lambda e: ctx.page.run_task(set_mode, "crop")
+    )
+    
     draw_btn = ft.ElevatedButton(
         "1. Draw ROI (フリーハンド)", 
         icon=Icons.CROP_SQUARE,
@@ -206,26 +299,53 @@ async def get_roi_view(ctx: AppContext):
         color=TEXT_MUTED,
         on_click=lambda e: ctx.page.run_task(set_mode, "erase")
     )
+    
+    confirm_crop_btn = ft.ElevatedButton("クロップ確定", icon=Icons.CHECK, bgcolor=Colors.BLUE_400, color=Colors.WHITE, on_click=confirm_crop, visible=False)
+    
+    has_orig = ctx.page.session.get("original_target_path") is not None
+    redo_crop_btn = ft.ElevatedButton("🔙 元画像に戻す", on_click=redo_crop, visible=has_orig, bgcolor=Colors.TRANSPARENT, color=TEXT_MUTED)
 
     async def set_mode(new_mode):
         state["mode"] = new_mode
-        if new_mode == "draw":
+        if new_mode == "crop":
+            crop_btn.bgcolor = Colors.BLUE_400
+            crop_btn.color = Colors.WHITE
+            draw_btn.bgcolor = Colors.TRANSPARENT
+            draw_btn.color = TEXT_MUTED
+            erase_btn.bgcolor = Colors.TRANSPARENT
+            erase_btn.color = TEXT_MUTED
+            status_text.value = "ドラッグして必要な部分（解析領域）を四角く囲んでください"
+            confirm_crop_btn.visible = True
+            # Reset existing selection if any
+            selection_box.visible = False
+            state["crop_start"] = None
+            state["crop_end"] = None
+        elif new_mode == "draw":
+            crop_btn.bgcolor = Colors.TRANSPARENT
+            crop_btn.color = TEXT_MUTED
             draw_btn.bgcolor = PRIMARY
             draw_btn.color = Colors.BLACK
             erase_btn.bgcolor = Colors.TRANSPARENT
             erase_btn.color = TEXT_MUTED
             status_text.value = "ドラッグしてROI（抽出領域）をフリーハンドで囲んでください"
+            confirm_crop_btn.visible = False
+            selection_box.visible = False
         else:
+            crop_btn.bgcolor = Colors.TRANSPARENT
+            crop_btn.color = TEXT_MUTED
             erase_btn.bgcolor = Colors.RED_400
             erase_btn.color = Colors.WHITE
             draw_btn.bgcolor = Colors.TRANSPARENT
             draw_btn.color = TEXT_MUTED
             status_text.value = "緑の領域内の「黒い隙間」を丸ごと長押ししてノイズを除去してください"
+            confirm_crop_btn.visible = False
+            selection_box.visible = False
             
         status_text.color = TEXT_MUTED
         ctx.page.update()
 
-    mode_tabs = ft.Row([draw_btn, erase_btn], spacing=10)
+    mode_tabs = ft.Column([crop_btn, draw_btn, erase_btn], spacing=10)
+    action_tabs = ft.Row([confirm_crop_btn, redo_crop_btn], wrap=True, spacing=10)
 
     # GestureDetector wrapping the image and selection frame
     gesture = ft.GestureDetector(
@@ -365,6 +485,13 @@ async def get_roi_view(ctx: AppContext):
             blank_mask = np.zeros((new_h, new_w), dtype=np.uint8)
             state["history_masks"].clear()
             await save_state(blank_mask)
+            
+            # Auto crop mode selection for landscape images
+            aspect_ratio = orig_w / orig_h
+            if aspect_ratio >= 1.2:
+                await set_mode("crop")
+            else:
+                await set_mode("draw")
 
             img_control.width = new_w
             img_control.height = new_h
@@ -402,12 +529,14 @@ async def get_roi_view(ctx: AppContext):
         content=ft.Column([
             ft.Row([
                 ft.Column([
-                    ft.Text("Step 1: ROI Refinement (Subtraction)", size=32, weight=FontWeight.BOLD, color=PRIMARY),
+                    ft.Text("Step 1: ROI selection", size=32, weight=FontWeight.BOLD, color=PRIMARY),
                     ft.Text(
                         batch_caption or "Draw ROI and click dark areas to erase background noise.",
                         color=Colors.AMBER_400 if is_reanalysis else TEXT_MUTED,
+                        max_lines=3,
+                        overflow=ft.TextOverflow.ELLIPSIS,
                     ),
-                ]),
+                ], expand=True),
                 ft.ElevatedButton(
                     "Confirm & Re-analyze" if is_reanalysis else "Confirm ROI & Proceed", 
                     icon=Icons.CHECK_CIRCLE,
@@ -420,7 +549,8 @@ async def get_roi_view(ctx: AppContext):
                 img_stack,
                 ft.Column([
                     status_text,
-                    ft.Row([mode_tabs]),
+                    mode_tabs,
+                    action_tabs,
                     ft.Row([undo_button, reset_button]),
                     ft.Divider(height=20, color=Colors.TRANSPARENT),
                     ft.Container(
