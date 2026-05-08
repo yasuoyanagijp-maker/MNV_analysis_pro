@@ -98,6 +98,33 @@ async def get_dashboard_view(ctx: AppContext):
 
     manual_path.on_submit = lambda _: ctx.page.run_task(on_manual_submit)
 
+    output_path_input = ft.TextField(
+        label="Output Folder (Optional — defaults to <input_dir>/output_folder_date)",
+        border_color=PRIMARY,
+        expand=True,
+        text_size=12,
+        height=40,
+        value=ctx.page.session.get("output_folder") or "",
+    )
+
+    async def _on_output_picker_result(e: ft.FilePickerResultEvent):
+        if e.path:
+            output_path_input.value = e.path
+            ctx.page.session.set("output_folder", e.path)
+            ctx.page.update()
+
+    ctx.output_directory_picker.on_result = _on_output_picker_result
+
+    async def handle_select_output_folder(_=None):
+        if _is_web():
+            async def _set_out_path(p):
+                output_path_input.value = p
+                ctx.page.session.set("output_folder", p)
+                ctx.page.update()
+            await show_folder_explorer("Select Output Folder", on_select=_set_out_path)
+            return
+        ctx.output_directory_picker.get_directory_path()
+
     async def start_unified_analysis(e):
         if manual_path.value:
             await ctx.process_target_path(manual_path.value)
@@ -355,9 +382,11 @@ async def get_dashboard_view(ctx: AppContext):
                 row.cells[3].content.value = "Success"
                 row.cells[3].content.color = Colors.GREEN_400
                 if analysis_mode == "MNV":
+                    res["_absolute_source_path"] = file_path
                     all_results.append(res)
                 else:
                     out = dict(res)
+                    out["_absolute_source_path"] = file_path
                     if not Path(file_path).is_dir():
                         out["source_filename"] = filename
                     if str(analysis_mode) == "VD_SINGLE":
@@ -462,6 +491,7 @@ async def get_dashboard_view(ctx: AppContext):
         else:
             vd_bundle = dict(vd_res)
             vd_bundle.setdefault("result_type", "VD")
+            vd_bundle["_absolute_source_path"] = root_abs
 
         batch_progress.value = 1.0
         batch_status_text.value = "VD phase complete."
@@ -724,6 +754,14 @@ async def get_dashboard_view(ctx: AppContext):
                         scale_mm,
                         manual_path,
                     ], spacing=20, vertical_alignment=ft.CrossAxisAlignment.END),
+                    ft.Row([
+                        output_path_input,
+                        ft.IconButton(
+                            Icons.FOLDER_OPEN,
+                            on_click=lambda _: ctx.page.run_task(handle_select_output_folder),
+                            tooltip="Select Output Folder"
+                        )
+                    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                     ft.Row(
                         [
                             vd_sup_suffix,

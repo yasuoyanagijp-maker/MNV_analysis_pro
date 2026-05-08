@@ -47,8 +47,9 @@ async def main(page: ft.Page):
     # Initialize Global Pickers
     ctx.file_picker = ft.FilePicker()
     ctx.directory_picker = ft.FilePicker()
+    ctx.output_directory_picker = ft.FilePicker()
     ctx.save_file_picker = ft.FilePicker()
-    page.overlay.extend([ctx.file_picker, ctx.directory_picker, ctx.save_file_picker])
+    page.overlay.extend([ctx.file_picker, ctx.directory_picker, ctx.output_directory_picker, ctx.save_file_picker])
     
     is_navigating = False
 
