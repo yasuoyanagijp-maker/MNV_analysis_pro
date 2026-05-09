@@ -703,6 +703,7 @@ async def get_dashboard_view(ctx: AppContext):
         await run_batch_analysis(None)
 
     ctx.folder_batch_loader = load_batch_from_directory
+    ctx.process_target_path = load_batch_from_directory
 
     async def _directory_picker_result_async(e: ft.FilePickerResultEvent):
         if not e.path:

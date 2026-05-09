@@ -34,8 +34,8 @@ def sanitize_path_component(name: str) -> str:
 def get_base_data_dir() -> Path:
     """Returns a writable directory for application data."""
     if getattr(sys, "frozen", False):
-        # On frozen app, use user's home directory to avoid permission issues in /Applications
-        base = Path.home() / ".ariake_octa"
+        # On frozen app, use user's home directory
+        base = Path.home() / "ARIAKE_OCTA_Data"
     else:
         # In development, use project root
         # Assuming this file is in src/utils/, project root is parent.parent.parent
