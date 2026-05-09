@@ -1,3 +1,4 @@
+# Python / Build artifacts
 .venv/
 venv/
 env/
@@ -5,7 +6,7 @@ __pycache__/
 *.pyc
 .DS_Store
 *.bak
-# *.spec
+*.spec
 build/
 dist/
 .cursor/
