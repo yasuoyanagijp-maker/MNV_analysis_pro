@@ -62,7 +62,8 @@ if __name__ == "__main__":
     api_proc.start()
 
     # Give API a moment to bind
-    time.sleep(1)
+    print(f"[Wrapper] Backend assigned to port {api_port}. Waiting for startup...", flush=True)
+    time.sleep(2)
 
     # ── RUN FRONTEND ───────────────────────────────────────────────────────
     print(f"[Frontend] Starting Flet native window on port {flet_port}...", flush=True)
