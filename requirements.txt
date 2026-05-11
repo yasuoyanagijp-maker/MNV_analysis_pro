@@ -36,6 +36,10 @@ blinker==1.8.2
 
 # New UI
 flet==0.28.3
+# Native desktop window (FletApp). Must match flet; PyInstaller EXE needs this bundled — else runtime pip fails.
+flet-desktop==0.28.3
+# Flet optional dep: required for flet.security (PyInstaller collects submodules; avoids hook WARNING)
+cryptography>=42.0.0
 
 # ------------------
 # API & Async

@@ -35,6 +35,14 @@ def collect_libtiff():
     
     return [(str(f), ".") for f in dlls]
 
+# ── PyInstaller が見る Python 環境 ────────────────────────────────
+# ビルドを実行したインタプリタ（例: build_win.ps1 が選ぶ .venv かシステムの python）の
+# site-packages 全体が「候補」になるが、バンドルに入るのは次だけ:
+#   · エントリ wrapper_win.py から import グラフで到達するモジュール
+#   · 下記 datas / collect_all / hiddenimports で足したもの
+# requirements.txt に streamlit があっても、Flet ランチャー経路では import されないため
+# 通常は EXE に含まれない。念のため excludes で明示除外する。
+
 # ── 資産収集 ────────────────────────────────────────────────────
 datas = [
     ("main_app.py", "."),
@@ -60,9 +68,12 @@ hiddenimports = [
     'sklearn.utils._cython_blas',
 ]
 
-# collect_all を使用して主要パッケージを統合
+# collect_all: 各パッケージ配下のサブモジュール・データを「広く」取るため
+# networkx / skimage 等はテスト用サブパッケージまで解析対象が膨らみ、Analysis が非常に重くなりやすい。
+# Streamlit はここに含めていない（旧 UI 用; 現エントリでは未使用）。
 to_collect = [
     "flet",
+    "flet_desktop",  # native view: not pulled by import graph alone; without it, Flet runs pip at startup (breaks frozen EXE)
     "fastapi",
     "uvicorn",
     "multipart",
@@ -92,7 +103,11 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['torch', 'torchvision', 'torchaudio'], # PyTorch を明示的に除外
+    excludes=[
+        'torch', 'torchvision', 'torchaudio',
+        'streamlit', 'streamlit_drawable_canvas',
+        'pytest', 'IPython',  # dev 系がグラフに混ざるのを抑える
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -110,7 +125,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,  # UPX compresses every binary — often adds long build time + AV slowdown; set True to shrink output
     console=DEBUG_MODE,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -126,7 +141,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name='ARIAKE_OCTA',
 )

@@ -44,7 +44,7 @@ hiddenimports = [
 ]
 
 # 一般的なパッケージの収集（imagecodecs/tifffile は LZW 圧縮 TIFF 用に必須）
-for pkg in ['flet', 'fastapi', 'uvicorn', 'multipart', 'cv2', 'skimage', 'networkx', 'shapely', 'imageio', 'imagecodecs']:
+for pkg in ['flet', 'flet_desktop', 'fastapi', 'uvicorn', 'multipart', 'cv2', 'skimage', 'networkx', 'shapely', 'imageio', 'imagecodecs']:
     tmp_ret = collect_all(pkg)
     datas += tmp_ret[0]
     binaries += tmp_ret[1]

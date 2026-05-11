@@ -8,8 +8,41 @@ import time
 import socket
 import subprocess
 import multiprocessing
+import tempfile
+import traceback
 from pathlib import Path
 import logging
+
+
+def _launcher_log_path() -> Path:
+    """Writable log path: next to EXE when frozen, else project dir; fallback %TEMP%."""
+    candidates: list[Path] = []
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(sys.executable).resolve().parent / "aria_launcher.log")
+    try:
+        candidates.append(Path(__file__).resolve().parent / "aria_launcher.log")
+    except NameError:
+        pass
+    candidates.append(Path(tempfile.gettempdir()) / "aria_launcher.log")
+    for p in candidates:
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "a", encoding="utf-8"):
+                pass
+            return p
+        except OSError:
+            continue
+    return Path(tempfile.gettempdir()) / "aria_launcher.log"
+
+
+# PyInstaller windowed mode: stdout/stderr are None and break some libs.
+# On Windows spawn, child re-imports this module; "w" would truncate the log — use "a" in workers.
+_log = _launcher_log_path()
+_stdio_mode = "a" if multiprocessing.parent_process() is not None else "w"
+if sys.stdout is None:
+    sys.stdout = open(_log, _stdio_mode, encoding="utf-8", buffering=1)
+if sys.stderr is None:
+    sys.stderr = open(_log, "a", encoding="utf-8", buffering=1)
 
 def get_free_port() -> int:
     """Finds an available ephemeral port."""
@@ -23,7 +56,8 @@ def run_api_server(port: int):
     import uvicorn
     from src.api.main import app
     print(f"[Backend] Starting FastAPI on port {port}...", flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    # Explicitly disable colors to avoid isatty() calls on None stdout
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", use_colors=False)
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
@@ -61,7 +95,12 @@ if __name__ == "__main__":
     # Share ports via environment for Flet frontend and BackendClient
     os.environ["ARIAKE_API_PORT"] = str(api_port)
     os.environ["FLET_PORT"] = str(flet_port)
-    os.environ["FLET_USE_WEB"] = "0"  # Force Native Window
+    
+    # Allow overriding via environment variable (default to 0 for Native)
+    use_web = os.environ.get("FLET_USE_WEB", "0")
+    if use_web not in ["0", "1"]:
+        use_web = "0"
+    os.environ["FLET_USE_WEB"] = use_web
 
     # ── SPAWN BACKEND ──────────────────────────────────────────────────────
     api_proc = multiprocessing.Process(target=run_api_server, args=(api_port,), daemon=True)
@@ -72,14 +111,16 @@ if __name__ == "__main__":
     time.sleep(2)
 
     # ── RUN FRONTEND ───────────────────────────────────────────────────────
-    print(f"[Frontend] Starting Flet native window on port {flet_port}...", flush=True)
     try:
         import flet as ft
         import main_app
         
+        flet_view = ft.AppView.WEB_BROWSER if use_web == "1" else ft.AppView.FLET_APP
+        print(f"[Frontend] Starting Flet ({flet_view}) on port {flet_port}...", flush=True)
+        
         ft.app(
             target=main_app.main,
-            view=ft.AppView.FLET_APP,
+            view=flet_view,
             port=flet_port,
             upload_dir=str(main_app.UPLOAD_ROOT),
         )
@@ -87,6 +128,7 @@ if __name__ == "__main__":
         print("\n[Wrapper] KeyboardInterrupt received.", flush=True)
     except Exception as e:
         print(f"[Wrapper] Error running Flet: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
     finally:
         print("[Wrapper] Flet window closed. Shutting down backend...", flush=True)
         if api_proc.is_alive():

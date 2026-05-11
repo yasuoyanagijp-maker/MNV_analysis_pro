@@ -41,7 +41,7 @@ hiddenimports = [
     'imagecodecs',
 ]
 
-for pkg in ['flet', 'fastapi', 'uvicorn', 'multipart', 'cv2', 'skimage', 'networkx', 'shapely', 'imageio', 'imagecodecs']:
+for pkg in ['flet', 'flet_desktop', 'fastapi', 'uvicorn', 'multipart', 'cv2', 'skimage', 'networkx', 'shapely', 'imageio', 'imagecodecs']:
     tmp_ret = collect_all(pkg)
     datas += tmp_ret[0]
     binaries += tmp_ret[1]
