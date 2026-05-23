@@ -11,6 +11,8 @@ if str(ROOT) not in sys.path:
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+import asyncio
+
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,7 +30,15 @@ import uuid
 import uvicorn
 from datetime import datetime
 import base64
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+
+from utils.vd_folder_preflight import find_vd_file_pairs
+from utils.vd_job_progress import (
+    vd_progress_complete,
+    vd_progress_create,
+    vd_progress_fail,
+    vd_progress_get,
+)
 
 app = FastAPI(title="ARIAKE OCTA Engine API")
 
@@ -235,93 +245,164 @@ async def analyze_mnv(request: AnalysisRequest):
         print(f"Engine Error: {error_detail}")
         raise HTTPException(status_code=500, detail=error_detail)
 
-@app.post("/analyze/vd", response_model=VDResult)
-async def analyze_vd(request: VDRequest):
+def _png_b64(p: Path) -> Optional[str]:
+    if not p.is_file():
+        return None
     try:
-        # Create unique output directory
-        run_id = str(uuid.uuid4())
-        output_dir = OUTPUT_BASE / "vd" / run_id
-        output_dir.mkdir(parents=True, exist_ok=True)
+        return base64.b64encode(p.read_bytes()).decode("utf-8")
+    except Exception:
+        return None
 
-        # Baseline reproducibility — match mainstreamer.run_vd_batch VDAnalyzer knobs
-        # (mainstreamer.py ~813–833: Li=0.07, Hessian-opt on, baseline intref off).
+
+def _estimate_vd_item_count(request: VDRequest) -> int:
+    inp = Path(request.input_dir)
+    if request.single_image_mode:
         analyzer = VDAnalyzer(
-            input_dir=Path(request.input_dir),
-            output_dir=output_dir,
+            input_dir=inp,
+            output_dir=OUTPUT_BASE / "vd" / "_estimate",
             scale_mm=request.scale_mm,
             side=request.side,
             sup_suffix=request.sup_suffix,
             deep_suffix=request.deep_suffix,
-            single_image_mode=request.single_image_mode,
+            single_image_mode=True,
             single_image_explicit_path=request.single_image_explicit_path,
-            faz_li_threshold_scale=0.07,
-            use_optimized_preprocessing=True,
-            use_faz_intensity_refinement=False,
-            faz_intensity_percentile=40.0,
-            faz_center_roi_ratio=0.5,
-            faz_distance_trim_ratio=0.14,
-            faz_distance_min_px=1,
         )
-        res = analyzer.analyze()
-        
-        if not res:
-             raise ValueError("No valid file pairs or single images found for VD analysis.")
+        n = len(analyzer._find_single_images())
+        return max(n, 1)
+    pairs, _ = find_vd_file_pairs(inp, request.sup_suffix, request.deep_suffix)
+    return max(len(pairs), 1)
 
-        def _png_b64(p: Path) -> Optional[str]:
-            if not p.is_file():
-                return None
-            try:
-                return base64.b64encode(p.read_bytes()).decode("utf-8")
-            except Exception:
-                return None
 
-        pids = res.get("patient_ids", [])
-        sup_b64_list: List[Optional[str]] = []
-        deep_b64_list: List[Optional[str]] = []
-        for i, pid in enumerate(pids):
-            pid_safe = sanitize_path_component(str(pid) if pid is not None else f"idx{i}")
-            sup_b64_list.append(
-                _png_b64(output_dir / f"{pid_safe}_superficial_visualization.png")
-            )
-            deep_b64_list.append(
-                _png_b64(output_dir / f"{pid_safe}_deep_visualization.png")
-            )
+def _make_vd_analyzer(
+    request: VDRequest,
+    output_dir: Path,
+    *,
+    progress_job_id: Optional[str] = None,
+) -> VDAnalyzer:
+    return VDAnalyzer(
+        input_dir=Path(request.input_dir),
+        output_dir=output_dir,
+        scale_mm=request.scale_mm,
+        side=request.side,
+        sup_suffix=request.sup_suffix,
+        deep_suffix=request.deep_suffix,
+        single_image_mode=request.single_image_mode,
+        single_image_explicit_path=request.single_image_explicit_path,
+        progress_job_id=progress_job_id,
+        faz_li_threshold_scale=0.07,
+        use_optimized_preprocessing=True,
+        use_faz_intensity_refinement=False,
+        faz_intensity_percentile=40.0,
+        faz_center_roi_ratio=0.5,
+        faz_distance_trim_ratio=0.14,
+        faz_distance_min_px=1,
+    )
 
-        return VDResult(
-            result_type="VD",
-            source_filename=Path(request.input_dir).name,
-            analysis_timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            patient_ids=pids,
-            superficial_files=res.get("superficial_files", []),
-            deep_files=res.get("deep_files", []),
-            faz_areas=res.get("faz_areas", []),
-            faz_circularities=res.get("faz_circularities", []),
-            superficial_whole=res.get("superficial_whole", []),
-            deep_whole=res.get("deep_whole", []),
-            superficial_superior=res.get("superficial_superior", []),
-            superficial_inferior=res.get("superficial_inferior", []),
-            superficial_temporal=res.get("superficial_temporal", []),
-            superficial_nasal=res.get("superficial_nasal", []),
-            deep_superior=res.get("deep_superior", []),
-            deep_inferior=res.get("deep_inferior", []),
-            deep_temporal=res.get("deep_temporal", []),
-            deep_nasal=res.get("deep_nasal", []),
-            fractal_dimension_superficial=res.get("fractal_dimension_superficial", []),
-            fractal_dimension_deep=res.get("fractal_dimension_deep", []),
-            tortuosity_superficial=res.get("tortuosity_superficial", []),
-            tortuosity_deep=res.get("tortuosity_deep", []),
-            superficial_visualization_b64=sup_b64_list,
-            deep_visualization_b64=deep_b64_list,
+
+def _vd_raw_to_api_dict(res: Dict[str, Any], output_dir: Path, request: VDRequest) -> Dict[str, Any]:
+    pids = res.get("patient_ids", [])
+    sup_b64_list: List[Optional[str]] = []
+    deep_b64_list: List[Optional[str]] = []
+    for i, pid in enumerate(pids):
+        pid_safe = sanitize_path_component(str(pid) if pid is not None else f"idx{i}")
+        sup_b64_list.append(
+            _png_b64(output_dir / f"{pid_safe}_superficial_visualization.png")
         )
+        deep_b64_list.append(
+            _png_b64(output_dir / f"{pid_safe}_deep_visualization.png")
+        )
+    return {
+        "result_type": "VD",
+        "source_filename": Path(request.input_dir).name,
+        "analysis_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "patient_ids": pids,
+        "superficial_files": res.get("superficial_files", []),
+        "deep_files": res.get("deep_files", []),
+        "faz_areas": res.get("faz_areas", []),
+        "faz_circularities": res.get("faz_circularities", []),
+        "superficial_whole": res.get("superficial_whole", []),
+        "deep_whole": res.get("deep_whole", []),
+        "superficial_superior": res.get("superficial_superior", []),
+        "superficial_inferior": res.get("superficial_inferior", []),
+        "superficial_temporal": res.get("superficial_temporal", []),
+        "superficial_nasal": res.get("superficial_nasal", []),
+        "deep_superior": res.get("deep_superior", []),
+        "deep_inferior": res.get("deep_inferior", []),
+        "deep_temporal": res.get("deep_temporal", []),
+        "deep_nasal": res.get("deep_nasal", []),
+        "fractal_dimension_superficial": res.get("fractal_dimension_superficial", []),
+        "fractal_dimension_deep": res.get("fractal_dimension_deep", []),
+        "tortuosity_superficial": res.get("tortuosity_superficial", []),
+        "tortuosity_deep": res.get("tortuosity_deep", []),
+        "superficial_visualization_b64": sup_b64_list,
+        "deep_visualization_b64": deep_b64_list,
+    }
+
+
+def _run_vd_sync(
+    request: VDRequest,
+    output_dir: Path,
+    *,
+    progress_job_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    analyzer = _make_vd_analyzer(request, output_dir, progress_job_id=progress_job_id)
+    res = analyzer.analyze()
+    if not res:
+        raise ValueError("No valid file pairs or single images found for VD analysis.")
+    return _vd_raw_to_api_dict(res, output_dir, request)
+
+
+@app.post("/analyze/vd", response_model=VDResult)
+async def analyze_vd(request: VDRequest):
+    try:
+        run_id = str(uuid.uuid4())
+        output_dir = OUTPUT_BASE / "vd" / run_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        payload = _run_vd_sync(request, output_dir)
+        return VDResult(**payload)
     except Exception as e:
         import traceback
         error_detail = {
             "error": str(e),
             "traceback": traceback.format_exc(),
-            "type": type(e).__name__
+            "type": type(e).__name__,
         }
         print(f"VD Engine Error: {error_detail}")
         raise HTTPException(status_code=500, detail=error_detail)
+
+
+@app.post("/analyze/vd/start")
+async def analyze_vd_start(request: VDRequest):
+    """Start VD in background; poll GET /analyze/vd/status/{job_id} for progress."""
+    total = _estimate_vd_item_count(request)
+    job_id = vd_progress_create(total)
+    run_id = str(uuid.uuid4())
+    output_dir = OUTPUT_BASE / "vd" / run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    async def _worker() -> None:
+        try:
+            loop = asyncio.get_running_loop()
+            payload = await loop.run_in_executor(
+                None,
+                lambda: _run_vd_sync(request, output_dir, progress_job_id=job_id),
+            )
+            vd_progress_complete(job_id, payload)
+        except Exception as e:
+            import traceback
+            vd_progress_fail(job_id, str(e))
+            print(f"VD job {job_id} failed: {traceback.format_exc()}")
+
+    asyncio.create_task(_worker())
+    return {"job_id": job_id, "total": total}
+
+
+@app.get("/analyze/vd/status/{job_id}")
+async def analyze_vd_status(job_id: str):
+    snap = vd_progress_get(job_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return snap
 
 @app.get("/detect")
 async def detect_analysis_type(path: str):

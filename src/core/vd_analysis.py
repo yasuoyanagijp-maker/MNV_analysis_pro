@@ -31,6 +31,7 @@ try:
     from ..utils.image_utils import ImageProcessor, ScaleManager
     from ..utils.imagej_compatible_output import ImageJOutputManager
     from ..utils.app_paths import sanitize_path_component
+    from ..utils.vd_folder_preflight import find_vd_file_pairs
     from .roi_manager import FAZDetector
     from .vessel_detection import VDProcessor
 except ImportError:
@@ -42,6 +43,7 @@ except ImportError:
     from utils.image_utils import ImageProcessor, ScaleManager
     from utils.imagej_compatible_output import ImageJOutputManager
     from utils.app_paths import sanitize_path_component
+    from utils.vd_folder_preflight import find_vd_file_pairs
     from core.roi_manager import FAZDetector
     from core.vessel_detection import VDProcessor
 
@@ -73,6 +75,7 @@ class VDAnalyzer:
         faz_distance_min_px: int = 1,
         single_image_mode: bool = False,
         single_image_explicit_path: Optional[Union[str, Path]] = None,
+        progress_job_id: Optional[str] = None,
     ):
         """
         Parameters:
@@ -154,12 +157,22 @@ class VDAnalyzer:
             if single_image_explicit_path is not None
             else None
         )
+        self.progress_job_id = progress_job_id
 
         # 出力ディレクトリ作成
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.file_handler = FileHandler()
         self.image_processor = ImageProcessor()
+
+    def _report_progress(self, current: int, message: str) -> None:
+        if not self.progress_job_id:
+            return
+        try:
+            from utils.vd_job_progress import vd_progress_update
+        except ImportError:
+            from ..utils.vd_job_progress import vd_progress_update
+        vd_progress_update(self.progress_job_id, current, message)
 
     def analyze(self) -> Dict[str, Any]:
         """
@@ -242,9 +255,25 @@ class VDAnalyzer:
         else:
             items_to_process = [(sup_file, deep_file) for sup_file, deep_file in file_pairs]
 
+        n_items = len(items_to_process)
+        if self.progress_job_id:
+            try:
+                from utils.vd_job_progress import vd_progress_set_total
+            except ImportError:
+                from ..utils.vd_job_progress import vd_progress_set_total
+            vd_progress_set_total(
+                self.progress_job_id,
+                n_items,
+                f"Processing 0/{n_items}…",
+            )
+
         for idx, (first_file, second_file) in enumerate(items_to_process):
             label = first_file.name
             print(f"\nProcessing {idx + 1}/{len(items_to_process)}: {label}")
+            self._report_progress(
+                idx,
+                f"Processing {idx + 1}/{n_items}: {label}",
+            )
             t_case_start = time.perf_counter()
 
             # patient_idを抽出
@@ -336,6 +365,13 @@ class VDAnalyzer:
                 results["tortuosity_superficial"].append(1.0)
                 results["tortuosity_deep"].append(1.0)
 
+            self._report_progress(
+                idx + 1,
+                f"Completed {idx + 1}/{n_items}: {label}",
+            )
+
+        self._report_progress(n_items, "Saving VD results…")
+
         # CSV保存
         t0 = time.perf_counter()
         csv_path = self._save_results_csv(results)
@@ -372,74 +408,15 @@ class VDAnalyzer:
         print(f"  Superficial suffixes: {self.sup_suffixes}")
         print(f"  Deep suffixes: {self.deep_suffixes}")
 
-        # サポートする画像形式
-        supported_exts = [
-            ".tif",
-            ".tiff",
-            ".jpg",
-            ".jpeg",
-            ".png",
-            ".TIF",
-            ".TIFF",
-            ".JPG",
-            ".JPEG",
-            ".PNG",
-        ]
+        sup_arg = ",".join(self.sup_suffixes)
+        deep_arg = ",".join(self.deep_suffixes)
+        pairs, unpaired = find_vd_file_pairs(self.input_dir, sup_arg, deep_arg)
 
-        # 全ての画像ファイルを取得
-        all_files = []
-        for ext in supported_exts:
-            all_files.extend(self.input_dir.glob(f"*{ext}"))
-            all_files.extend(self.input_dir.rglob(f"**/*{ext}"))
-
-        # 重複を除去してソート
-        all_files = sorted(list(set(all_files)))
-
-        print(f"  Found {len(all_files)} image files")
-        if all_files:
-            print(f"  First few files: {[f.name for f in all_files[:5]]}")
-
-        # 最長一致優先（1.tiff を 1.tif より先に判定）
-        sup_suffixes_sorted = sorted(self.sup_suffixes, key=len, reverse=True)
-        deep_suffixes_sorted = sorted(self.deep_suffixes, key=len, reverse=True)
-
-        # Superficial: いずれかのサフィックスで終わるファイルを収集し名前でソート
-        sup_files = []
-        for f in all_files:
-            for suf in sup_suffixes_sorted:
-                if f.name.endswith(suf):
-                    sup_files.append(f)
-                    print(f"  ✓ Matched Superficial: {f.name}")
-                    break
-
-        sup_files.sort(key=lambda p: p.name)
-        print(f"  Superficial files: {len(sup_files)}")
-
-        pairs = []
-        for sup_file in sup_files:
-            # マッチしたサフィックス（最長一致）
-            matched_sup = None
-            for suf in sup_suffixes_sorted:
-                if sup_file.name.endswith(suf):
-                    matched_sup = suf
-                    break
-            if matched_sup is None:
-                continue
-            patient_id = sup_file.name[: -len(matched_sup)]
-
-            # 対応するDeepファイルを探す（同じ patient_id + いずれかの deep サフィックス）
-            deep_file = None
-            for ds in deep_suffixes_sorted:
-                candidate = sup_file.parent / (patient_id + ds)
-                if candidate.exists():
-                    deep_file = candidate
-                    break
-
-            if deep_file is not None:
-                pairs.append((sup_file, deep_file))
-                print(f"  Pairing: {sup_file.name} <-> {deep_file.name} ✓")
-            else:
-                print(f"  ✗ No deep file for: {sup_file.name} (patient_id={patient_id})")
+        for sup_file, deep_file in pairs:
+            print(f"  Pairing: {sup_file.name} <-> {deep_file.name} ✓")
+        for sup_file in unpaired:
+            patient_id = self._patient_id_from_superficial_filename(sup_file.name)
+            print(f"  ✗ No deep file for: {sup_file.name} (patient_id={patient_id})")
 
         print(f"  Total pairs: {len(pairs)}")
         return pairs

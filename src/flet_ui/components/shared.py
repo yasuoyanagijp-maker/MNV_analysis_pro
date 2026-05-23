@@ -1,3 +1,4 @@
+import asyncio
 import flet as ft
 from flet import Colors, Icons, FontWeight, Animation, AnimationCurve
 import time
@@ -87,7 +88,72 @@ class BackendClient:
                 return response.json()
             except Exception as e:
                 return {"error": f"VD Connection Failed: {str(e)}"}
-    
+
+    async def start_vd_analysis_with_progress(
+        self,
+        input_dir: str,
+        scale: float,
+        *,
+        side: str = "right",
+        sup_suffix: str = "1.tif",
+        deep_suffix: str = "2.tif",
+        single_image_mode: bool = False,
+        single_image_explicit_path: str = None,
+        progress_callback: Optional[Callable[..., Awaitable[None]]] = None,
+    ):
+        """VD with background job + polling so UI can update a progress bar."""
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            try:
+                payload = {
+                    "input_dir": str(input_dir),
+                    "output_dir": "auto",
+                    "scale_mm": scale,
+                    "side": side,
+                    "sup_suffix": sup_suffix,
+                    "deep_suffix": deep_suffix,
+                    "single_image_mode": single_image_mode,
+                }
+                if single_image_explicit_path:
+                    payload["single_image_explicit_path"] = single_image_explicit_path
+                start_resp = await client.post(
+                    f"{self.base_url}/analyze/vd/start",
+                    json=payload,
+                )
+                if start_resp.status_code != 200:
+                    return {"error": start_resp.json().get("detail", "Unknown VD start error")}
+                job_id = start_resp.json().get("job_id")
+                if not job_id:
+                    return {"error": "VD start did not return job_id"}
+
+                while True:
+                    status_resp = await client.get(
+                        f"{self.base_url}/analyze/vd/status/{job_id}",
+                    )
+                    if status_resp.status_code != 200:
+                        return {
+                            "error": status_resp.json().get(
+                                "detail", "VD progress poll failed"
+                            )
+                        }
+                    snap = status_resp.json()
+                    if progress_callback is not None:
+                        cb = progress_callback(
+                            int(snap.get("current") or 0),
+                            int(snap.get("total") or 1),
+                            str(snap.get("message") or ""),
+                        )
+                        if asyncio.iscoroutine(cb):
+                            await cb
+                    st = snap.get("status")
+                    if st == "completed":
+                        result = snap.get("result")
+                        return result if result is not None else {"error": "Empty VD result"}
+                    if st == "failed":
+                        return {"error": snap.get("error") or "VD analysis failed"}
+                    await asyncio.sleep(0.35)
+            except Exception as e:
+                return {"error": f"VD Connection Failed: {str(e)}"}
+
     async def login(self, username, password):
         async with httpx.AsyncClient() as client:
             try:

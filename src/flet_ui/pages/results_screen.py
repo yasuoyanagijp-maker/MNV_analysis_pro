@@ -27,11 +27,12 @@ from src.utils.report_generator import generate_pdf_report
 from src.utils.vd_display_helpers import get_vd_metrics_for_file
 from src.utils.vd_batch_csv import (
     VD_LAYOUT_VSL_DENSITY_ONLY,
-    VD_SINGLE_CSV_COLUMNS,
-    build_vd_batch_csv_bytes,
     is_vd_result_row,
-    merge_vd_batches_for_csv,
-    suggested_vd_csv_filename,
+)
+from src.utils.batch_csv_export import (
+    batch_export_meta_from_session,
+    collect_batch_csv_exports,
+    write_batch_csv_exports,
 )
 
 async def get_results_view(ctx: AppContext):
@@ -40,15 +41,26 @@ async def get_results_view(ctx: AppContext):
     if not batch_results and ctx.page.session.get("last_result"):
         batch_results = [ctx.page.session.get("last_result")]
 
-    awaiting_mnv_batch_qc = bool(ctx.page.session.get("mnv_batch_awaiting_qc"))
+    vd_only_batch = bool(batch_results) and all(
+        is_vd_result_row(r) or str(r.get("result_type") or "").upper() == "VD"
+        for r in batch_results
+    )
+
+    awaiting_mnv_batch_qc = bool(ctx.page.session.get("mnv_batch_awaiting_qc")) and not vd_only_batch
 
     # Selection State (Default to Summary if multiple, or the first result)
     # We use a simple list index, -1 means Summary
     selected_index = ctx.page.session.get("results_selected_index")
     if selected_index is None:
-        selected_index = -1 if len(batch_results) > 1 else 0
+        if vd_only_batch:
+            selected_index = 0
+        else:
+            selected_index = -1 if len(batch_results) > 1 else 0
         ctx.page.session.set("results_selected_index", selected_index)
     if awaiting_mnv_batch_qc and batch_results:
+        selected_index = 0
+        ctx.page.session.set("results_selected_index", 0)
+    elif vd_only_batch and selected_index == -1:
         selected_index = 0
         ctx.page.session.set("results_selected_index", 0)
 
@@ -82,77 +94,29 @@ async def get_results_view(ctx: AppContext):
             
         return get_exports_dir()
 
+    if batch_results and not ctx.page.session.contains_key("batch_csv_auto_saved"):
+        try:
+            meta = batch_export_meta_from_session(ctx.page.session)
+            target_dir = get_target_output_dir()
+            written = write_batch_csv_exports(batch_results, meta, target_dir)
+            if written:
+                ctx.page.session.set("batch_csv_auto_saved", True)
+                names = ", ".join(p.name for _, p in written)
+                await ctx.add_to_console(
+                    f"Results CSV saved to {target_dir} ({names})",
+                    "SUCCESS",
+                )
+        except Exception as ex:
+            await ctx.add_to_console(f"Auto CSV save failed: {ex}", "WARN")
+
     async def on_export_batch_csv(_=None):
         try:
             if not batch_results:
                 return
 
-            vd_chunks = [r for r in batch_results if is_vd_result_row(r)]
-            vd_vsl = [
-                r for r in vd_chunks if r.get("vd_layout") == VD_LAYOUT_VSL_DENSITY_ONLY
-            ]
-            vd_full = [r for r in vd_chunks if r not in vd_vsl]
-
-            mnv_rows = [
-                r
-                for r in batch_results
-                if str(r.get("result_type") or "MNV") == "MNV"
-            ]
-
-            uname = (ctx.page.session.get("username") or "").strip()
-            meta = {
-                "Analyst": uname if uname else "Unknown",
-                "Started At": str(ctx.page.session.get("analysis_started_at") or ""),
-                "Ended At": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "Duration Sec": float(ctx.page.session.get("analysis_duration_sec") or 0.0),
-                "Session ID": str(ctx.page.session.get("session_id") or ""),
-            }
-
-            vd_vsl_bytes = vd_vsl_fname = None
-            if vd_vsl:
-                merged_vsl = merge_vd_batches_for_csv(vd_vsl, VD_SINGLE_CSV_COLUMNS)
-                if len(merged_vsl.get("patient_ids") or []) > 0:
-                    vd_vsl_bytes = build_vd_batch_csv_bytes(
-                        merged_vsl, meta, VD_SINGLE_CSV_COLUMNS
-                    )
-                    vd_vsl_fname = suggested_vd_csv_filename(
-                        merged_vsl, meta["Session ID"], VD_LAYOUT_VSL_DENSITY_ONLY
-                    )
-
-            vd_full_bytes = vd_full_fname = None
-            if vd_full:
-                merged_full = merge_vd_batches_for_csv(vd_full)
-                if len(merged_full.get("patient_ids") or []) > 0:
-                    vd_full_bytes = build_vd_batch_csv_bytes(merged_full, meta)
-                    vd_full_fname = suggested_vd_csv_filename(
-                        merged_full, meta["Session ID"], "full"
-                    )
-
-            mnv_bytes = None
-            mnv_fname = None
-            if mnv_rows:
-                ordered = sorted(
-                    mnv_rows,
-                    key=lambda x: str(x.get("source_filename") or ""),
-                )
-                rows = []
-                for idx, r in enumerate(ordered):
-                    fn = str(r.get("source_filename") or "N/A")
-                    success = "error" not in r
-                    metrics = metrics_from_session_result_row(r)
-                    rows.append(
-                        _metrics_to_imagej_row(
-                            fn,
-                            idx,
-                            qc_status_for_row(r),
-                            success,
-                            metrics,
-                        )
-                    )
-                mnv_bytes = build_csv_bytes_from_imagej_rows(rows, meta)
-                mnv_fname = f"mnv_batch_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.csv"
-
-            if not vd_vsl_bytes and not vd_full_bytes and not mnv_bytes:
+            meta = batch_export_meta_from_session(ctx.page.session)
+            payloads = collect_batch_csv_exports(batch_results, meta)
+            if not payloads:
                 await ctx.add_to_console(
                     "Export CSV: no VD or MNV rows to export in this batch.",
                     "WARN",
@@ -162,20 +126,16 @@ async def get_results_view(ctx: AppContext):
 
             target_dir = get_target_output_dir()
             target_dir.mkdir(parents=True, exist_ok=True)
-            
+
             saved: list[tuple[str, str, Path, bytes]] = []
-            if mnv_bytes and mnv_fname:
-                p = (target_dir / mnv_fname).resolve()
-                p.write_bytes(mnv_bytes)
-                saved.append(("MNV", mnv_fname, p, mnv_bytes))
-            if vd_vsl_bytes and vd_vsl_fname:
-                p = (target_dir / vd_vsl_fname).resolve()
-                p.write_bytes(vd_vsl_bytes)
-                saved.append(("VD (single)", vd_vsl_fname, p, vd_vsl_bytes))
-            if vd_full_bytes and vd_full_fname:
-                p = (target_dir / vd_full_fname).resolve()
-                p.write_bytes(vd_full_bytes)
-                saved.append(("VD (full)", vd_full_fname, p, vd_full_bytes))
+            for kind, fname, data in payloads:
+                p = (target_dir / fname).resolve()
+                p.write_bytes(data)
+                saved.append((kind, fname, p, data))
+
+            mnv_bytes = next((b for k, _, _, b in saved if k == "MNV"), None)
+            vd_full_bytes = next((b for k, _, _, b in saved if k == "VD (full)"), None)
+            vd_vsl_bytes = next((b for k, _, _, b in saved if k == "VD (single)"), None)
 
             try:
                 prefer = mnv_bytes or vd_full_bytes or vd_vsl_bytes
@@ -257,6 +217,7 @@ async def get_results_view(ctx: AppContext):
             merged = [vd_hdr] + acc if vd_hdr is not None else acc
             if vd_hdr is not None:
                 session_discard(ctx.page.session, "integrated_vd_result")
+            session_discard(ctx.page.session, "batch_csv_auto_saved")
             ctx.page.session.set("batch_results", merged)
             session_discard(ctx.page.session, "mnv_batch_paths")
             session_discard(ctx.page.session, "mnv_batch_index")
@@ -299,9 +260,10 @@ async def get_results_view(ctx: AppContext):
         merged = [vd_hdr] + acc if vd_hdr is not None else acc
         if vd_hdr is not None:
             session_discard(ctx.page.session, "integrated_vd_result")
-            
+
+        session_discard(ctx.page.session, "batch_csv_auto_saved")
         ctx.page.session.set("batch_results", merged)
-        
+
         session_discard(ctx.page.session, "mnv_batch_paths")
         session_discard(ctx.page.session, "mnv_batch_index")
         session_discard(ctx.page.session, "mnv_batch_results")
@@ -541,14 +503,14 @@ async def get_results_view(ctx: AppContext):
                                 ft.DataCell(
                                     ft.Text(
                                         "—"
-                                        if str(r.get("result_type") or "").upper() == "VD"
+                                        if is_vd_result_row(r)
                                         else f"{safe_round(r.get('mnv_area_mm2', 0), 2)} mm²"
                                     )
                                 ),
                                 ft.DataCell(
                                     ft.Text(
                                         "—"
-                                        if str(r.get("result_type") or "").upper() == "VD"
+                                        if is_vd_result_row(r)
                                         else f"{safe_round(r.get('vessel_density', 0) * 100, 2)} %"
                                     )
                                 ),
@@ -1232,7 +1194,7 @@ async def get_results_view(ctx: AppContext):
         if not batch_results or idx < 0 or idx >= len(batch_results):
             return get_summary_content()
         res = batch_results[idx]
-        if str(res.get("result_type") or "").upper() == "VD":
+        if is_vd_result_row(res):
             return get_vd_detail_content(idx)
         return get_mnv_detail_content(idx)
 
