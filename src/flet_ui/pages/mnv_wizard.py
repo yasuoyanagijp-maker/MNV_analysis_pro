@@ -14,6 +14,7 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from src.utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
+from src.utils.batch_csv_export import mark_analysis_started
 
 from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
 from src.utils.cv2_path import imread_bgr
@@ -70,6 +71,7 @@ async def get_mnv_view(ctx: AppContext):
             auto_start_btn.disabled = True
 
         progress_bar.visible = True
+        mark_analysis_started(ctx.page.session)
         await asyncio.sleep(0.2)
         ctx.page.update()
 
@@ -150,6 +152,7 @@ async def get_mnv_view(ctx: AppContext):
                 session_discard(ctx.page.session, "roi_mask_b64")
                 
                 await ctx.add_to_console("Re-analysis complete. Overwriting previous result.", "SUCCESS")
+                session_discard(ctx.page.session, "batch_csv_auto_saved")
                 await asyncio.sleep(0.15)
                 ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
             else:
@@ -167,6 +170,7 @@ async def get_mnv_view(ctx: AppContext):
                     ctx.page.session.set("results_selected_index", 0)
                 if is_vd:
                     session_discard(ctx.page.session, "vd_analysis_explicit_path")
+                session_discard(ctx.page.session, "batch_csv_auto_saved")
                 await ctx.add_to_console(
                     f"Result received — type: {result.get('result_type', 'N/A')}",
                     "INFO",

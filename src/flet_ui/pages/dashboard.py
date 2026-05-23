@@ -15,6 +15,49 @@ from src.utils.cv2_path import (
 )
 from src.utils.batch_input_filter import filter_mnv_files_for_roi_selection
 from src.utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
+from src.utils.batch_csv_export import mark_analysis_started
+from src.utils.vd_folder_preflight import (
+    scan_vd_folder_pairs,
+    vd_pair_suffixes_configured,
+)
+
+
+def _prepare_results_session(page, all_results, *, vd_only: bool = False) -> None:
+    """Write batch results to session and clear cross-run state before /results."""
+    page.session.set("batch_results", all_results)
+    page.session.set("last_result", all_results[0] if all_results else None)
+    session_discard(page.session, "integrated_vd_result")
+    session_discard(page.session, "batch_csv_auto_saved")
+    if vd_only:
+        session_discard(page.session, "mnv_batch_awaiting_qc")
+        session_discard(page.session, "mnv_batch_paths")
+        session_discard(page.session, "mnv_batch_index")
+        session_discard(page.session, "mnv_batch_results")
+        session_discard(page.session, "mnv_batch_names_preview")
+        session_discard(page.session, "results_selected_index")
+        if all_results:
+            page.session.set("results_selected_index", 0)
+
+
+def _queue_kind_is_vd(queue_kind: str) -> bool:
+    k = str(queue_kind or "").strip().upper()
+    return k in ("VD", "VD_SINGLE", "INTEGRATED")
+
+
+def _resolve_vd_pair_mode(page, sup_field, deep_field) -> bool:
+    """
+    Pair mode when wizard/session requests SCP/DCP pairs and both suffixes are set.
+    Cleared deep suffix => single-image mode (each file analyzed independently).
+    """
+    sup = (sup_field.value if hasattr(sup_field, "value") else sup_field or "").strip() or "1.tif"
+    deep = (deep_field.value if hasattr(deep_field, "value") else deep_field or "").strip() or "2.tif"
+    if not vd_pair_suffixes_configured(sup, deep):
+        return False
+    flag = page.session.get("vd_use_pair_mode")
+    if flag is None:
+        return True
+    return bool(flag)
+
 
 async def get_dashboard_view(ctx: AppContext):
     # --- UI STATE ELEMENTS (Defined early for handler reference) ---
@@ -30,7 +73,13 @@ async def get_dashboard_view(ctx: AppContext):
         border_radius=10,
     )
     
-    batch_progress = ft.ProgressBar(value=0, width=800, color=PRIMARY, visible=False)
+    batch_progress = ft.ProgressBar(
+        value=0,
+        width=800,
+        color=PRIMARY,
+        bgcolor=Colors.with_opacity(0.15, Colors.WHITE),
+        visible=False,
+    )
     batch_status_text = ft.Text("", color=TEXT_MUTED, size=12)
     
     def _is_web() -> bool:
@@ -82,6 +131,21 @@ async def get_dashboard_view(ctx: AppContext):
         width=120,
         border_color=PRIMARY,
     )
+    _vd_pair_mode_sess = ctx.page.session.get("vd_use_pair_mode")
+    vd_pair_mode_switch = ft.Switch(
+        label="SCP/DCP pair mode",
+        value=bool(_vd_pair_mode_sess) if _vd_pair_mode_sess is not None else True,
+        active_color=PRIMARY,
+        tooltip=(
+            "ON: match superficial+deep by suffix (like Integrated); unpaired files are skipped. "
+            "OFF: analyze each image independently (legacy VD single-folder mode)."
+        ),
+    )
+
+    def _on_vd_pair_mode_change(e):
+        ctx.page.session.set("vd_use_pair_mode", bool(e.control.value))
+
+    vd_pair_mode_switch.on_change = _on_vd_pair_mode_change
 
     manual_path = ft.TextField(
         label="Optional path (folder on server host — paste if you already know the path)",
@@ -250,12 +314,29 @@ async def get_dashboard_view(ctx: AppContext):
     
     ctx.page.on_drop = handle_drop
 
+    async def _log_vd_pair_scan(folder: Path, sup: str, deep: str, *, require_pairs: bool) -> bool:
+        """Log SCP/DCP naming check; return False if pair mode requires pairs but none found."""
+        scan = scan_vd_folder_pairs(folder, sup, deep)
+        for line in scan.console_lines():
+            level = "WARN" if scan.unpaired_superficial and "Unpaired" in line else "INFO"
+            await ctx.add_to_console(line, level)
+        if require_pairs and not scan.pair_mode_viable:
+            await ctx.add_to_console(
+                f"VD pair preflight failed: no SCP+DCP pairs in {folder.name} "
+                f"(sup={sup!r}, deep={deep!r}). Adjust suffixes or disable pair mode.",
+                "ERROR",
+            )
+            return False
+        return True
+
     async def run_batch_preflight():
         """
         Validate queued files before analysis so failures are actionable.
         Returns list[bool] aligned with batch_table.rows indicating readiness.
         """
         readiness = [True] * len(batch_table.rows)
+        sup = (vd_sup_suffix.value or "").strip() or "1.tif"
+        deep = (vd_deep_suffix.value or "").strip() or "2.tif"
         for i, row in enumerate(batch_table.rows):
             file_path = row.data["path"].strip().strip("'").strip('"')
             p = Path(file_path)
@@ -266,6 +347,17 @@ async def get_dashboard_view(ctx: AppContext):
                 await ctx.add_to_console(f"Preflight: file not found [{p.name}]", "ERROR")
                 continue
             if p.is_dir():
+                queue_kind = row.data.get("queue_kind") or ""
+                use_pairs = row.data.get("vd_pair_mode")
+                if use_pairs is None:
+                    use_pairs = _resolve_vd_pair_mode(ctx.page, vd_sup_suffix, vd_deep_suffix)
+                if _queue_kind_is_vd(queue_kind) and use_pairs:
+                    ok = await _log_vd_pair_scan(p, sup, deep, require_pairs=True)
+                    if not ok:
+                        readiness[i] = False
+                        row.cells[3].content.value = "No pairs"
+                        row.cells[3].content.color = Colors.RED_400
+                        continue
                 row.cells[3].content.value = "Ready"
                 row.cells[3].content.color = PRIMARY
                 continue
@@ -290,6 +382,49 @@ async def get_dashboard_view(ctx: AppContext):
         ctx.page.update()
         return readiness
 
+    def _set_batch_progress_overall(
+        row_index: int,
+        total_rows: int,
+        vd_current: int,
+        vd_total: int,
+        message: str,
+    ) -> None:
+        vd_total = max(int(vd_total), 1)
+        vd_current = min(max(int(vd_current), 0), vd_total)
+        overall = (row_index + vd_current / vd_total) / max(int(total_rows), 1)
+        batch_progress.value = min(max(overall, 0.0), 1.0)
+        pct = int(round(overall * 100))
+        batch_status_text.value = (
+            f"VD {vd_current}/{vd_total} ({pct}%) — {message}"
+            if total_rows == 1
+            else f"Batch row {row_index + 1}/{total_rows} · VD {vd_current}/{vd_total} ({pct}%) — {message}"
+        )
+
+    async def _run_vd_analysis_ui(
+        vd_dir: str,
+        scale: float,
+        *,
+        side: str,
+        sup_suffix: str,
+        deep_suffix: str,
+        single_image_mode: bool,
+        row_index: int,
+        total_rows: int,
+    ):
+        async def _on_prog(cur, tot, msg):
+            _set_batch_progress_overall(row_index, total_rows, cur, tot, msg)
+            ctx.page.update()
+
+        return await ctx.client.start_vd_analysis_with_progress(
+            vd_dir,
+            scale,
+            side=side,
+            sup_suffix=sup_suffix,
+            deep_suffix=deep_suffix,
+            single_image_mode=single_image_mode,
+            progress_callback=_on_prog,
+        )
+
     # --- BATCH PROCESSING LOGIC ---
     async def run_batch_analysis(e):
         if not batch_table.rows:
@@ -298,8 +433,9 @@ async def get_dashboard_view(ctx: AppContext):
         start_button.disabled = True
         batch_progress.visible = True
         batch_progress.value = 0
+        mark_analysis_started(ctx.page.session)
         ctx.page.update()
-        
+
         all_results = []
         total = len(batch_table.rows)
         vd_folder_cache = {}
@@ -330,9 +466,14 @@ async def get_dashboard_view(ctx: AppContext):
             filename = Path(file_path).name
             analysis_mode = row.data.get("queue_kind") or row.cells[1].content.value
             if not readiness[i]:
-                all_results.append(
-                    {"error": "Preflight failed (unreadable/missing)", "source_filename": filename, "status": "failed"}
-                )
+                fail_row = {
+                    "error": "Preflight failed (unreadable/missing)",
+                    "source_filename": filename,
+                    "status": "failed",
+                }
+                if _queue_kind_is_vd(analysis_mode):
+                    fail_row["result_type"] = "VD"
+                all_results.append(fail_row)
                 batch_progress.value = (i + 1) / total
                 ctx.page.update()
                 continue
@@ -353,18 +494,28 @@ async def get_dashboard_view(ctx: AppContext):
                 else:
                     pfp = Path(file_path)
                     vd_dir = str(pfp.resolve()) if pfp.is_dir() else str(pfp.parent.resolve())
-                    single_im = str(analysis_mode) == "VD_SINGLE"
+                    use_pairs = row.data.get("vd_pair_mode")
+                    if use_pairs is None:
+                        use_pairs = _resolve_vd_pair_mode(ctx.page, vd_sup_suffix, vd_deep_suffix)
+                    single_im = not use_pairs
                     ck = _vd_cache_key(vd_dir, single_im)
                     if ck in vd_folder_cache:
                         res = vd_folder_cache[ck]
+                        batch_progress.value = (i + 1) / total
                     else:
-                        res = await ctx.client.start_vd_analysis(
+                        _set_batch_progress_overall(
+                            i, total, 0, 1, f"Starting VD ({Path(vd_dir).name})…"
+                        )
+                        ctx.page.update()
+                        res = await _run_vd_analysis_ui(
                             vd_dir,
                             float(scale_mm.value),
                             side=str(vd_side.value or "right"),
                             sup_suffix=(vd_sup_suffix.value or "").strip() or "1.tif",
                             deep_suffix=(vd_deep_suffix.value or "").strip() or "2.tif",
                             single_image_mode=single_im,
+                            row_index=i,
+                            total_rows=total,
                         )
                         vd_folder_cache[ck] = res
 
@@ -381,7 +532,7 @@ async def get_dashboard_view(ctx: AppContext):
                     out["_absolute_source_path"] = file_path
                     if not Path(file_path).is_dir():
                         out["source_filename"] = filename
-                    if str(analysis_mode) == "VD_SINGLE":
+                    if single_im:
                         out["vd_layout"] = VD_LAYOUT_VSL_DENSITY_ONLY
                     all_results.append(out)
                 
@@ -390,15 +541,20 @@ async def get_dashboard_view(ctx: AppContext):
                 row.cells[3].content.value = "Failed"
                 row.cells[3].content.color = Colors.RED_400
                 await ctx.add_to_console(f"Failed [{filename}]: {str(ex)}", "ERROR")
-                all_results.append({"error": str(ex), "source_filename": filename, "status": "failed"})
+                fail_row = {"error": str(ex), "source_filename": filename, "status": "failed"}
+                if _queue_kind_is_vd(analysis_mode):
+                    fail_row["result_type"] = "VD"
+                all_results.append(fail_row)
             
             batch_progress.value = (i + 1) / total
             ctx.page.update()
 
         await ctx.add_to_console(f"Batch analysis complete. {len(all_results)} results processed.", "INFO")
-        session_discard(ctx.page.session, "integrated_vd_result")
-        ctx.page.session.set("batch_results", all_results)
-        ctx.page.session.set("last_result", all_results[0] if all_results else None)
+        vd_only = bool(batch_table.rows) and all(
+            not (str(row.data.get("queue_kind") or row.cells[1].content.value or "").strip().upper() == "MNV")
+            for row in batch_table.rows
+        )
+        _prepare_results_session(ctx.page, all_results, vd_only=vd_only)
         
         batch_status_text.value = "All tasks completed."
         start_button.disabled = False
@@ -435,6 +591,7 @@ async def get_dashboard_view(ctx: AppContext):
     def clear_batch_queue():
         batch_table.rows.clear()
         batch_container.visible = False
+        session_discard(ctx.page.session, "batch_csv_auto_saved")
         ctx.page.update()
 
     async def run_integrated_folder_analysis(root_abs: str, image_paths_on_disk: List[Path]):
@@ -443,6 +600,7 @@ async def get_dashboard_view(ctx: AppContext):
         batch_progress.visible = True
         batch_progress.value = 0
         batch_status_text.value = "Integrated: running VD (pairs)…"
+        mark_analysis_started(ctx.page.session)
         ctx.page.update()
 
         scale_f = float(scale_mm.value or 6)
@@ -459,18 +617,32 @@ async def get_dashboard_view(ctx: AppContext):
             key=lambda p: p.name.lower(),
         )
 
+        root_path = Path(root_abs)
+        if not await _log_vd_pair_scan(root_path, sup, deep, require_pairs=True):
+            batch_progress.visible = False
+            batch_status_text.value = "Integrated: VD preflight failed (no SCP/DCP pairs)."
+            start_button.disabled = False
+            ctx.page.update()
+            return
+
         await ctx.add_to_console(
-            f"Integrated ({Path(root_abs).name}): VD pairing (sup={sup}, deep={deep}); "
+            f"Integrated ({root_path.name}): VD pairing (sup={sup}, deep={deep}); "
             f"then ROI-backed MNV for {len(mnv_candidates)} file(s) if present.",
             "INFO",
         )
-        vd_res = await ctx.client.start_vd_analysis(
+
+        async def _on_integrated_vd(cur, tot, msg):
+            _set_batch_progress_overall(0, 1, cur, tot, msg)
+            ctx.page.update()
+
+        vd_res = await ctx.client.start_vd_analysis_with_progress(
             root_abs,
             scale_f,
             side=side_s,
             sup_suffix=sup,
             deep_suffix=deep,
             single_image_mode=False,
+            progress_callback=_on_integrated_vd,
         )
         if "error" in vd_res:
             await ctx.add_to_console(f"Integrated: VD failed — {vd_res['error']}", "ERROR")
@@ -490,15 +662,7 @@ async def get_dashboard_view(ctx: AppContext):
         ctx.page.update()
 
         def _finalize_vd_only_to_results():
-            ctx.page.session.set("batch_results", [vd_bundle])
-            ctx.page.session.set("last_result", vd_bundle)
-            session_discard(ctx.page.session, "mnv_batch_awaiting_qc")
-            session_discard(ctx.page.session, "mnv_batch_paths")
-            session_discard(ctx.page.session, "mnv_batch_index")
-            session_discard(ctx.page.session, "mnv_batch_results")
-            session_discard(ctx.page.session, "mnv_batch_names_preview")
-            session_discard(ctx.page.session, "results_selected_index")
-            session_discard(ctx.page.session, "integrated_vd_result")
+            _prepare_results_session(ctx.page, [vd_bundle], vd_only=True)
 
         if not mnv_candidates:
             await ctx.add_to_console(
@@ -672,25 +836,55 @@ async def get_dashboard_view(ctx: AppContext):
             await run_integrated_folder_analysis(str(root_dir.resolve()), files)
             return
         elif batch_plan == "VD_SINGLE":
+            session_discard(ctx.page.session, "mnv_batch_awaiting_qc")
+            session_discard(ctx.page.session, "mnv_batch_paths")
+            session_discard(ctx.page.session, "mnv_batch_index")
+            session_discard(ctx.page.session, "mnv_batch_results")
+            session_discard(ctx.page.session, "mnv_batch_names_preview")
+            session_discard(ctx.page.session, "last_result")
+            session_discard(ctx.page.session, "batch_results")
+            session_discard(ctx.page.session, "results_selected_index")
+            session_discard(ctx.page.session, "integrated_vd_result")
             root_dir = files[0].parent
             total_mb = sum(f.stat().st_size for f in files) / (1024 * 1024)
             sup = (vd_sup_suffix.value or "").strip() or "1.tif"
             deep = (vd_deep_suffix.value or "").strip() or "2.tif"
+            use_pairs = _resolve_vd_pair_mode(ctx.page, vd_sup_suffix, vd_deep_suffix)
+            ctx.page.session.set("vd_use_pair_mode", use_pairs)
+            scan = scan_vd_folder_pairs(root_dir, sup, deep)
+            for line in scan.console_lines():
+                await ctx.add_to_console(line, "INFO")
+            if use_pairs and not scan.pair_mode_viable:
+                await ctx.add_to_console(
+                    "VD batch aborted: pair mode enabled but no valid SCP+DCP pairs found.",
+                    "ERROR",
+                )
+                return
+            if use_pairs:
+                type_label = "VD (SCP/DCP pairs)"
+                summary = (
+                    f"VD pair batch: {scan.pair_count} pair(s) in {root_dir.name} | "
+                    f"sup={sup} deep={deep} | {scan.total_images} image(s) in folder"
+                )
+            else:
+                type_label = "VD (single-image)"
+                summary = (
+                    f"VD single-image batch: {len(files)} file(s) in {root_dir.name} | "
+                    "each file analyzed independently"
+                )
             batch_table.rows.append(
                 ft.DataRow(
                     cells=[
-                        ft.DataCell(
-                            ft.Text(
-                                f"VD (single-folder): {len(files)} images in {root_dir.name} | "
-                                f"sup={sup} deep={deep}",
-                                size=12,
-                            )
-                        ),
-                        ft.DataCell(ft.Text("VD (single-folder)", size=10, color=Colors.BLUE_400)),
+                        ft.DataCell(ft.Text(summary, size=12)),
+                        ft.DataCell(ft.Text(type_label, size=10, color=Colors.BLUE_400)),
                         ft.DataCell(ft.Text(f"{total_mb:.1f} MB (total)", size=11, color=TEXT_MUTED)),
                         ft.DataCell(ft.Text("Ready", color=PRIMARY, size=11)),
                     ],
-                    data={"path": str(root_dir.resolve()), "queue_kind": batch_plan},
+                    data={
+                        "path": str(root_dir.resolve()),
+                        "queue_kind": batch_plan,
+                        "vd_pair_mode": use_pairs,
+                    },
                 )
             )
         else:
@@ -726,6 +920,7 @@ async def get_dashboard_view(ctx: AppContext):
     # ─────────────────────────────────────────────────────────────────────
     async def show_launch_wizard(_=None):
         """3-step modal that enforces analysis type + scale before folder selection."""
+        _pm = ctx.page.session.get("vd_use_pair_mode")
         wizard = {
             "step": 1,
             "analysis_type": analysis_type.value or "MNV",
@@ -733,6 +928,7 @@ async def get_dashboard_view(ctx: AppContext):
             "vd_sup": vd_sup_suffix.value or "1.tif",
             "vd_deep": vd_deep_suffix.value or "2.tif",
             "vd_side_val": vd_side.value or "right",
+            "vd_use_pairs": bool(_pm) if _pm is not None else True,
             "mnv_fd_self_ref": bool(ctx.page.session.get("mnv_fd_self_ref") or False),
         }
         ACCENT = PRIMARY
@@ -797,6 +993,11 @@ async def get_dashboard_view(ctx: AppContext):
             options=[ft.dropdown.Option("right"), ft.dropdown.Option("left")],
             width=130, border_color=ACCENT,
             on_change=lambda e: wizard.update({"vd_side_val": e.control.value}),
+        )
+        vd_pair_sw = ft.Switch(
+            value=wizard["vd_use_pairs"],
+            active_color=ACCENT,
+            on_change=lambda e: wizard.update({"vd_use_pairs": bool(e.control.value)}),
         )
         fd_switch = ft.Switch(
             value=wizard["mnv_fd_self_ref"], active_color=ACCENT,
@@ -873,9 +1074,32 @@ async def get_dashboard_view(ctx: AppContext):
                         ft.Text("Configure file suffixes for SCP/DCP image pairs:",
                                 color=TEXT_MUTED, size=13),
                         ft.Row([vd_sup_f, vd_deep_f, vd_side_dd], spacing=14),
+                        ft.Row(
+                            [
+                                ft.Column(
+                                    [
+                                        ft.Text(
+                                            "SCP/DCP pair mode (Integrated-style)",
+                                            size=14,
+                                            weight=FontWeight.W_500,
+                                            color=Colors.WHITE,
+                                        ),
+                                        ft.Text(
+                                            "ON: matched pairs only; unpaired skipped. "
+                                            "OFF: each file analyzed independently.",
+                                            size=11,
+                                            color=TEXT_MUTED,
+                                        ),
+                                    ],
+                                    expand=True,
+                                ),
+                                vd_pair_sw,
+                            ],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        ),
                         ft.Text(
-                            "Default: superficial=1.tif, deep=2.tif. "
-                            "Adjust if your files use different naming.",
+                            "Default suffixes: superficial=1.tif, deep=2.tif. "
+                            "Clear deep suffix to force single-image mode.",
                             size=11, color=TEXT_MUTED),
                     ], spacing=14)
             else:  # step == 3
@@ -899,8 +1123,9 @@ async def get_dashboard_view(ctx: AppContext):
                               if wizard["mnv_fd_self_ref"] else "OFF (FD = 0)")
                     rows.append(_row(Icons.WATER_DROP_ROUNDED, "FD Analysis", fd_lbl))
                 elif atype in ("VD_SINGLE", "INTEGRATED"):
+                    pair_txt = "pair mode ON" if wizard.get("vd_use_pairs", True) else "single-image mode"
                     rows.append(_row(Icons.SETTINGS_ROUNDED, "VD suffixes",
-                                     f"sup={wizard['vd_sup']}  deep={wizard['vd_deep']}"))
+                                     f"sup={wizard['vd_sup']}  deep={wizard['vd_deep']}  ({pair_txt})"))
                     rows.append(_row(Icons.REMOVE_RED_EYE_ROUNDED, "Eye side",
                                      wizard["vd_side_val"]))
                 return ft.Column([
@@ -958,6 +1183,8 @@ async def get_dashboard_view(ctx: AppContext):
             vd_sup_suffix.value = wizard["vd_sup"]
             vd_deep_suffix.value = wizard["vd_deep"]
             vd_side.value = wizard["vd_side_val"]
+            ctx.page.session.set("vd_use_pair_mode", bool(wizard.get("vd_use_pairs", True)))
+            vd_pair_mode_switch.value = bool(wizard.get("vd_use_pairs", True))
             ctx.page.session.set("mnv_fd_self_ref", wizard["mnv_fd_self_ref"])
             ctx.page.close(dlg)
             await show_folder_explorer("Select Analysis Folder",
@@ -1094,15 +1321,15 @@ async def get_dashboard_view(ctx: AppContext):
                                 ], spacing=10,
                                     vertical_alignment=ft.CrossAxisAlignment.CENTER),
                                 ft.Row(
-                                    [vd_sup_suffix, vd_deep_suffix, vd_side],
+                                    [vd_sup_suffix, vd_deep_suffix, vd_side, vd_pair_mode_switch],
                                     spacing=16,
                                     vertical_alignment=ft.CrossAxisAlignment.END,
                                 ),
                                 ft.Text(
                                     "MNV: filtered list, ROI per slice.  "
-                                    "VD: SCP/DCP pair folder scan.  "
-                                    "Integrated: VD first, then ROI queue for MNV candidates.  "
-                                    "Sup/deep suffixes apply to VD and Integrated VD phase.",
+                                    "VD: pair mode matches SCP+DCP by suffix (like Integrated); "
+                                    "single-image mode analyzes every file.  "
+                                    "Integrated: VD pairs first, then MNV ROI queue.",
                                     size=11, color=TEXT_MUTED,
                                 ),
                                 ft.ElevatedButton(
