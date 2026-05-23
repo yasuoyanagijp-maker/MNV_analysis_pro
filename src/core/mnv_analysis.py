@@ -226,8 +226,13 @@ class SpatialDistributionAnalyzer:
             周辺部マスク (ドーナツ)
         """
         from scipy.ndimage import distance_transform_edt
+        from core.roi_manager import ROIEnclosure
 
-        roi_binary = (mnv_roi > 0).astype(np.uint8)
+        # 包絡領域（Enclosure）を生成し、それをベースに領域分割を行う
+        # これにより、枯れ枝型の病変でも安定した中心・周辺の幾何学的定義が可能になる
+        enclosed_mask = ROIEnclosure.generate_enclosed_mask(mnv_roi, smoothing_factor=1.0)
+        roi_binary = (enclosed_mask > 0).astype(np.uint8)
+
         # ImageJ: radius>=20 -> centerRadius=radius/3; radius<20 -> 40% (line 4218-4224)
         if radius < 20:
             center_radius = radius * 0.4
@@ -561,31 +566,68 @@ class SpatialDistributionAnalyzer:
             'diameters': 各ビンの平均径（μm）
             'gradient': 線形勾配
         """
-        num_bins = 10
-        bin_width = radius / num_bins
+        from scipy.ndimage import distance_transform_edt
+        from core.roi_manager import ROIEnclosure
 
-        # Work with ROI pixels only to avoid full-size arrays (faster for sparse ROI)
-        y_coords, x_coords = np.where(roi_mask > 0)
-        if len(x_coords) == 0:
-            diameters = [0.0] * num_bins
-        else:
-            dist = np.sqrt(
-                (x_coords.astype(np.float64) - center_x) ** 2
-                + (y_coords.astype(np.float64) - center_y) ** 2
+        num_bins = 10
+        diameters = np.zeros(num_bins, dtype=float)
+        roi_binary = (roi_mask > 0).astype(bool)
+
+        if not np.any(roi_binary):
+            return {"diameters": diameters.tolist(), "gradient": 0.0}
+
+        # ROIEnclosureを用いて病変全体を包むマスクを生成
+        enclosed_mask = ROIEnclosure.generate_enclosed_mask(roi_binary.astype(np.uint8)*255, smoothing_factor=1.0)
+        enclosed_binary = (enclosed_mask > 0)
+
+        # Distance from each ENCLOSED pixel to nearest boundary
+        dist = distance_transform_edt(enclosed_binary.astype(np.uint8))
+        max_d = float(np.max(dist))
+
+        if max_d <= 0:
+            # 非常に小さいROIの場合
+            single = roi_binary
+            if np.any(single):
+                y_coords, x_coords = np.where(single)
+                values = distance_map[y_coords, x_coords].astype(np.float64)
+                valid = ~np.isnan(values)
+                if np.any(valid):
+                    mean_val = float(values[valid].mean())
+                    diameters[:] = mean_val * 2.0 * self.pixel_size_um
+            return {"diameters": diameters.tolist(), "gradient": 0.0}
+
+        # bin 0 = center (largest dist), bin 9 = periphery
+        for b in range(num_bins):
+            inner_d = (num_bins - 1 - b) / float(num_bins) * max_d
+            outer_d = (num_bins - b) / float(num_bins) * max_d
+            
+            # layer_maskは元のroi_binaryと積をとることで、実際の血管上のピクセルのみ抽出
+            layer_mask = (
+                (dist >= inner_d)
+                & (dist < outer_d)
+                & roi_binary
             )
-            values = distance_map[y_coords, x_coords].astype(np.float64)
-            valid = ~np.isnan(values)
-            diameters = []
-            for bin_idx in range(num_bins):
-                inner_r = bin_idx * bin_width
-                outer_r = (bin_idx + 1) * bin_width
-                in_ring = valid & (dist >= inner_r) & (dist < outer_r)
-                ring_vals = values[in_ring]
-                if len(ring_vals) > 0:
-                    mean_diameter_um = ring_vals.mean() * 2 * self.pixel_size_um
+
+            # 空の層対策：層にピクセルがない場合、その距離帯の中点に最も近いROI内ピクセルを含める
+            if not np.any(layer_mask):
+                mid = (inner_d + outer_d) * 0.5
+                diff = np.abs(dist - mid)
+                diff = np.where(roi_binary, diff, np.inf)
+                if np.any(np.isfinite(diff)):
+                    min_diff = np.min(diff[roi_binary])
+                    layer_mask = roi_binary & (np.abs(dist - mid) <= min_diff + 1e-9)
+
+            if np.any(layer_mask):
+                y_coords, x_coords = np.where(layer_mask)
+                values = distance_map[y_coords, x_coords].astype(np.float64)
+                valid = ~np.isnan(values)
+                if np.any(valid):
+                    mean_val = float(values[valid].mean())
+                    diameters[b] = mean_val * 2.0 * self.pixel_size_um
                 else:
-                    mean_diameter_um = 0.0
-                diameters.append(mean_diameter_um)
+                    diameters[b] = diameters[b - 1] if b > 0 else 0.0
+            else:
+                diameters[b] = diameters[b - 1] if b > 0 else 0.0
 
         # 線形勾配を計算
         x_vals = np.arange(num_bins)
