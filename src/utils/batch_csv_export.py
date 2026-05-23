@@ -1,10 +1,13 @@
 """
 Build and write MNV / VD batch CSV exports (Flet results screen, auto-save on completion).
+
+Each write uses stable session-scoped filenames and replaces prior CSV exports in the
+same output folder so only the latest complete result set remains.
 """
 
 from __future__ import annotations
 
-import time
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -23,7 +26,43 @@ from src.utils.vd_batch_csv import (
     is_vd_result_row,
     merge_vd_batches_for_csv,
     suggested_vd_csv_filename,
+    _timestamp_from_session,
 )
+
+
+def suggested_mnv_csv_filename(
+    mnv_rows: List[Dict[str, Any]],
+    session_id: str,
+) -> str:
+    """Stable MNV CSV name aligned with mainstreamer (session timestamp, no random suffix)."""
+    filenames = sorted(
+        str(r.get("source_filename") or "")
+        for r in mnv_rows
+        if r.get("source_filename")
+    )
+    timestamp_suffix = _timestamp_from_session(session_id)
+    stems = {Path(f).stem for f in filenames if f}
+    if len(stems) == 1:
+        safe = re.sub(r'[<>:"/\\\\|?*]', "_", next(iter(stems)))
+        return f"MNV_{safe}_{timestamp_suffix}.csv"
+    return f"MNV_batch_{timestamp_suffix}.csv"
+
+
+def _remove_prior_output_csvs(session, target_dir: Path) -> None:
+    """Delete CSV files written in a previous export to the same output folder."""
+    prior = session.get("output_csv_paths") or []
+    target_resolved = target_dir.resolve()
+    for raw in prior:
+        try:
+            path = Path(str(raw)).resolve()
+        except (TypeError, ValueError):
+            continue
+        if path.parent != target_resolved or not path.is_file():
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
 
 def analysis_now_iso() -> str:
@@ -147,7 +186,7 @@ def collect_batch_csv_exports(
                     metrics,
                 )
             )
-        mnv_fname = f"mnv_batch_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.csv"
+        mnv_fname = suggested_mnv_csv_filename(mnv_rows, meta["Session ID"])
         out.append(
             ("MNV", mnv_fname, build_csv_bytes_from_imagej_rows(rows, meta)),
         )
@@ -159,13 +198,27 @@ def write_batch_csv_exports(
     batch_results: List[Dict[str, Any]],
     meta: Dict[str, Any],
     target_dir: Path,
+    session=None,
 ) -> List[Tuple[str, Path]]:
-    """Write CSV files to target_dir. Returns (kind, path) for each file written."""
+    """
+    Write CSV files to target_dir, replacing any prior exports in the same folder.
+
+    Returns (kind, path) for each file written.
+    """
     target_dir = Path(target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
+    if session is not None:
+        _remove_prior_output_csvs(session, target_dir)
+
     written: List[Tuple[str, Path]] = []
+    new_paths: List[str] = []
     for kind, fname, data in collect_batch_csv_exports(batch_results, meta):
         path = (target_dir / fname).resolve()
         path.write_bytes(data)
         written.append((kind, path))
+        new_paths.append(str(path))
+
+    if session is not None:
+        session.set("output_csv_paths", new_paths)
+
     return written

@@ -52,4 +52,5 @@ resources/reference_metrics/REF_JSON_INTEGRITY.md
 # Local debug and scratch files
 scratch/
 backend.log
+aria_launcher.log
 logs/

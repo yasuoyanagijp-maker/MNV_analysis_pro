@@ -94,11 +94,17 @@ async def get_results_view(ctx: AppContext):
             
         return get_exports_dir()
 
-    if batch_results and not ctx.page.session.contains_key("batch_csv_auto_saved"):
+    if (
+        batch_results
+        and not awaiting_mnv_batch_qc
+        and not ctx.page.session.contains_key("batch_csv_auto_saved")
+    ):
         try:
             meta = batch_export_meta_from_session(ctx.page.session)
             target_dir = get_target_output_dir()
-            written = write_batch_csv_exports(batch_results, meta, target_dir)
+            written = write_batch_csv_exports(
+                batch_results, meta, target_dir, session=ctx.page.session
+            )
             if written:
                 ctx.page.session.set("batch_csv_auto_saved", True)
                 names = ", ".join(p.name for _, p in written)
@@ -125,13 +131,14 @@ async def get_results_view(ctx: AppContext):
                 return
 
             target_dir = get_target_output_dir()
-            target_dir.mkdir(parents=True, exist_ok=True)
-
+            written = write_batch_csv_exports(
+                batch_results, meta, target_dir, session=ctx.page.session
+            )
+            payload_by_kind = {k: (fn, data) for k, fn, data in payloads}
             saved: list[tuple[str, str, Path, bytes]] = []
-            for kind, fname, data in payloads:
-                p = (target_dir / fname).resolve()
-                p.write_bytes(data)
-                saved.append((kind, fname, p, data))
+            for kind, path in written:
+                fn, data = payload_by_kind[kind]
+                saved.append((kind, fn, path, data))
 
             mnv_bytes = next((b for k, _, _, b in saved if k == "MNV"), None)
             vd_full_bytes = next((b for k, _, _, b in saved if k == "VD (full)"), None)
@@ -431,6 +438,30 @@ async def get_results_view(ctx: AppContext):
         except (TypeError, ValueError):
             return "—"
 
+    def _summary_subtype_cell(r: dict) -> str:
+        if is_vd_result_row(r):
+            return "—"
+        if "error" in r:
+            return "Error"
+        pm = metrics_from_session_result_row(r)
+        return str(r.get("mnv_subtype") or pm.get("mnv_subtype") or "—")
+
+    def _summary_maturity_index_cell(r: dict) -> str:
+        if is_vd_result_row(r):
+            return "—"
+        if "error" in r:
+            return "—"
+        pm = metrics_from_session_result_row(r)
+        val = r.get("maturity_index")
+        if val is None:
+            val = pm.get("maturity_index")
+        if val is None:
+            return "—"
+        try:
+            return str(safe_round(float(val), 2))
+        except (TypeError, ValueError):
+            return str(val)
+
     # --- VIEWS ---
 
     def get_summary_content():
@@ -464,7 +495,7 @@ async def get_results_view(ctx: AppContext):
                     ft.Text("Batch Analytics Summary", size=32, weight=FontWeight.BOLD),
                     ft.Container(expand=True),
                     ft.ElevatedButton(
-                        "Export CSV (MNV / VD)",
+                        "Save CSV",
                         icon=Icons.FILE_DOWNLOAD_ROUNDED,
                         bgcolor=PRIMARY,
                         color=Colors.BLACK,
@@ -484,9 +515,9 @@ async def get_results_view(ctx: AppContext):
                 ft.DataTable(
                     columns=[
                         ft.DataColumn(ft.Text("Source File")),
-                        ft.DataColumn(ft.Text("Status")),
+                        ft.DataColumn(ft.Text("Subtype")),
                         ft.DataColumn(ft.Text("MNV Area")),
-                        ft.DataColumn(ft.Text("Vessel Density")),
+                        ft.DataColumn(ft.Text("Maturity Index")),
                     ],
                     rows=[
                         ft.DataRow(
@@ -495,11 +526,7 @@ async def get_results_view(ctx: AppContext):
                                     ft.Text(r.get("source_filename", "Unknown"), size=13),
                                     on_tap=_open_summary_row_detail(idx),
                                 ),
-                                ft.DataCell(
-                                    ft.Icon(Icons.CHECK_CIRCLE, color=Colors.GREEN_400, size=18)
-                                    if "error" not in r
-                                    else ft.Icon(Icons.ERROR, color=Colors.RED_400, size=18),
-                                ),
+                                ft.DataCell(ft.Text(_summary_subtype_cell(r), size=13)),
                                 ft.DataCell(
                                     ft.Text(
                                         "—"
@@ -508,11 +535,7 @@ async def get_results_view(ctx: AppContext):
                                     )
                                 ),
                                 ft.DataCell(
-                                    ft.Text(
-                                        "—"
-                                        if is_vd_result_row(r)
-                                        else f"{safe_round(r.get('vessel_density', 0) * 100, 2)} %"
-                                    )
+                                    ft.Text(_summary_maturity_index_cell(r), size=13)
                                 ),
                             ],
                         )
@@ -558,18 +581,26 @@ async def get_results_view(ctx: AppContext):
                         ],
                         expand=True,
                     ),
-                    ft.Column(
+                    ft.Row(
                         [
+                            ft.ElevatedButton(
+                                "Save CSV",
+                                icon=Icons.FILE_DOWNLOAD_ROUNDED,
+                                bgcolor=PRIMARY,
+                                color=Colors.BLACK,
+                                on_click=lambda _: ctx.page.run_task(on_export_batch_csv),
+                            ),
                             ft.ElevatedButton(
                                 "Save PDF Report",
                                 icon=Icons.PICTURE_AS_PDF_ROUNDED,
                                 bgcolor=PRIMARY,
                                 color=Colors.BLACK,
-                                on_click=lambda _, r=res: ctx.page.run_task(on_save_individual_pdf, r),
+                                on_click=lambda _, r=res: ctx.page.run_task(
+                                    on_save_individual_pdf, r
+                                ),
                             ),
                         ],
-                        horizontal_alignment=ft.CrossAxisAlignment.END,
-                        spacing=6,
+                        spacing=8,
                     ),
                 ]
             ),
