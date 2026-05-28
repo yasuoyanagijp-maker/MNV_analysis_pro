@@ -1,50 +1,68 @@
 {
   "size_class": "large",
   "n_cases": 49,
-  "metrics": ["stab_cv", "stab_mean_adjacent_change", "stab_residual_cv", "stab_range_percent"],
-  "description": "Size-specific PCA-based stability reference for large (n=49). PC1=instability (all weights positive, inverted for stability). Piecewise linear correction: median→50. Rebuilt 2026-02-25.",
+  "metrics": [
+    "stab_cv",
+    "stab_mean_adjacent_change",
+    "stab_residual_cv",
+    "stab_range_percent"
+  ],
+  "description": "Size-specific PCA-based stability reference for large (n=49). PC1=instability (all weights positive, inverted for stability). Piecewise linear correction: median→50. Rebuilt 2026-05-28.",
   "mu": {
-    "stab_cv": 14.65177584267664,
-    "stab_mean_adjacent_change": 12.995940305660323,
-    "stab_residual_cv": 11.059721698596036,
-    "stab_range_percent": 50.374157838924134
+    "stab_cv": 15.120870302671406,
+    "stab_mean_adjacent_change": 11.609016660438039,
+    "stab_residual_cv": 10.038501005838913,
+    "stab_range_percent": 49.76793752138995
   },
   "sigma": {
-    "stab_cv": 6.752958436624374,
-    "stab_mean_adjacent_change": 9.824361629151133,
-    "stab_residual_cv": 6.115044684329091,
-    "stab_range_percent": 25.51390794138375
+    "stab_cv": 7.956357454224721,
+    "stab_mean_adjacent_change": 4.188918255826896,
+    "stab_residual_cv": 3.706178090942601,
+    "stab_range_percent": 25.66729516762835
   },
   "pc1_weights": {
-    "stab_cv": 0.5026232232538287,
-    "stab_mean_adjacent_change": 0.48280993151537954,
-    "stab_residual_cv": 0.5013209536311612,
-    "stab_range_percent": 0.5127784774406875
+    "stab_cv": 0.5146982810082894,
+    "stab_mean_adjacent_change": 0.4995271468022978,
+    "stab_residual_cv": 0.45955714572825956,
+    "stab_range_percent": 0.5237991398854741
   },
   "pc2_weights": {
-    "stab_cv": -0.5481913549659125,
-    "stab_mean_adjacent_change": 0.6811053485035696,
-    "stab_residual_cv": 0.29099833508923356,
-    "stab_range_percent": -0.3884606949946956
+    "stab_cv": 0.4952059726814931,
+    "stab_mean_adjacent_change": -0.4245519470253015,
+    "stab_residual_cv": -0.6084093374699747,
+    "stab_range_percent": 0.4520672151095993
   },
-  "explained_variance_ratio": [0.895578585159524, 0.07101470415569598, 0.028493084784739896, 0.004913625900040107],
+  "explained_variance_ratio": [
+    0.7587512233910402,
+    0.1905763414488492,
+    0.04619716199116116,
+    0.004475273168949471
+  ],
   "note_pc1": "PC1=instability (all weights positive). stability_score uses -PC1.",
   "scale_correction": {
     "method": "piecewise_linear_per_pc",
     "pc1_inv": {
-      "min": -6.877066772673984,
-      "median": 0.64679074119226,
-      "max": 2.681582057290229
+      "min": -4.947393756248706,
+      "median": 0.4172294130109774,
+      "max": 2.499043151651701
     },
     "pc2": {
-      "min": -1.3799914489951586,
-      "median": 0.03336572999294286,
-      "max": 1.6402126242079
+      "min": -2.0963727227240736,
+      "median": -0.11913590810224647,
+      "max": 3.2564321573108694
     }
   },
   "final_weights": {
     "PC1": 0.7,
     "PC2": 0.2,
     "TrunkDist": 0.1
+  },
+  "trunk_scale_correction": {
+    "method": "piecewise_linear",
+    "description": "Raw calculate_trunk_distribution_score → 0–100; stratum median → 50.",
+    "min": 2.464079599013461,
+    "median": 44.15548257019221,
+    "max": 66.76968428286507,
+    "n_cases": 49
   }
 }

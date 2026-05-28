@@ -28,8 +28,11 @@ from core.pattern_classifier import (
     validate_combination_final,
 )
 from core.pattern_metrics import (
+    apply_trunk_scale_correction,
     calculate_complexity_pca,
+    calculate_stability_metrics,
     calculate_trunk_distribution_score,
+    load_complexity_ref,
 )
 from core.roi_manager import ROIDetector, ROIModifier
 from core.skeleton_analysis import (BranchAnalyzer, DiameterAnalyzer,
@@ -1282,12 +1285,33 @@ class MNVPipeline:
         fd_global = float(
             skeleton_results.get("fractal_dimension", 0.0)
         )
-        trunk_score = calculate_trunk_distribution_score(
+        trunk_score_raw = calculate_trunk_distribution_score(
             spatial_results["trunk_eccentricity"],
             spatial_results["angular_distribution_cv"],
             spatial_results["thick_vessel_center_ratio"],
             spatial_results["diameter_center_periphery_ratio"],
         )
+        complexity_ref = load_complexity_ref(size_class)
+        trunk_score = apply_trunk_scale_correction(trunk_score_raw, complexity_ref)
+
+        # Phase 2: use normalized trunk score for stability too.
+        radial_profile = spatial_results.get("radial_profile", {})
+        diameters = (
+            radial_profile.get("diameters")
+            if isinstance(radial_profile, dict)
+            else None
+        )
+        if diameters is not None:
+            try:
+                stability_with_norm_trunk = calculate_stability_metrics(
+                    np.asarray(diameters, dtype=float),
+                    size_class=size_class,
+                    trunk_score=trunk_score,
+                )
+                spatial_results["stability_score"] = float(stability_with_norm_trunk)
+            except Exception:
+                # keep spatial_results["stability_score"] as computed upstream
+                pass
         complexity_score = calculate_complexity_pca(
             euler_center=float(euler_center),
             euler_periphery=float(euler_periphery),
@@ -1354,6 +1378,8 @@ class MNVPipeline:
         out = {
             "complexity_score": complexity_score,
             "complexity_details": complexity_details,
+            "trunk_score_raw": float(trunk_score_raw),
+            "trunk_score": float(trunk_score),
             "mnv_subtype": classification["subtype"],
             "subtype_confidence": classification["confidence"],
             "maturity_index": classification["maturity_index"],

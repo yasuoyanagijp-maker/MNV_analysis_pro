@@ -1,50 +1,58 @@
 {
   "size_class": "small_3mm",
   "n_cases": 30,
-  "n_before": 23,
-  "n_after": 7,
+  "n_before": 0,
+  "n_after": 0,
   "metrics": [
     "euler_total_inv",
     "loop_total",
     "junction_density",
     "FD_global"
   ],
-  "note": "Combined before+after PCA for treatment comparison. euler_total_inv = -(Center Euler + Periphery Euler). Rebuilt 2026-02-20.",
+  "note": "Manuscript: PCA on euler_total_inv, loop_total, junction_density, FD_global per stratum. euler_total_inv = -(Center Euler + Periphery Euler). Runtime uses linear PC1/PC2 scaling (score_min/max) and EVR weights — see MANUSCRIPT_METHODS.md. Rebuilt 2026-05-28.",
   "mu": {
-    "euler_total_inv": 132.2,
-    "loop_total": 162.83333333333334,
-    "junction_density": 21.960218392754314,
-    "FD_global": 1.3778962928905478
+    "euler_total_inv": 87.26666666666667,
+    "loop_total": 131.6,
+    "junction_density": 22.23652346038435,
+    "FD_global": 1.3170787655686056
   },
   "sigma": {
-    "euler_total_inv": 99.33894838715912,
-    "loop_total": 119.56897126298647,
-    "junction_density": 3.608865423976063,
-    "FD_global": 0.07461965771735642
+    "euler_total_inv": 82.96693705132282,
+    "loop_total": 106.87943578211593,
+    "junction_density": 3.954525472264549,
+    "FD_global": 0.13821696989247376
   },
   "pc1_weights": {
-    "euler_total_inv": 0.5740753717431044,
-    "loop_total": 0.565733522908452,
-    "junction_density": 0.2559700798082146,
-    "FD_global": 0.533724991787516
+    "euler_total_inv": -0.616663213185136,
+    "loop_total": -0.6073977132059301,
+    "junction_density": -0.12306635083651893,
+    "FD_global": -0.48543709457371836
   },
   "pc2_weights": {
-    "euler_total_inv": -0.06873651567954539,
-    "loop_total": -0.13633565352455004,
-    "junction_density": 0.9583916162022281,
-    "FD_global": -0.24119160637043374
+    "euler_total_inv": -0.13237679537031669,
+    "loop_total": -0.06860882031905227,
+    "junction_density": -0.867803802520176,
+    "FD_global": 0.4740103101763055
   },
   "explained_variance_ratio": [
-    0.7393981131137759,
-    0.21886929214447753
+    0.6327025109635409,
+    0.3011490236574536
   ],
-  "score_min": -5.462555219053653,
-  "score_max": 4.230919003225147,
+  "score_min": -4.558644899331691,
+  "score_max": 2.256557441373257,
   "final_weights": {
     "PC1": 0.7,
     "PC2": 0.2,
     "TrunkDist": 0.1
   },
-  "PC2_min": -2.076853046687704,
-  "PC2_max": 2.390170008407079
+  "PC2_min": -2.4757477455067463,
+  "PC2_max": 1.2393720173224891,
+  "trunk_scale_correction": {
+    "method": "piecewise_linear",
+    "description": "Raw calculate_trunk_distribution_score → 0–100; stratum median → 50.",
+    "min": 16.936680678163707,
+    "median": 33.428861963062005,
+    "max": 57.1865519956889,
+    "n_cases": 30
+  }
 }
