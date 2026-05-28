@@ -159,6 +159,28 @@ def _load_complexity_ref_small_3mm() -> Optional[Dict[str, object]]:
     return _COMPLEXITY_REF_SMALL_3MM
 
 
+def load_stability_ref(size_class: str) -> Optional[Dict[str, object]]:
+    """Public loader for stability reference JSON by size_class."""
+    if size_class == "small_3mm":
+        return _load_stability_ref_small_3mm()
+    if size_class == "small":
+        return _load_stability_ref_small()
+    if size_class == "large":
+        return _load_stability_ref_large()
+    return None
+
+
+def load_complexity_ref(size_class: str) -> Optional[Dict[str, object]]:
+    """Public loader for complexity reference JSON by size_class."""
+    if size_class == "small_3mm":
+        return _load_complexity_ref_small_3mm()
+    if size_class == "small":
+        return _load_complexity_ref_small()
+    if size_class == "large":
+        return _load_complexity_ref_large()
+    return None
+
+
 def load_mnv_classification_ref(size_class: str) -> Optional[Dict[str, object]]:
     """Load MNV classification reference (percentiles) for Level 1/2/3 classification.
 
@@ -233,6 +255,34 @@ def _piecewise_scale(
     if x_max > x_median:
         result[high] = 50.0 + 50.0 * (x[high] - x_median) / (x_max - x_median)
     return np.clip(result, 0.0, 100.0)
+
+
+def apply_trunk_scale_correction(
+    raw_trunk_score: float,
+    ref: Optional[Dict[str, object]],
+) -> float:
+    """Apply stratum-wise trunk normalization if available in reference JSON.
+
+    Expects optional:
+      ref["trunk_scale_correction"] = {"min","median","max",...}
+    Falls back to raw score when missing or malformed.
+    """
+    raw = float(np.clip(raw_trunk_score, 0.0, 100.0))
+    if not isinstance(ref, dict):
+        return raw
+    trunk_sc = ref.get("trunk_scale_correction")
+    if not isinstance(trunk_sc, dict):
+        return raw
+    try:
+        scaled = _piecewise_scale(
+            np.asarray([raw], dtype=float),
+            float(trunk_sc["min"]),
+            float(trunk_sc["median"]),
+            float(trunk_sc["max"]),
+        )
+        return float(scaled[0])
+    except Exception:
+        return raw
 
 
 def calculate_stability_score(

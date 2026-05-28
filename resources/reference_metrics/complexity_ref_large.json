@@ -9,42 +9,50 @@
     "junction_density",
     "FD_global"
   ],
-  "note": "Combined before+after PCA for treatment comparison. euler_total_inv = -(Center Euler + Periphery Euler). junction_density included (positive loading in combined cohort). Rebuilt 2026-02-20.",
+  "note": "Manuscript: PCA on euler_total_inv, loop_total, junction_density, FD_global per stratum. euler_total_inv = -(Center Euler + Periphery Euler). Runtime uses linear PC1/PC2 scaling (score_min/max) and EVR weights — see MANUSCRIPT_METHODS.md. Rebuilt 2026-05-28.",
   "mu": {
-    "euler_total_inv": 169.85714285714286,
-    "loop_total": 308.0408163265306,
-    "junction_density": 25.878097988338567,
-    "FD_global": 1.3974922975025055
+    "euler_total_inv": 70.55102040816327,
+    "loop_total": 171.0204081632653,
+    "junction_density": 27.756539502787206,
+    "FD_global": 1.2222923878056788
   },
   "sigma": {
-    "euler_total_inv": 144.33888694913193,
-    "loop_total": 199.47972728909974,
-    "junction_density": 1.8010464704191846,
-    "FD_global": 0.08668025258643301
+    "euler_total_inv": 72.92520746870552,
+    "loop_total": 124.38389663254884,
+    "junction_density": 2.510617740270471,
+    "FD_global": 0.14312083436788597
   },
   "pc1_weights": {
-    "euler_total_inv": 0.6046712434239322,
-    "loop_total": 0.5834786582566701,
-    "junction_density": 0.14419998663207406,
-    "FD_global": 0.5226200403643753
+    "euler_total_inv": 0.5686724672437242,
+    "loop_total": 0.5832519596648003,
+    "junction_density": -0.2657144134442266,
+    "FD_global": 0.5155818334989085
   },
   "pc2_weights": {
-    "euler_total_inv": -0.0900387583625975,
-    "loop_total": -0.21820770305927306,
-    "junction_density": 0.9683917788900257,
-    "FD_global": 0.08059641987290404
+    "euler_total_inv": -0.28041925416438584,
+    "loop_total": -0.20072344878463583,
+    "junction_density": -0.9371362383299823,
+    "FD_global": 0.05339297529283572
   },
   "explained_variance_ratio": [
-    0.6373576517663176,
-    0.24846510162486718
+    0.6630076310939915,
+    0.2257671130321328
   ],
-  "score_min": -4.925659985463771,
-  "score_max": 4.5997596262584,
+  "score_min": -2.786796317780301,
+  "score_max": 3.795273560362929,
   "final_weights": {
     "PC1": 0.7,
     "PC2": 0.2,
     "TrunkDist": 0.1
   },
-  "PC2_min": -2.257052385563757,
-  "PC2_max": 3.569982842410019
+  "PC2_min": -2.596535753863625,
+  "PC2_max": 1.9418065287588546,
+  "trunk_scale_correction": {
+    "method": "piecewise_linear",
+    "description": "Raw calculate_trunk_distribution_score → 0–100; stratum median → 50.",
+    "min": 2.464079599013461,
+    "median": 44.15548257019221,
+    "max": 66.76968428286507,
+    "n_cases": 49
+  }
 }
