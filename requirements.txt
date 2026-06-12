@@ -59,6 +59,7 @@ shapely==2.0.7
 # ------------------
 # Visualization
 # ------------------
+# matplotlib: ROI debug (optional) + batch chart PDF (src/utils/mnv_results_chart.py)
 matplotlib==3.9.4
 
 # ------------------
@@ -66,7 +67,7 @@ matplotlib==3.9.4
 # ------------------
 psutil==7.2.2
 
-# PDF export (src/utils/report_generator.py; PyPI package name is fpdf2, import is fpdf)
+# PDF export (src/utils/report_generator.py, src/utils/mnv_results_chart.py; PyPI: fpdf2, import: fpdf)
 fpdf2==2.8.4
 defusedxml==0.7.1
 fonttools==4.60.2
@@ -85,3 +86,8 @@ flake8>=5.0.0
 # numba==0.60.0
 # llvmlite==0.43.0
 
+# ------------------
+# Optional: macOS/Windows packaging (see build_mac.sh / build_win.sh)
+# Install separately: pip install -r requirements-build.txt
+# Versions intentionally unpinned to avoid conflicts with runtime pins above.
+# ------------------

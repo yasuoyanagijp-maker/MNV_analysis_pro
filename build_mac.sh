@@ -42,7 +42,7 @@ DEVELOPER_ID="Developer ID Application: Your Name (XXXXXXXXXX)"
 KEYCHAIN_PROFILE="ARIAKE_NOTARY"             # notarytool store-credentials で設定した名前
 APP_NAME="ARIAKE_OCTA"                        # .app / .dmg のベース名
 APP_BUNDLE_ID="com.ariake.octa"              # Bundle Identifier
-APP_VERSION="1.0.0"
+APP_VERSION="1.2.0"
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── パス設定 ──────────────────────────────────────────────────────────────────
@@ -145,18 +145,24 @@ log_step "ビルドツールのインストール確認"
 source "${SCRIPT_DIR}/.venv/bin/activate"
 
 for pkg in pyinstaller "streamlit-desktop-app" dmgbuild; do
-    if ! python -c "import ${pkg//-/_}" &>/dev/null 2>&1; then
+    case "$pkg" in
+        pyinstaller) import_cmd='import PyInstaller' ;;
+        streamlit-desktop-app) import_cmd='import streamlit_desktop_app' ;;
+        dmgbuild) import_cmd='import dmgbuild' ;;
+        *) import_cmd="import ${pkg//-/_}" ;;
+    esac
+    if ! "$VENV_PYTHON" -c "$import_cmd" &>/dev/null 2>&1; then
         log_info "${pkg} をインストール中..."
-        pip install "$pkg" --quiet
+        "$VENV_PYTHON" -m pip install "$pkg" --quiet
     else
         log_success "${pkg} 確認済み"
     fi
 done
 
 # pywebview も確認
-python -c "import webview" &>/dev/null 2>&1 && log_success "pywebview 確認済み" || {
+"$VENV_PYTHON" -c "import webview" &>/dev/null 2>&1 && log_success "pywebview 確認済み" || {
     log_info "pywebview をインストール中..."
-    pip install pywebview --quiet
+    "$VENV_PYTHON" -m pip install pywebview --quiet
 }
 
 # ── クリーン ──────────────────────────────────────────────────────────────────
@@ -183,7 +189,7 @@ if [[ "$SIGN_ONLY" != true ]]; then
     fi
     log_info "使用 spec: $(basename "$SPEC_FILE")"
 
-    pyinstaller \
+    "$VENV_PYTHON" -m PyInstaller \
         --clean \
         --noconfirm \
         --distpath="${DIST_DIR}" \

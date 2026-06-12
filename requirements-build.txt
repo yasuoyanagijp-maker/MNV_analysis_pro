@@ -1,0 +1,10 @@
+# Build-only dependencies (not required for runtime / wrapper.py).
+# Install after requirements.txt:
+#   .venv/bin/python -m pip install -r requirements-build.txt
+#
+# Versions are intentionally unpinned — do not merge into requirements.txt
+# without resolving conflicts with the pinned runtime stack.
+
+pyinstaller
+dmgbuild
+pywebview
