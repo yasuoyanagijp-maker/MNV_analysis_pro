@@ -13,7 +13,7 @@ from src.utils.cv2_path import (
     BGR_READ_PERMISSION,
     imread_bgr_outcome,
 )
-from src.utils.batch_input_filter import filter_mnv_files_for_roi_selection
+from src.utils.batch_input_filter import select_mnv_images_for_batch
 from src.utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
 from src.utils.batch_csv_export import mark_analysis_started
 from src.utils.vd_folder_preflight import (
@@ -146,6 +146,25 @@ async def get_dashboard_view(ctx: AppContext):
         ctx.page.session.set("vd_use_pair_mode", bool(e.control.value))
 
     vd_pair_mode_switch.on_change = _on_vd_pair_mode_change
+
+    _mnv_select_all_sess = ctx.page.session.get("mnv_select_all_images")
+    mnv_select_all_switch = ft.Switch(
+        label="MNV: analyze all images",
+        value=bool(_mnv_select_all_sess),
+        active_color=PRIMARY,
+        tooltip=(
+            "OFF: auto-select MNV images (exclude *1/*2/*4 and image1/2/4). "
+            "ON: include every image in the folder."
+        ),
+    )
+
+    def _on_mnv_select_all_change(e):
+        ctx.page.session.set("mnv_select_all_images", bool(e.control.value))
+
+    mnv_select_all_switch.on_change = _on_mnv_select_all_change
+
+    def _mnv_image_selection_mode() -> str:
+        return "all" if bool(ctx.page.session.get("mnv_select_all_images")) else "auto"
 
     manual_path = ft.TextField(
         label="Optional path (folder on server host — paste if you already know the path)",
@@ -609,9 +628,9 @@ async def get_dashboard_view(ctx: AppContext):
         deep = (vd_deep_suffix.value or "").strip() or "2.tif"
 
         mnv_candidates = sorted(
-            filter_mnv_files_for_roi_selection(
+            select_mnv_images_for_batch(
                 list(image_paths_on_disk),
-                "MNV",
+                mode=_mnv_image_selection_mode(),
                 fallback_all_if_empty=False,
             ),
             key=lambda p: p.name.lower(),
@@ -755,16 +774,22 @@ async def get_dashboard_view(ctx: AppContext):
         if batch_plan == "MNV":
             session_discard(ctx.page.session, "integrated_vd_result")
             raw_count = len(files)
-            files = filter_mnv_files_for_roi_selection(files, "MNV")
+            sel_mode = _mnv_image_selection_mode()
+            files = select_mnv_images_for_batch(files, mode=sel_mode)
             if not files:
                 await ctx.add_to_console(
                     "MNV folder filter removed all files (*1/*2/*4 and image1/2/4 patterns). Nothing to analyze.",
                     "ERROR",
                 )
                 return
-            if len(files) < raw_count:
+            if sel_mode == "auto" and len(files) < raw_count:
                 await ctx.add_to_console(
-                    f"MNV folder filter: {raw_count} → {len(files)} file(s) (Streamlit-aligned suffix rules).",
+                    f"MNV auto-select: {raw_count} → {len(files)} file(s) (suffix rules).",
+                    "INFO",
+                )
+            elif sel_mode == "all":
+                await ctx.add_to_console(
+                    f"MNV all-images mode: {len(files)} file(s) queued.",
                     "INFO",
                 )
             paths_ordered = [str(f.resolve()) for f in files]
@@ -930,6 +955,7 @@ async def get_dashboard_view(ctx: AppContext):
             "vd_side_val": vd_side.value or "right",
             "vd_use_pairs": bool(_pm) if _pm is not None else True,
             "mnv_fd_self_ref": bool(ctx.page.session.get("mnv_fd_self_ref") or False),
+            "mnv_select_all_images": bool(ctx.page.session.get("mnv_select_all_images")),
         }
         ACCENT = PRIMARY
         CARD_W = 158
@@ -1003,6 +1029,11 @@ async def get_dashboard_view(ctx: AppContext):
             value=wizard["mnv_fd_self_ref"], active_color=ACCENT,
             on_change=lambda e: wizard.update({"mnv_fd_self_ref": e.control.value}),
         )
+        mnv_select_switch = ft.Switch(
+            value=wizard["mnv_select_all_images"],
+            active_color=ACCENT,
+            on_change=lambda e: wizard.update({"mnv_select_all_images": bool(e.control.value)}),
+        )
 
         def _build_content():
             step = wizard["step"]
@@ -1066,6 +1097,31 @@ async def get_dashboard_view(ctx: AppContext):
                                 size=11, color=TEXT_MUTED),
                         ft.Text("• ON: Useful for standalone scans without a dedicated CC image.",
                                 size=11, color=TEXT_MUTED),
+                        ft.Divider(height=8, color=Colors.with_opacity(0.08, Colors.WHITE)),
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Row([
+                                    ft.Column([
+                                        ft.Text("Image selection",
+                                                size=14, weight=FontWeight.W_500,
+                                                color=Colors.WHITE),
+                                        ft.Text(
+                                            "Auto: exclude *1/*2/*4 and image1/2/4.\n"
+                                            "All images: analyze every file in the folder.",
+                                            size=11, color=TEXT_MUTED),
+                                    ], expand=True),
+                                    ft.Column([
+                                        ft.Text("自動選択", size=11, color=TEXT_MUTED),
+                                        mnv_select_switch,
+                                        ft.Text("全ての画像解析", size=11, color=TEXT_MUTED),
+                                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4),
+                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                            ], spacing=8),
+                            padding=18,
+                            bgcolor=Colors.with_opacity(0.05, Colors.WHITE),
+                            border_radius=12,
+                            border=ft.border.all(1, Colors.with_opacity(0.1, Colors.WHITE)),
+                        ),
                     ], spacing=12)
                 else:
                     return ft.Column([
@@ -1122,6 +1178,9 @@ async def get_dashboard_view(ctx: AppContext):
                     fd_lbl = ("ON (self-referential)"
                               if wizard["mnv_fd_self_ref"] else "OFF (FD = 0)")
                     rows.append(_row(Icons.WATER_DROP_ROUNDED, "FD Analysis", fd_lbl))
+                    sel_lbl = ("全ての画像解析"
+                               if wizard["mnv_select_all_images"] else "自動選択 (suffix filter)")
+                    rows.append(_row(Icons.FILTER_LIST_ROUNDED, "MNV images", sel_lbl))
                 elif atype in ("VD_SINGLE", "INTEGRATED"):
                     pair_txt = "pair mode ON" if wizard.get("vd_use_pairs", True) else "single-image mode"
                     rows.append(_row(Icons.SETTINGS_ROUNDED, "VD suffixes",
@@ -1186,6 +1245,8 @@ async def get_dashboard_view(ctx: AppContext):
             ctx.page.session.set("vd_use_pair_mode", bool(wizard.get("vd_use_pairs", True)))
             vd_pair_mode_switch.value = bool(wizard.get("vd_use_pairs", True))
             ctx.page.session.set("mnv_fd_self_ref", wizard["mnv_fd_self_ref"])
+            ctx.page.session.set("mnv_select_all_images", bool(wizard["mnv_select_all_images"]))
+            mnv_select_all_switch.value = bool(wizard["mnv_select_all_images"])
             ctx.page.close(dlg)
             await show_folder_explorer("Select Analysis Folder",
                                        on_select=load_batch_from_directory)
@@ -1325,8 +1386,13 @@ async def get_dashboard_view(ctx: AppContext):
                                     spacing=16,
                                     vertical_alignment=ft.CrossAxisAlignment.END,
                                 ),
+                                ft.Row(
+                                    [mnv_select_all_switch],
+                                    spacing=16,
+                                    vertical_alignment=ft.CrossAxisAlignment.END,
+                                ),
                                 ft.Text(
-                                    "MNV: filtered list, ROI per slice.  "
+                                    "MNV: auto-select excludes *1/*2/*4; toggle ON for all images.  "
                                     "VD: pair mode matches SCP+DCP by suffix (like Integrated); "
                                     "single-image mode analyzes every file.  "
                                     "Integrated: VD pairs first, then MNV ROI queue.",

@@ -171,7 +171,7 @@ def collect_batch_csv_exports(
             )
 
     if mnv_rows:
-        ordered = sorted(mnv_rows, key=lambda x: str(x.get("source_filename") or ""))
+        ordered = list(mnv_rows)
         rows = []
         for idx, r in enumerate(ordered):
             fn = str(r.get("source_filename") or "N/A")
