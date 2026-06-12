@@ -14,6 +14,7 @@ $PYTHON_EXE = "python"
 
 if (Test-Path (Join-Path $SCRIPT_DIR ".venv\Scripts\python.exe")) {
     $PYTHON_EXE = Join-Path $SCRIPT_DIR ".venv\Scripts\python.exe"
+    $env:VIRTUAL_ENV = Join-Path $SCRIPT_DIR ".venv"
     Write-Host "[INFO] Using virtual environment Python: $PYTHON_EXE"
 }
 
@@ -73,8 +74,25 @@ if (-not (Test-Path $EXE_PATH)) {
 
 Write-Host "[SUCCESS] Build completed: $EXE_PATH"
 
+$INTERNAL_DIR = Join-Path $DIST_DIR "$APP_NAME\_internal"
+$requiredDlls = @("python312.dll", "python3.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll", "MSVCP140.dll")
+$missingDlls = @()
+foreach ($dll in $requiredDlls) {
+    if (-not (Test-Path (Join-Path $INTERNAL_DIR $dll))) {
+        $missingDlls += $dll
+    }
+}
+if ($missingDlls.Count -gt 0) {
+    Write-Host "[ERROR] Missing runtime DLL(s) in _internal: $($missingDlls -join ', ')"
+    Write-Host "[HINT] Re-run with -Clean. If this persists, install VC++ 2015-2022 x64 redistributable on the build PC."
+    exit 1
+}
+Write-Host "[INFO] Runtime DLL check passed (_internal contains python312.dll and MSVC runtime)."
+
 Write-Host "[INFO] Creating ZIP..."
 $ZIP_OUT = Join-Path $DIST_DIR "$APP_NAME.zip"
 if (Test-Path $ZIP_OUT) { Remove-Item $ZIP_OUT }
-Compress-Archive -Path (Join-Path $DIST_DIR "$APP_NAME\*") -DestinationPath $ZIP_OUT
+# Package the folder so extraction yields ARIAKE_OCTA\ARIAKE_OCTA.exe + _internal\
+Compress-Archive -Path (Join-Path $DIST_DIR $APP_NAME) -DestinationPath $ZIP_OUT
 Write-Host "[SUCCESS] ZIP created: $ZIP_OUT"
+Write-Host "[HINT] Distribute the ZIP as-is. Recipient must extract the whole ARIAKE_OCTA folder (keep _internal next to the .exe)."

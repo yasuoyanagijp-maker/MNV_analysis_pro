@@ -35,6 +35,24 @@ def collect_libtiff():
     
     return [(str(f), ".") for f in dlls]
 
+def collect_python_runtime_dlls():
+    """Ensure python3.dll / python312.dll and MSVC runtime ship in _internal."""
+    py_root = Path(sys.base_prefix)
+    names = [
+        "python3.dll",
+        f"python{sys.version_info.major}{sys.version_info.minor}.dll",
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "msvcp140.dll",
+    ]
+    out = []
+    for name in names:
+        for candidate in (py_root / name, py_root / "DLLs" / name):
+            if candidate.is_file():
+                out.append((str(candidate), "."))
+                break
+    return out
+
 # ── PyInstaller が見る Python 環境 ────────────────────────────────
 # ビルドを実行したインタプリタ（例: build_win.ps1 が選ぶ .venv かシステムの python）の
 # site-packages 全体が「候補」になるが、バンドルに入るのは次だけ:
@@ -58,7 +76,7 @@ if venv_path:
     if os.path.exists(os.path.join(site_packages, 'tifffile')):
         datas.append((os.path.join(site_packages, 'tifffile'), 'tifffile'))
 
-binaries = collect_libtiff()
+binaries = collect_libtiff() + collect_python_runtime_dlls()
 
 hiddenimports = [
     'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto', 'uvicorn.protocols.http.auto', 
@@ -85,6 +103,8 @@ to_collect = [
     "shapely",
     "networkx",
     "imageio",
+    "matplotlib",
+    "fpdf",
 ]
 
 for pkg in to_collect:
