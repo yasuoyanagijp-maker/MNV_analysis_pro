@@ -50,3 +50,25 @@ def filter_mnv_files_for_roi_selection(
         return []
 
     return filtered_files
+
+
+def select_mnv_images_for_batch(
+    image_files: List[Path],
+    *,
+    mode: str = "auto",
+    fallback_all_if_empty: bool = True,
+) -> List[Path]:
+    """
+    Select MNV batch images.
+
+    mode:
+      - "auto": suffix/name filter (*1/*2/*4, image1/2/4 excluded)
+      - "all": every image in the folder (sorted by filename)
+    """
+    if mode == "all":
+        return sorted(image_files, key=lambda p: p.name.lower())
+    return filter_mnv_files_for_roi_selection(
+        image_files,
+        "MNV",
+        fallback_all_if_empty=fallback_all_if_empty,
+    )

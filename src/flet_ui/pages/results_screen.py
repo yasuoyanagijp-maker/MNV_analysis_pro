@@ -34,6 +34,14 @@ from src.utils.batch_csv_export import (
     collect_batch_csv_exports,
     write_batch_csv_exports,
 )
+from src.utils.mnv_results_chart import (
+    SUMMARY_TABLE_COLUMNS,
+    build_batch_metric_chart_pdf,
+    chartable_numeric_columns,
+    imagej_rows_from_batch,
+    series_for_metric,
+    smart_y_bounds,
+)
 
 async def get_results_view(ctx: AppContext):
     # --- DATA INITIALIZATION ---
@@ -77,6 +85,57 @@ async def get_results_view(ctx: AppContext):
     async def select_result(index):
         ctx.page.session.set("results_selected_index", index)
         # Bump query so Page.go fires route_change while already on /results (SPA same-path no-op otherwise)
+        ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
+
+    def _adjust_selection_after_reorder(sel: int, old_i: int, new_i: int) -> int:
+        if sel < 0:
+            return sel
+        if sel == old_i:
+            return new_i
+        if old_i < new_i:
+            if old_i < sel <= new_i:
+                return sel - 1
+        elif new_i <= sel < old_i:
+            return sel + 1
+        return sel
+
+    async def _rewrite_csv_after_reorder():
+        session_discard(ctx.page.session, "batch_csv_auto_saved")
+        try:
+            br = ctx.page.session.get("batch_results") or []
+            if not br or bool(ctx.page.session.get("mnv_batch_awaiting_qc")):
+                return
+            meta = batch_export_meta_from_session(ctx.page.session)
+            target_dir = get_target_output_dir()
+            written = write_batch_csv_exports(br, meta, target_dir, session=ctx.page.session)
+            if written:
+                ctx.page.session.set("batch_csv_auto_saved", True)
+                names = ", ".join(p.name for _, p in written)
+                await ctx.add_to_console(
+                    f"CSV order updated ({names})",
+                    "INFO",
+                )
+        except Exception as ex:
+            await ctx.add_to_console(f"CSV reorder save failed: {ex}", "WARN")
+
+    async def on_batch_reorder(e: ft.OnReorderEvent):
+        if awaiting_mnv_batch_qc:
+            return
+        old_i, new_i = e.old_index, e.new_index
+        if old_i is None or new_i is None or old_i == new_i:
+            return
+        br = list(ctx.page.session.get("batch_results") or [])
+        if not br or old_i < 0 or old_i >= len(br) or new_i < 0 or new_i >= len(br):
+            return
+        item = br.pop(old_i)
+        br.insert(new_i, item)
+        ctx.page.session.set("batch_results", br)
+        sel = int(ctx.page.session.get("results_selected_index") or -1)
+        ctx.page.session.set(
+            "results_selected_index",
+            _adjust_selection_after_reorder(sel, old_i, new_i),
+        )
+        await _rewrite_csv_after_reorder()
         ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
 
     def get_target_output_dir():
@@ -344,6 +403,53 @@ async def get_results_view(ctx: AppContext):
             await ctx.add_to_console(f"PDF Error: {ex}", "ERROR")
         ctx.page.update()
 
+    async def on_export_chart_pdf(metric_col: str):
+        try:
+            mnv_only = [
+                r for r in batch_results
+                if not is_vd_result_row(r)
+                and str(r.get("result_type") or "MNV") == "MNV"
+            ]
+            if not mnv_only:
+                await ctx.add_to_console("Chart export: no MNV rows in batch.", "WARN")
+                return
+            pdf_bytes = build_batch_metric_chart_pdf(mnv_only, metric_col)
+            safe_metric = re.sub(r"[^A-Za-z0-9._-]+", "_", metric_col).strip("._")[:40] or "metric"
+            fname = f"MNV_Chart_{safe_metric}_{uuid.uuid4().hex[:8]}.pdf"
+            out_dir = _PROJECT_ROOT / "uploads"
+            out_dir.mkdir(exist_ok=True)
+            out_path = (out_dir / fname).resolve()
+            out_path.write_bytes(pdf_bytes)
+            is_web = bool(getattr(ctx.page, "web", False))
+            if is_web:
+                dl = f"{ctx.client.base_url.rstrip('/')}/download/{fname}"
+                ctx.page.launch_url(dl)
+                help_body = f"Chart PDF ready:\n\n{dl}"
+            else:
+                target_dir = get_target_output_dir()
+                target_dir.mkdir(parents=True, exist_ok=True)
+                final_out = target_dir / fname
+                shutil.copy2(out_path, final_out)
+                help_body = f"Chart PDF saved:\n\n{final_out}"
+            await ctx.add_to_console(f"Chart PDF exported: {fname}", "SUCCESS")
+            ctx.page.open(
+                ft.AlertDialog(
+                    title=ft.Text("Chart PDF exported", color=Colors.WHITE),
+                    content=ft.Container(
+                        content=ft.Text(help_body, selectable=True, size=12, color=TEXT_MUTED),
+                        width=520,
+                    ),
+                    bgcolor=GLASS_BG,
+                )
+            )
+        except Exception as ex:
+            await ctx.add_to_console(f"Chart PDF export failed: {ex}", "ERROR")
+        ctx.page.update()
+
+    async def on_chart_metric_change(metric_col: str):
+        ctx.page.session.set("results_chart_metric", metric_col)
+        ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
+
     # --- UI COMPONENTS ---
     
     def metric_tile(label, value, unit, icon, color):
@@ -489,6 +595,173 @@ async def get_results_view(ctx: AppContext):
             2,
         )
 
+        imagej_rows = imagej_rows_from_batch(batch_results)
+        has_mnv_table = len(imagej_rows) > 0
+
+        table_block = ft.Container()
+        if has_mnv_table:
+            table_block = ft.Column(
+                [
+                    ft.Text("Results Table (CSV columns)", size=20, weight=FontWeight.BOLD, color=PRIMARY),
+                    ft.Text(
+                        "Subtype / Pathophysiology and key metrics aligned with exported CSV.",
+                        size=12,
+                        color=TEXT_MUTED,
+                    ),
+                    ft.Container(
+                        content=ft.DataTable(
+                            columns=[
+                                ft.DataColumn(ft.Text(col, size=11, weight=FontWeight.W_600))
+                                for col in SUMMARY_TABLE_COLUMNS
+                            ],
+                            rows=[
+                                ft.DataRow(
+                                    cells=[
+                                        ft.DataCell(
+                                            ft.Text(
+                                                str(row.get(col, ""))[:48],
+                                                size=11,
+                                                tooltip=str(row.get(col, "")),
+                                            ),
+                                            on_tap=_open_summary_row_detail(idx)
+                                            if col == "File"
+                                            else None,
+                                        )
+                                        for col in SUMMARY_TABLE_COLUMNS
+                                    ],
+                                )
+                                for idx, row in enumerate(imagej_rows)
+                            ],
+                            bgcolor=Colors.with_opacity(0.02, Colors.WHITE),
+                            border_radius=12,
+                            column_spacing=18,
+                            heading_row_height=44,
+                            data_row_min_height=40,
+                        ),
+                        padding=8,
+                        border=ft.border.all(1, Colors.with_opacity(0.08, Colors.WHITE)),
+                        border_radius=12,
+                    ),
+                ],
+                spacing=8,
+            )
+
+        chart_block = ft.Container()
+        if has_mnv_table and nm >= 1:
+            metric_options = chartable_numeric_columns()
+            default_metric = ctx.page.session.get("results_chart_metric")
+            if default_metric not in metric_options:
+                default_metric = metric_options[0] if metric_options else "Maturity Index"
+            chart_points, values = series_for_metric(imagej_rows, default_metric)
+            y_min, y_max = smart_y_bounds(values) if values else (0.0, 1.0)
+            chart_height = 380
+            bar_groups = [
+                ft.BarChartGroup(
+                    x=i,
+                    bar_rods=[
+                        ft.BarChartRod(
+                            from_y=y_min,
+                            to_y=val,
+                            width=16,
+                            color=PRIMARY,
+                            border_radius=4,
+                        )
+                    ],
+                )
+                for i, val in enumerate(values)
+            ]
+            bottom_labels = [
+                ft.ChartAxisLabel(
+                    value=i,
+                    label=ft.Column(
+                        [
+                            ft.Text(
+                                pt["file"],
+                                size=9,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                            ft.Text(
+                                pt["subtype"],
+                                size=8,
+                                color=TEXT_MUTED,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                            ft.Text(
+                                pt["pathophysiology"],
+                                size=8,
+                                color=TEXT_MUTED,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=0,
+                        tight=True,
+                    ),
+                )
+                for i, pt in enumerate(chart_points)
+            ]
+            chart_block = ft.Column(
+                [
+                    ft.Text("Batch Chart", size=20, weight=FontWeight.BOLD, color=PRIMARY),
+                    ft.Row(
+                        [
+                            ft.Dropdown(
+                                label="Y-axis metric",
+                                value=default_metric,
+                                width=360,
+                                options=[
+                                    ft.dropdown.Option(m) for m in metric_options[:40]
+                                ],
+                                border_color=PRIMARY,
+                                on_change=lambda e: ctx.page.run_task(
+                                    on_chart_metric_change, e.control.value
+                                ),
+                            ),
+                            ft.ElevatedButton(
+                                "Export PDF",
+                                icon=Icons.PICTURE_AS_PDF_ROUNDED,
+                                bgcolor=PRIMARY,
+                                color=Colors.BLACK,
+                                on_click=lambda _, m=default_metric: ctx.page.run_task(
+                                    on_export_chart_pdf, m
+                                ),
+                            ),
+                        ],
+                        spacing=12,
+                        vertical_alignment=ft.CrossAxisAlignment.END,
+                    ),
+                    ft.Container(
+                        content=ft.BarChart(
+                            bar_groups=bar_groups,
+                            border=ft.border.all(1, Colors.with_opacity(0.12, Colors.WHITE)),
+                            left_axis=ft.ChartAxis(
+                                labels_size=40,
+                                title=ft.Text(default_metric, size=11),
+                                title_size=12,
+                            ),
+                            bottom_axis=ft.ChartAxis(labels=bottom_labels, labels_size=72),
+                            min_y=y_min,
+                            max_y=y_max,
+                            interactive=True,
+                            expand=True,
+                        ),
+                        height=chart_height,
+                        padding=12,
+                        bgcolor=Colors.with_opacity(0.03, Colors.WHITE),
+                        border_radius=12,
+                    ),
+                ],
+                spacing=10,
+            )
+
+        reorder_hint = ft.Container()
+        if len(batch_results) > 1 and not awaiting_mnv_batch_qc:
+            reorder_hint = ft.Text(
+                "Sidebar: drag handles to reorder results (CSV export follows this order).",
+                size=11,
+                color=TEXT_MUTED,
+            )
+
         return ft.ListView(
             controls=[
                 ft.Row([
@@ -503,47 +776,18 @@ async def get_results_view(ctx: AppContext):
                     ),
                 ]),
                 ft.Text(f"Overview of {total} processed images", color=TEXT_MUTED),
-                ft.Divider(height=40, color=Colors.TRANSPARENT),
+                reorder_hint,
+                ft.Divider(height=24, color=Colors.TRANSPARENT),
                 ft.Row([
                     metric_tile("Total Files", total, "items", Icons.FOLDER_ZIP_OUTLINED, Colors.BLUE_400),
                     metric_tile("Success Rate", int(success_count / total * 100) if total > 0 else 0, "%", Icons.CHECK_CIRCLE_OUTLINED, Colors.GREEN_400),
                     metric_tile("Mean Area", avg_area, "mm²", Icons.AREA_CHART_OUTLINED, Colors.CYAN_400),
                     metric_tile("Mean Density", avg_vd, "%", Icons.GRAIN_ROUNDED, Colors.AMBER_400),
                 ], spacing=15),
-                ft.Divider(height=40, color=Colors.with_opacity(0.1, Colors.WHITE)),
-                ft.Text("File Breakdown", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-                ft.DataTable(
-                    columns=[
-                        ft.DataColumn(ft.Text("Source File")),
-                        ft.DataColumn(ft.Text("Subtype")),
-                        ft.DataColumn(ft.Text("MNV Area")),
-                        ft.DataColumn(ft.Text("Maturity Index")),
-                    ],
-                    rows=[
-                        ft.DataRow(
-                            cells=[
-                                ft.DataCell(
-                                    ft.Text(r.get("source_filename", "Unknown"), size=13),
-                                    on_tap=_open_summary_row_detail(idx),
-                                ),
-                                ft.DataCell(ft.Text(_summary_subtype_cell(r), size=13)),
-                                ft.DataCell(
-                                    ft.Text(
-                                        "—"
-                                        if is_vd_result_row(r)
-                                        else f"{safe_round(r.get('mnv_area_mm2', 0), 2)} mm²"
-                                    )
-                                ),
-                                ft.DataCell(
-                                    ft.Text(_summary_maturity_index_cell(r), size=13)
-                                ),
-                            ],
-                        )
-                        for idx, r in enumerate(batch_results)
-                    ],
-                    bgcolor=Colors.with_opacity(0.02, Colors.WHITE),
-                    border_radius=15,
-                ),
+                ft.Divider(height=32, color=Colors.with_opacity(0.1, Colors.WHITE)),
+                chart_block,
+                ft.Divider(height=24, color=Colors.TRANSPARENT) if has_mnv_table else ft.Container(height=0),
+                table_block,
             ],
             expand=True,
             spacing=10,
@@ -1248,18 +1492,48 @@ async def get_results_view(ctx: AppContext):
         )
     ]
 
-    for idx, r in enumerate(batch_results):
+    if len(batch_results) > 1 and not awaiting_mnv_batch_qc:
+        reorder_tiles = []
+        for idx, r in enumerate(batch_results):
+            reorder_tiles.append(
+                ft.ListTile(
+                    key=str(idx),
+                    leading=ft.Icon(
+                        Icons.CHECK_CIRCLE if "error" not in r else Icons.ERROR,
+                        color=Colors.GREEN_400 if "error" not in r else Colors.RED_400,
+                        size=18,
+                    ),
+                    title=ft.Text(
+                        r.get("source_filename", f"Item {idx+1}")[:28] + "...",
+                        size=13,
+                        color=Colors.WHITE if selected_index == idx else TEXT_MUTED,
+                    ),
+                    selected=selected_index == idx,
+                    on_click=lambda _, i=idx: ctx.page.run_task(select_result, i),
+                    hover_color=Colors.with_opacity(0.1, PRIMARY),
+                )
+            )
         sidebar_items.append(
-            ft.ListTile(
-                leading=ft.Icon(Icons.CHECK_CIRCLE if "error" not in r else Icons.ERROR, 
-                               color=Colors.GREEN_400 if "error" not in r else Colors.RED_400, size=18),
-                title=ft.Text(r.get("source_filename", f"Item {idx+1}")[:20] + "...", size=13,
-                             color=Colors.WHITE if selected_index == idx else TEXT_MUTED),
-                selected=selected_index == idx,
-                on_click=lambda _, i=idx: ctx.page.run_task(select_result, i),
-                hover_color=Colors.with_opacity(0.1, PRIMARY),
+            ft.ReorderableListView(
+                controls=reorder_tiles,
+                on_reorder=lambda e: ctx.page.run_task(on_batch_reorder, e),
+                show_default_drag_handles=True,
+                expand=True,
             )
         )
+    else:
+        for idx, r in enumerate(batch_results):
+            sidebar_items.append(
+                ft.ListTile(
+                    leading=ft.Icon(Icons.CHECK_CIRCLE if "error" not in r else Icons.ERROR,
+                                   color=Colors.GREEN_400 if "error" not in r else Colors.RED_400, size=18),
+                    title=ft.Text(r.get("source_filename", f"Item {idx+1}")[:20] + "...", size=13,
+                                 color=Colors.WHITE if selected_index == idx else TEXT_MUTED),
+                    selected=selected_index == idx,
+                    on_click=lambda _, i=idx: ctx.page.run_task(select_result, i),
+                    hover_color=Colors.with_opacity(0.1, PRIMARY),
+                )
+            )
 
     paths_mnv = ctx.page.session.get("mnv_batch_paths") or []
     idx_mnv = int(ctx.page.session.get("mnv_batch_index") or 0)
