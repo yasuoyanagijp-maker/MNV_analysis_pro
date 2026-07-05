@@ -1,6 +1,6 @@
 # ARIAKE OCTA 操作マニュアル（簡易版）
 
-MNV 解析などを始める際の **フォルダ／ファイル選択** から、次の画面へ進むまでの要点です。詳しい起動方法やトラブルシューティングは **[USER_MANUAL.md](../USER_MANUAL.md)** を参照してください。
+MNV 解析などを始める際の **フォルダ／ファイル選択** から、次の画面へ進むまでの要点です。詳しい起動方法やトラブルシューティングは **[USER_MANUAL.md](https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/USER_MANUAL.md)** を参照してください。
 
 ---
 

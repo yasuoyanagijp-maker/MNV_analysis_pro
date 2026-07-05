@@ -41,7 +41,7 @@ docs/.Rhistory
 
 # Test run / ref update (not used by mainstreamer.py at runtime)
 csv/
-scripts/
+/scripts/
 resources/reference_metrics/REF_JSON_INTEGRITY.md
 
 # macOS Build artifacts
