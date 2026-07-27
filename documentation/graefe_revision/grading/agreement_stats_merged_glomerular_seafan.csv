@@ -1,0 +1,2 @@
+n,n_agree,overall_agreement,overall_agreement_pct,quadratic_weighted_kappa,kappa_ci_low,kappa_ci_high,unweighted_kappa,unweighted_kappa_ci_low,unweighted_kappa_ci_high,bootstrap_n,bootstrap_seed
+54,41,0.7592592592592593,75.92592592592592,0.681650700073692,0.3999999999999999,0.8524590163934427,0.5118219749652294,0.2581335323006052,0.72449369832919,10000,20260727

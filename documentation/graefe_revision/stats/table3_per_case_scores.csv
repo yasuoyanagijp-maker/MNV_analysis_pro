@@ -1,0 +1,113 @@
+stratum,source_csv,File,Network Complexity Score,Caliber Uniformity Score,Maturity Index
+large,MNV_batch_20260220_230245_large.csv,00753019_IVA_after_OS.jpg,54.717,66.60395526,55.9435
+large,MNV_batch_20260220_230245_large.csv,03792339_IVA_after_OD.jpg,51.007,66.27953065,57.6363
+large,MNV_batch_20260220_230245_large.csv,08183349_IVA_after_OS.jpg,27.2281,53.40690964,63.0894
+large,MNV_batch_20260220_230245_large.csv,09463344_IVA_after_OD.jpg,74.7382,71.33710949,48.2995
+large,MNV_batch_20260220_230245_large.csv,12543307_IVA_after_OD.jpg,74.1347,67.65732106,46.7613
+large,MNV_batch_20260220_230245_large.csv,16423185_IVA_after_OD.jpg,59.7972,66.18556374,53.1942
+large,MNV_batch_20260220_230245_large.csv,18553457_IVA_after_OS.jpg,50.0655,62.67484955,56.3047
+large,MNV_batch_20260220_230245_large.csv,20903309_IVA_after_OS.jpg,56.7305,67.99402025,55.6318
+large,MNV_batch_20260220_230245_large.csv,37803196_IVA_after_OD.jpg,51.4708,59.84998758,54.1896
+large,MNV_batch_20260220_230245_large.csv,43973323_IVA_after_OS.jpg,56.6059,64.17884698,53.7865
+large,MNV_batch_20260220_230245_large.csv,45633131_IVA_after_OD.jpg,55.58,59.09899276,51.7595
+large,MNV_batch_20260220_230245_large.csv,46303179_IVA_after_OS.jpg,56.2151,68.34439553,56.0647
+large,MNV_batch_20260220_230245_large.csv,51000142_IVA_after_OD.jpg,53.1919,65.32387071,56.066
+large,MNV_batch_20260220_230245_large.csv,54143321_IVA_after_OS.jpg,61.7888,67.20832752,52.7098
+large,MNV_batch_20260220_230245_large.csv,56163466_IVA_after_OS.jpg,54.8127,66.4490691,55.8182
+large,MNV_batch_20260220_230245_large.csv,66553435_IVA_after_OD.jpg,62.7509,67.71020959,52.4796
+large,MNV_batch_20260220_230245_large.csv,73904388_IVA_after_OD.jpg,57.5529,69.70388595,56.0755
+large,MNV_batch_20260220_230245_large.csv,82443365_IVA_after_OS.jpg,65.163,69.15866653,51.9979
+large,MNV_batch_20260220_230245_large.csv,82913289_IVA_after_OS.jpg,44.7044,68.42174018,61.8587
+large,MNV_batch_20260220_230245_large.csv,00563375_IVF_before_OD.jpg,31.0812,56.90513653,62.912
+large,MNV_batch_20260220_230245_large.csv,02833297_IVF_before_OD.jpg,48.6539,62.74749941,57.0468
+large,MNV_batch_20260220_230245_large.csv,03763306_IVF_before_OD.jpg,43.7592,60.47556744,58.3582
+large,MNV_batch_20260220_230245_large.csv,06143393_IVF_before_OS.jpg,43.7142,68.80015615,62.543
+large,MNV_batch_20260220_230245_large.csv,07293298_IVF_before_OD.jpg,52.579,66.47587446,56.9484
+large,MNV_batch_20260220_230245_large.csv,09643457_IVF_before_OS.jpg,42.4853,60.31657747,58.9157
+large,MNV_batch_20260220_230245_large.csv,16353356_IVF_before_OD.jpg,51.5471,66.81251284,57.6327
+large,MNV_batch_20260220_230245_large.csv,20543353_IVF_before_OS.jpg,25.8268,53.27148576,63.7223
+large,MNV_batch_20260220_230245_large.csv,26813049_IVF_before_OS.jpg,45.4963,69.90723778,62.2054
+large,MNV_batch_20260220_230245_large.csv,32953271_IVF_before_OD.jpg,42.5413,61.94113377,59.6999
+large,MNV_batch_20260220_230245_large.csv,40733601_IVF_before_OD.jpg,57.8348,66.792799,54.479
+large,MNV_batch_20260220_230245_large.csv,42923707_IVF_before_OD.jpg,46.7198,68.97829557,61.1292
+large,MNV_batch_20260220_230245_large.csv,53723055_IVF_before__OS.jpg,40.1764,67.63467408,63.7292
+large,MNV_batch_20260220_230245_large.csv,54163436_IVF_before_OS.jpg,44.4123,69.5228305,62.5552
+large,MNV_batch_20260220_230245_large.csv,60533592_IVF_before_OD.jpg,55.2776,68.81750506,56.77
+large,MNV_batch_20260220_230245_large.csv,60923569_IVF_before_OS.jpg,44.3405,62.90728441,59.2834
+large,MNV_batch_20260220_230245_large.csv,63743081_IVF_before_OD.jpg,52.2486,63.64669817,55.699
+large,MNV_batch_20260220_230245_large.csv,67713371_IVF_before_OS.jpg,21.4393,57.02093334,67.7908
+large,MNV_batch_20260220_230245_large.csv,72923583_IVF_before_OS.jpg,53.7639,68.75986728,57.498
+large,MNV_batch_20260220_230245_large.csv,81224417_IVF_before_OD.jpg,43.5379,66.79860321,61.6304
+large,MNV_batch_20260220_230245_large.csv,81224417_IVF_before_OS.jpg,37.6456,67.71106834,65.0327
+large,MNV_batch_20260220_230245_large.csv,81633446_IVF_before_OS.jpg,40.7496,65.76664224,62.5085
+large,MNV_batch_20260220_230245_large.csv,84263452_IVF_before_OD.jpg,65.8073,67.84127278,51.017
+large,MNV_batch_20260220_230245_large.csv,87333507_IVF_before_OD.jpg,41.7165,59.02523778,58.6544
+large,MNV_batch_20260220_230245_large.csv,87333507_IVF_before_OS.jpg,37.5916,53.66857986,58.0385
+large,MNV_batch_20260220_230245_large.csv,88823335_IVF_before_OS_.jpg,29.0347,44.38300655,57.6741
+large,MNV_batch_20260220_230245_large.csv,89763229_IVF_before_OD.jpg,46.3338,59.57508857,56.6206
+large,MNV_batch_20260220_230245_large.csv,91633642_IVF_before_OS.jpg,34.1252,68.1234931,66.9992
+large,MNV_batch_20260220_230245_large.csv,92623179_IVF_before_OD.jpg,36.4617,51.17645142,57.3574
+large,MNV_batch_20260220_230245_large.csv,93413404_IVF_before_OS.jpg,41.1103,61.40451107,60.1471
+small,MNV_batch_20260220_083448small.csv,100452_yamamuro_sakuko__12597_AngioVue Retina_OD_2024-08-31_09-46-05_F_1939-01-02_Enface-512x512.png,35.5951,24.05977157,44.2324
+small,MNV_batch_20260220_083448small.csv,100452_yamamuro_sakuko__14326_AngioVue Retina_OD_2025-01-28_15-50-44_F_1939-01-02_Enface-512x512.png,45.3244,21.42969832,38.0526
+small,MNV_batch_20260220_083448small.csv,100452_yamamuro_sakuko__3633_AngioVue Retina_OD_2022-07-02_14-43-49_F_1939-01-02_Enface-512x512.png,40.6093,55.34016238,57.3655
+small,MNV_batch_20260220_083448small.csv,100452_yamamuro_sakuko__4015_AngioVue Retina_OD_2022-08-09_15-38-32_F_1939-01-02_Enface-512x512.png,25.4013,34.90961954,54.7542
+small,MNV_batch_20260220_083448small.csv,100452_yamamuro_sakuko__4951_AngioVue Retina_OD_2022-11-12_14-42-41_F_1939-01-02_Enface-512x512.png,37.9763,50.15264524,56.0882
+small,MNV_batch_20260220_083448small.csv,100452_yamamuro_sakuko__5235_AngioVue Retina_OD_2022-12-06_14-54-39_F_1939-01-02_Enface-512x512.png,47.7259,51.05944299,51.6668
+small,MNV_batch_20260220_083448small.csv,150877_shirasawa_shigeharu__13809_AngioVue Retina_OS_2024-12-10_10-43-41_M_1945-06-15_Enface-512x512 2.png,57.4694,66.2139784,54.3723
+small,MNV_batch_20260220_083448small.csv,150877_shirasawa_shigeharu__13809_AngioVue Retina_OS_2024-12-10_10-43-41_M_1945-06-15_Enface-512x512-1.tif,56.4905,67.87417902,55.6919
+small,MNV_batch_20260220_083448small.csv,150877_shirasawa_shigeharu__13809_AngioVue Retina_OS_2024-12-10_10-43-41_M_1945-06-15_Enface-512x512.png,57.5312,67.30061462,54.8847
+small,MNV_batch_20260220_083448small.csv,200404_shimozawa_susumu__14082_AngioVue Retina_OD_2025-01-07_10-53-14_M_1945-09-06_Enface-512x512 2.png,38.7061,52.04443134,56.6692
+small,MNV_batch_20260220_083448small.csv,200404_shimozawa_susumu__14082_AngioVue Retina_OD_2025-01-07_10-53-14_M_1945-09-06_Enface-512x512.png,37.4592,53.95010769,58.2455
+small,MNV_batch_20260220_083448small.csv,200404_shimozawa_susumu__14082_AngioVue Retina_OD_2025-01-07_10-53-14_M_1945-09-06_Enface-512x512.tif,38.7311,53.5655752,57.4173
+small,MNV_batch_20260220_083448small.csv,100452_yamamuro_sakuko__3633_AngioVue Retina_OD_2022-07-02_14-43-49_F_1939-01-02_Main Report.tif,53.2397,51.44194115,49.1011
+small,MNV_batch_20260220_083448small.csv,110252_akagi_mitsuru__13382_AngioVue Retina_OD_2024-11-05_09-37-02_M_1962-06-12_Main Report.tif,84.3373,66.43853634,41.0506
+small,MNV_batch_20260220_083448small.csv,12039_iino_yoko__8624_AngioVue Retina_OD_2023-10-13_14-57-18_F_193301-09_Main Report 2.tif,50.0581,29.15834316,39.5501
+small,MNV_batch_20260220_083448small.csv,12039_iino_yoko__8624_AngioVue Retina_OD_2023-10-13_14-57-18_F_193301-09_Main Report.tif,51.868,30.08257246,39.1073
+small,MNV_batch_20260220_083448small.csv,150252_otsuka_tadashi__5114_AngioVue -11-26_14-17-57_M_1937-02-10_Main Report.tif,53.4048,64.34172569,55.4685
+small,MNV_batch_20260220_083448small.csv,171834_tada_naoshi__1002_AngioVue -08-20_16-17-10_M_1947-12-30_Main Report.tif,27.498,51.91681205,62.2094
+small,MNV_batch_20260220_083448small.csv,201446_yamada_masako__2666_AngioVue Retina_OS_2022-03-22_14-30-56_F_1935-01-01_Main Report.tif,81.3958,59.52094638,39.0626
+small,MNV_batch_20260220_083448small.csv,201446_yamada_masako__9330_AngioVue Retina_OS_2023-12-11_10-45-38_F_1935-01-01_Main Report.tif,75.8915,68.52137087,46.315
+small,MNV_batch_20260220_083448small.csv,260863_yamaguchi_satoru__16455_AngioVue Retina_OS_2025-07-18_10-02-24_M_1950-05-24_Main Report.tif,62.7938,56.86685408,47.0365
+small,MNV_batch_20260220_083448small.csv,31304_sato_reiko__5598_AngioVue Retina_OD_2023-01-16_10-14-44_F_1939-07-03_Main Report.tif,56.4517,56.69698329,50.1226
+small,MNV_batch_20260220_083448small.csv,31304_sato_reiko__5758_AngioVue Retina_OD_2023-01-28_14-40-31_F_1939-07-03_Main Report.tif,48.4202,63.67292992,57.6264
+small,MNV_batch_20260220_083448small.csv,31304_sato_reiko__6001_AngioVue Retina_OD_2023-02-21_15-45-03_F_1939-07-03_Main Report.tif,61.2346,64.17817851,51.4718
+small,MNV_batch_20260220_083448small.csv,31304_sato_reiko__6071_AngioVue Retina_OD_2023-02-28_15-49-01_F_1939-07-03_Main Report.tif,51.0453,55.79181199,52.3732
+small,MNV_batch_20260220_083448small.csv,31304_sato_reiko__6297_AngioVue Retina_OD_2023-03-18_14-51-41_F_1939-07-03_Main Report.tif,69.5803,66.10332942,48.2615
+small,MNV_batch_20260220_083448small.csv,31304_sato_reiko__6370_AngioVue Retina_OD_2023-03-27_10-52-17_F_1939-07-03_Main Report.tif,50.7159,59.52152589,54.4028
+small,MNV_batch_20260220_083448small.csv,31304_sato_reiko__6671_AngioVue Retina_OD_2023-04-21_10-55-25_F_1939-07-03_Main Report.tif,47.6724,59.65706655,55.9923
+small,MNV_batch_20260220_083448small.csv,31304_sato_reiko__7010_AngioVue Retina_OD_2023-05-22_11-03-04_F_1939-07-03_Main Report.tif,64.352,66.31568934,50.9819
+small,MNV_batch_20260220_083448small.csv,31304_sato_reiko__7415_AngioVue Retina_OD_2023-06-26_15-17-38_F_1939-07-03_Main Report.tif,46.4308,50.14058777,51.8549
+small,MNV_batch_20260220_083448small.csv,91492_omigawa_sichirou__474_AngioVue -06-07_14-09-17_M_1947-03-30_Main Report.tif,47.8475,60.5975065,56.375
+small,MNV_batch_20260220_083448small.csv,91492_omigawa_sichirou__474_AngioVue Retina_OS_2021-06-07_14-09-17_M_1947-03-30_Main Report.tif,56.8154,64.88860176,54.0366
+small,MNV_batch_20260220_083448small.csv,91538_endo_kazuo__7136_AngioVue Retina_OD_2023-06-01_15-42-00_M_1946-05-27_Main Report.tif,34.0205,35.41537259,50.6974
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,furukawa_hiroichi__06479278_19430227_Male_Angiography 3x3 mm_20231127114712_OD_20240529143926 - ORCC.AngiographyEnface.jpg,55.8856,58.90843386,51.5114
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,furukawa_hiroichi__06479278_19430227_Male_Angiography 3x3 mm_20240327110851_OD_20240529143958 - ORCC.AngiographyEnface.jpg,71.7235,43.75750412,36.017
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,furukawa_hiroichi__06479278_19430227_Male_Angiography 3x3 mm_20240529103158_OD_20240529144020 - ORCC.AngiographyEnface.jpg,66.8024,59.12169385,46.1596
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,ueno_youko__05645064_19781227_Unknown_Angiography 3x3 mm_20240619103134_OS_20241204113042 - ORCC.AngiographyEnface.jpg,40.7819,31.29684387,45.2575
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,ueno_youko__05645064_19781227_Unknown_Angiography 3x3 mm_20240911084840_OS_20241204113009 - ORCC.AngiographyEnface.jpg,45.7859,40.74747383,47.4808
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,ueno_youko__05645064_19781227_Unknown_Angiography 3x3 mm_20241204092057_OS_20241204112933 - ORCC.AngiographyEnface.jpg,38.1912,39.80319714,50.806
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20220708125625_OD_20230415134351 - ORCC.AngiographyEnface.jpg,97.9134,65.21773841,33.6522
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20220914105559_OD_20230415134455 - ORCC.AngiographyEnface.jpg,92.5325,57.13649331,32.302
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20221012092333_OD_20230415134518 - ORCC.AngiographyEnface.jpg,47.3184,53.95020575,53.3159
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20221116092555_OD_20230415134538 - ORCC.AngiographyEnface.jpg,42.0645,60.23524068,59.0854
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20221214082420_OD_20230415134602 - ORCC.AngiographyEnface.jpg,46.699,48.62798147,50.9645
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20221214082420_OD_20241127115239 - ORCC.AngiographyEnface.jpg,46.4404,52.76388959,53.1617
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20230111082237_OD_20230415134621 - ORCC.AngiographyEnface.jpg,57.4975,63.56015663,53.0313
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20230111082237_OD_20241127115221 - ORCC.AngiographyEnface.jpg,59.2533,62.41546571,51.5811
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20230208082008_OD_20230415134645 - ORCC.AngiographyEnface.jpg,47.109,62.33282553,57.6119
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20230208082008_OD_20241127115156 - ORCC.AngiographyEnface.jpg,47.3984,58.80026391,55.701
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20230412094021_OD_20230415134708 - ORCC.AngiographyEnface.jpg,49.1417,61.33667831,56.0975
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20230412094021_OD_20241127115137 - ORCC.AngiographyEnface.jpg,48.1377,63.43707509,57.6497
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20230607101410_OD_20241127115120 - ORCC.AngiographyEnface.jpg,43.9486,65.22806442,60.6397
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20230802085135_OD_20241127115103 - ORCC.AngiographyEnface.jpg,44.8701,56.25867455,55.6943
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20230927082629_OD_20241127115040 - ORCC.AngiographyEnface.jpg,44.3941,60.83721459,58.2215
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20231220083809_OD_20241127115021 - ORCC.AngiographyEnface.jpg,46.0686,67.30938074,60.6204
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,yamamoto_masako__60552462_19370703_Female_Angiography 3x3 mm_20240619085754_OD_20241127115004 - ORCC.AngiographyEnface.jpg,49.9628,58.58699265,54.3121
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,matunno_sihgeru__06383861_19500720_Male_Angiography 3x3 mm_20220309110535_OD_20241127113952 - ORCC.AngiographyEnface.jpg,47.5595,62.87529036,57.6579
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,matunno_sihgeru__06383861_19500720_Male_Angiography 3x3 mm_20220413102331_OD_20241127113920 - ORCC.AngiographyEnface.jpg,55.9283,33.52361918,38.7977
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,matunno_sihgeru__06383861_19500720_Male_Angiography 3x3 mm_20220817101035_OD_20241127113844 - ORCC.AngiographyEnface.jpg,63.6477,66.33159788,51.3419
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,matunno_sihgeru__06383861_19500720_Male_Angiography 3x3 mm_20221012104221_OD_20241127113825 - ORCC.AngiographyEnface.jpg,50.0123,52.531439,51.2596
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,matunno_sihgeru__06383861_19500720_Male_Angiography 3x3 mm_20230524094627_OD_20241127113749 - ORCC.AngiographyEnface.jpg,45.348,50.61496472,52.6335
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,matunno_sihgeru__06383861_19500720_Male_Angiography 3x3 mm_20240327103500_OD_20241127113628 - ORCC.AngiographyEnface.jpg,53.1919,64.10300967,55.4556
+small_3mm,MNV_batch_20260220_223647_small_3mm.csv,matunno_sihgeru__06383861_19500720_Male_Angiography 3x3 mm_20241127103610_OD_20241127113512 - ORCC.AngiographyEnface.jpg,72.2847,52.17516029,39.9452

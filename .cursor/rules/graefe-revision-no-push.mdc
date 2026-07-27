@@ -1,0 +1,15 @@
+---
+description: Graefe major revision — never push branch graefe/major-revision-analyses to remote unless user explicitly asks
+globs: documentation/graefe_revision/**
+alwaysApply: false
+---
+
+# Graefe revision — no remote push
+
+When working on Graefe paper major revision (`graefe/major-revision-analyses`, `documentation/graefe_revision/**`, or related revision analyses):
+
+- **Never** `git push` this revision branch (or related local revision commits) to the remote repository.
+- Keep branch `graefe/major-revision-analyses` and work under `documentation/graefe_revision/` **local only**.
+- Only push if the user **explicitly** asks to push in that turn.
+
+Do not suggest or run push “for backup” or “to share” without an explicit user request.
