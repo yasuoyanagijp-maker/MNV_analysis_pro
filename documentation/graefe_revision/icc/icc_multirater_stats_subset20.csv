@@ -1,0 +1,9 @@
+subset,metric,metric_label,n,k,icc_2_1,ci_low,ci_high,source
+n46_all,area,MNV Area (mm²),46,3,0.8591499521397153,0.68,0.93,pingouin
+n46_all,complexity,Network Complexity Score,46,3,0.8074462961775436,0.66,0.89,pingouin
+n46_all,caliber_uniformity,Caliber Uniformity Score,46,3,0.4339281474870397,0.26,0.61,pingouin
+n46_all,maturity,Maturity Index,46,3,0.6590213855614526,0.51,0.78,pingouin
+n20_concordant,area,MNV Area (mm²),20,3,0.8641909825049104,0.56,0.95,pingouin
+n20_concordant,complexity,Network Complexity Score,20,3,0.9499553412528514,0.9,0.98,pingouin
+n20_concordant,caliber_uniformity,Caliber Uniformity Score,20,3,0.8518579373716099,0.72,0.93,pingouin
+n20_concordant,maturity,Maturity Index,20,3,0.9243993509874701,0.85,0.97,pingouin

@@ -1,0 +1,10 @@
+metric,pair,icc_2_1,ci_low,ci_high,source
+caliber_uniformity,YY–Inoue,0.5172800900008473,0.27,0.7,pingouin
+caliber_uniformity,YY–Osada,0.4655245885609473,0.17,0.67,pingouin
+caliber_uniformity,Inoue–Osada,0.28361262949773236,-0.0,0.53,pingouin
+caliber_C_winsor_inv_nv_cv,YY–Inoue,0.6950707271057018,0.51,0.82,pingouin
+caliber_C_winsor_inv_nv_cv,YY–Osada,0.7253699034391715,0.47,0.86,pingouin
+caliber_C_winsor_inv_nv_cv,Inoue–Osada,0.8834560113538841,0.69,0.95,pingouin
+caliber_AB_cv70_skel30,YY–Inoue,0.5869745764821388,0.35,0.75,pingouin
+caliber_AB_cv70_skel30,YY–Osada,0.5566272474909801,0.07,0.79,pingouin
+caliber_AB_cv70_skel30,Inoue–Osada,0.7106466316823754,0.44,0.85,pingouin

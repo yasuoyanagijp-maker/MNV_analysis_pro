@@ -1,0 +1,7 @@
+Canonical Session1 (inter-observer YY batch):
+documentation/graefe_revision/icc/incoming/observer_YY/MNV_batch_20260730_165332.csv
+Local copy in this folder: session1_YY_MNV_batch_20260730_165332.csv
+Session ID: 20260730_165332_530478
+Analyst: Yasuo Yanagi
+n=46 Files
+Images: Desktop/octa_images_jpg (also icc/_raw_from_downloads/octa_images_jpg)

@@ -94,11 +94,15 @@ ICC(2,1) / ICC(2,k) via ANOVA mean squares (or `pingouin.intraclass_corr` with `
 - No / incomplete incoming CSVs → prints `awaiting incoming data` and exits (no claim of completion).
 - When ready → writes `icc/multirater_icc_stats.csv` and `.md` (paths TBD when schema locked).
 
-Optional intra-observer supplement (legacy):
+Optional intra-observer supplement (YY test–retest on the same n=46 Files):
 
 ```bash
-.venv/bin/python scripts/graefe_revision/compute_icc.py   # Session1 vs Session2; only if S2 filled
+# Protocol + case list: icc/intra/README.md
+# Drop Session2 CSV → icc/intra/incoming_session2/
+.venv/bin/python scripts/graefe_revision/compute_icc_intra.py
 ```
+
+Legacy Flet S1/S2 (`icc_session1.csv` / `compute_icc.py`) is a different image set — do not mix with n=46.
 
 ## Checklist — when collaborator data arrive
 
@@ -119,4 +123,8 @@ Optional intra-observer supplement (legacy):
 - [x] Multi-rater ICC(2,1) + 95% CI per metric (`icc_multirater_results.md`)
 - [x] Pairwise ICC + multilevel / ANOVA variance-component ICC
 - [x] Response letter Comment 4 filled
-- [ ] Optional: legacy Session 2 / intra-observer supplement
+- [ ] Optional: YY intra-observer Session 2 (n=46) → `icc/intra/` + `compute_icc_intra.py`
+
+## Sensitivity subset (n=20 most concordant)
+
+Optional upper-bound ICC on nested concordance subsets (n=20/30/35/40; lowest mean z-scored cross-rater range). See `icc_cases_ranked_by_concordance.csv`, `icc_multirater_concordance_ladder.md`, and `icc_multirater_results_subset*.md`. Does **not** replace primary n=46 Comment 4 numbers.
