@@ -11,9 +11,9 @@ Branch: `graefe/major-revision-analyses` (from `docs/distribution-recipient-ops-
 
 | Item | Decision |
 |------|----------|
-| ICC (primary) | **Multi-rater / multilevel ICC**: **3 observers** (YY + 2 external); **n ≈ 20**; ICC(2,1) primary |
-| ICC data | Incoming CSVs (+ optional images) under `icc/incoming/observer_{YY,A,B}/` |
-| ICC (optional) | Same-operator Session1/Session2 Flet plan **deprioritized** — intra-observer supplement only if data allow |
+| ICC (primary) | **Multi-rater / multilevel ICC**: **3 observers** (YY + Inoue + Osada); **n = 46**; ICC(2,1) primary — **DONE** |
+| ICC data | Incoming CSVs under `icc/incoming/observer_{YY,A,B}/` (+ aliases `observer_inoue`, `observer_osada`) |
+| ICC (optional) | Same-operator Session1/Session2 Flet plan **deprioritized** — intra-observer not completed; limitation |
 | Expert grading | **Subset** n=54 (24/16/14), seed `20260727` — not full cohort |
 | Weighted κ order | Dead tree → Tree in bud → Glomerular → Seafan → Medusa |
 | Subtype spelling | **`Tree in bud`** (match automated) |
@@ -68,17 +68,27 @@ Branch: `graefe/major-revision-analyses` (from `docs/distribution-recipient-ops-
 
 **Key numbers (n=54, post-regrade):** overall agreement **57.4%** (31/54); quadratic weighted κ **0.507** (95% CI **0.222–0.714**). Sensitivity (Glomerular/Seafan merged, 4-class): agreement **75.9%** (41/54); κ **0.682** (95% CI **0.400–0.852**). Outputs: `grading/agreement_stats.md`, `confusion_matrix.csv`, `agreement_stats_merged_glomerular_seafan.md`.
 
-### WS1 — Inter-observer multi-rater ICC (R2#4) — **protocol set; awaiting incoming data**
+### WS1 — Inter-observer multi-rater ICC (R2#4) — **DONE**
 
-- [x] Design locked: **3 observers** (YY + 2 external), **n ≈ 20**, primary = multi-rater ICC(2,1) (+ optional multilevel VC ICC)
+- [x] Design locked: **3 observers** (YY + Inoue + Osada), primary = multi-rater ICC(2,1) (+ multilevel VC ICC)
 - [x] `icc/README.md` rewritten (incoming layout, columns, analysis options A/B, checklist)
-- [x] `icc/incoming/{observer_YY,observer_A,observer_B}/` drop folders + README
-- [x] `compute_icc_multirater.py` stub (prints `awaiting incoming data` until 3-observer CSVs present)
-- [ ] Receive images + score CSVs from collaborators → drop under `incoming/`
-- [ ] Run multi-rater ICC(2,1) + 95% CI per metric (area, Complexity, Caliber Uniformity, Maturity)
-- [ ] Optional: multilevel LMM variance-component ICC if pingouin/statsmodels allow
-- [ ] Fill Response letter Comment 4 placeholders
+- [x] `icc/incoming/{observer_YY,observer_A,observer_B}/` drop folders (+ aliases `observer_inoue`, `observer_osada`)
+- [x] Receive score CSVs: YY `MNV_batch_20260730_165332.csv`; Inoue `…_inoue.csv`; Osada `…_osada.csv`
+- [x] Run multi-rater ICC(2,1) + 95% CI per metric (`scripts/graefe_revision/compute_icc_multirater.py`)
+- [x] Pairwise ICC + ANOVA variance-component ICC_case
+- [x] Fill Response letter Comment 4 placeholders
 - [ ] Optional only: legacy same-operator Session 2 / `compute_icc.py` if intra-observer supplement desired
+
+**Key numbers (n=46, 3 observers, pingouin ICC2):**
+
+| Metric | ICC(2,1) | 95% CI |
+|--------|----------|--------|
+| MNV Area (mm²) | 0.859 | 0.680–0.930 |
+| Network Complexity Score | 0.807 | 0.660–0.890 |
+| Caliber Uniformity Score | 0.434 | 0.260–0.610 |
+| Maturity Index | 0.659 | 0.510–0.780 |
+
+Outputs: `icc/icc_multirater_results.md`, `icc_multirater_stats.csv`, `icc_multirater_pairwise.csv`, `icc_multirater_variance_components.csv`, long/wide CSVs. No cases dropped (union = intersection = 46).
 
 ### Figures
 

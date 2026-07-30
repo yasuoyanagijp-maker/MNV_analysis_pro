@@ -1,0 +1,13 @@
+metric,pair,n,k,icc,ci_low,ci_high,source
+area,YY–Inoue,46.0,2.0,0.8444189942981017,0.18,0.95,pingouin
+area,YY–Osada,46.0,2.0,0.8459879287796297,0.63,0.93,pingouin
+area,Inoue–Osada,46.0,2.0,0.8968184009969258,0.81,0.94,pingouin
+complexity,YY–Inoue,46.0,2.0,0.800085888803063,0.46,0.91,pingouin
+complexity,YY–Osada,46.0,2.0,0.8591927802030623,0.76,0.92,pingouin
+complexity,Inoue–Osada,46.0,2.0,0.7540671761955554,0.4,0.89,pingouin
+caliber_uniformity,YY–Inoue,46.0,2.0,0.5172800900008473,0.27,0.7,pingouin
+caliber_uniformity,YY–Osada,46.0,2.0,0.4655245885609473,0.17,0.67,pingouin
+caliber_uniformity,Inoue–Osada,46.0,2.0,0.28361262949773236,-0.0,0.53,pingouin
+maturity,YY–Inoue,46.0,2.0,0.7162131357009939,0.54,0.83,pingouin
+maturity,YY–Osada,46.0,2.0,0.6792796424211769,0.44,0.82,pingouin
+maturity,Inoue–Osada,46.0,2.0,0.5684861186663251,0.33,0.74,pingouin

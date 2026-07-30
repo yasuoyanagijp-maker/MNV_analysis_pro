@@ -99,7 +99,7 @@ We interpret this modest-to-moderate κ as partly reflecting **limitations of su
 
 Against this background, our rule-based quantitative operationalization—with disclosed thresholds and scores—is intended to **reduce rater-dependent ambiguity** inherent in purely descriptive human grading. In that sense, modest expert–algorithm agreement **motivates** rather than undermines the methodological rationale of the system: to make morphological categories reproducible and transparent relative to purely visual labels.
 
-**Caveats (stated explicitly):** (a) the comparison contrasts full-image visual expert grades with ROI-metric–derived rule classes, so perfect concordance is not expected; (b) this analysis is expert–algorithm agreement, **not** multi-human inter-grader κ (a separate three-observer ICC for ROI-dependent score reproducibility is planned/underway; see Comment 4); (c) for the small-FOV stratum, some automated subtypes were score-rederived from disclosed classifier rules when the batch CSV lacked a Subtype column; (d) we do **not** claim that the algorithm replaces expert judgment—we report agreement, disclose thresholds, and claim only that quantitative operational definitions improve transparency and reproducibility *relative to purely descriptive labels*.
+**Caveats (stated explicitly):** (a) the comparison contrasts full-image visual expert grades with ROI-metric–derived rule classes, so perfect concordance is not expected; (b) this analysis is expert–algorithm agreement, **not** multi-human inter-grader κ (a separate three-observer ICC for ROI-dependent score reproducibility is reported in Comment 4; n=46); (c) for the small-FOV stratum, some automated subtypes were score-rederived from disclosed classifier rules when the batch CSV lacked a Subtype column; (d) we do **not** claim that the algorithm replaces expert judgment—we report agreement, disclose thresholds, and claim only that quantitative operational definitions improve transparency and reproducibility *relative to purely descriptive labels*.
 
 **Optional sensitivity:** when Glomerular and Seafan were merged into a single category on both expert and automated labels (4-class analysis), overall agreement rose to **75.9%** (41/54) and quadratic weighted κ to **0.682** (95% CI **0.400–0.852**), suggesting that a substantial fraction of discordance reflects adjacent descriptive subtypes that are difficult to separate visually.
 
@@ -128,11 +128,21 @@ We agree. This anonymized, cross-sectional, treatment-naïve dataset does not co
 
 *Inter- and intra-observer reproducibility of the semi-automated pipeline is not reported. Since the system depends on manual ROI delineation, operator variability may substantially affect downstream scores.*
 
-**Response:**  
-We agree that ROI-dependent variability must be quantified. For this revision we assessed **inter-observer reproducibility** with **three independent operators** (the original analyst plus two external examiners) who each performed freehand ROI delineation on a stratified subset of lesions (**n ≈ 20**), with subsequent fully automated processing unchanged. We report **multi-rater ICCs** (two-way random-effects, absolute agreement, single measures — ICC(2,1); with multilevel / variance-component ICC as a complementary summary where applicable) for lesion area and for Standardized Complexity Score, Standardized Caliber Uniformity Score, and Maturity Index.  
-*[To be completed: n = XX lesions; ICC(2,1) area = X.XX (95% CI X.XX–X.XX); complexity = X.XX (X.XX–X.XX); caliber uniformity = X.XX (X.XX–X.XX); maturity = X.XX (X.XX–X.XX).]*
+**Response:**
+We agree that ROI-dependent variability must be quantified. For this revision we assessed **inter-observer reproducibility** with **three independent operators** (the original analyst [YY] plus two external examiners [Inoue, Osada]) who each performed freehand ROI delineation on the same set of lesions (**n = 46** complete cases matched across all three observers), with subsequent fully automated processing unchanged. We report **multi-rater ICCs** (two-way random-effects, absolute agreement, single measures — ICC(2,1); Shrout & Fleiss / McGraw & Wong) for lesion area and for Network Complexity Score, Caliber Uniformity Score, and Maturity Index, with pairwise ICCs and a multilevel variance-component ICC as complementary summaries.
 
-**Intra-observer** (same-operator test–retest) reproducibility is reported as an optional supplement if paired session data are available; if not completed within the revision timeline, this is acknowledged as a limitation.
+**Primary results (3-rater ICC(2,1), n = 46):**
+
+| Metric | ICC(2,1) | 95% CI |
+|--------|----------|--------|
+| MNV Area (mm²) | 0.859 | 0.680–0.930 |
+| Network Complexity Score | 0.807 | 0.660–0.890 |
+| Caliber Uniformity Score | 0.434 | 0.260–0.610 |
+| Maturity Index | 0.659 | 0.510–0.780 |
+
+Lesion area and Network Complexity showed good-to-excellent inter-observer agreement; Maturity Index showed moderate-to-good agreement; Caliber Uniformity was moderate and more sensitive to ROI variability. Variance-component ICC_case (σ²_case / [σ²_case + σ²_observer + σ²_error]) yielded the same point estimates (0.859 / 0.807 / 0.434 / 0.659), indicating that residual and observer components together explain the remaining variance—largest for Caliber Uniformity.
+
+**Intra-observer** (same-operator test–retest) reproducibility was not completed within the revision timeline and is acknowledged as a limitation; the primary reproducibility claim for this revision is the three-observer inter-observer ICC above.
 
 ### Comment 5 — Non-significant Kruskal–Wallis does not establish equivalence
 
@@ -197,7 +207,7 @@ The Abstract, Introduction, Discussion, tables, and figure legends now use these
 | Workflow schematic figure (Frangi/LoG → Phansalkar → skeletonization) | Added (Figure 2) |
 | Phansalkar vs Otsu methodological justification | Added in Methods |
 | Masked expert morphological grading vs automated labels (weighted κ) | Done — agreement assessment (not “validation”); n=54; 57.4%; κ=0.507 (95% CI 0.222–0.714); Glomerular/Seafan merge 75.9%, κ=0.682; framed via Tew/Shah/Deák/Gan/Hsu as motivating quantitative operationalization (not undermining it); confusion matrix in Suppl |
-| Inter-observer multi-rater ICC (3 operators, n≈20; area + standardized scores) | In progress — awaiting incoming CSVs; results in revised Methods/Results |
+| Inter-observer multi-rater ICC (3 operators, n=46; area + scores) | Done — ICC(2,1): area 0.859 (0.680–0.930); complexity 0.807 (0.660–0.890); caliber 0.434 (0.260–0.610); maturity 0.659 (0.510–0.780); `icc/icc_multirater_results.md` |
 | Effect sizes (+ CIs) for between-stratum standardized scores | Added — Complexity NS (ε²≈0); Caliber Uniformity & Maturity Index significant (ε²≈0.24); not “all KW NS” |
 | Softening of pathophysiology language; expanded Limitations | Completed |
 | Terminology unification; reference deduplication; Optovue correction; Table cleanup | Completed |

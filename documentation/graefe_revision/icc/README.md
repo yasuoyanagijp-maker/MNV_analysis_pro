@@ -102,23 +102,21 @@ Optional intra-observer supplement (legacy):
 
 ## Checklist — when collaborator data arrive
 
-- [ ] Receive images + score CSVs from observer A and B (and YY if not already local)
-- [ ] Drop files under `incoming/observer_A/`, `incoming/observer_B/`, `incoming/observer_YY/`
-- [ ] Confirm shared `case_id` set (n ≈ 20; note any missing cases per observer)
-- [ ] Confirm metric units / score definitions match across observers (same pipeline / scale)
-- [ ] Confirm each row has `observer` + `date`
-- [ ] Lock incoming folders (no further edits) → run `compute_icc_multirater.py`
-- [ ] Fill Response letter Comment 4 placeholders with ICC(2,1) (+ CI) per metric
-- [ ] Methods: state ICC(2,1) primary; add multilevel VC ICC if computed
-- [ ] Limitations: note intra-observer as optional / not primary if S2 not completed; note n≈20 stratified subset
+- [x] Receive score CSVs from observer A (Inoue) and B (Osada) and YY
+- [x] Drop files under `incoming/observer_A/`, `incoming/observer_B/`, `incoming/observer_YY/` (+ clear-name aliases)
+- [x] Confirm shared `case_id` set (**n = 46**; union = intersection; no dropouts)
+- [x] Confirm metric units / score definitions match (same pipeline columns)
+- [x] Run `compute_icc_multirater.py`
+- [x] Fill Response letter Comment 4 with ICC(2,1) (+ CI) per metric
+- [x] Methods note: ICC(2,1) primary; multilevel VC ICC reported
+- [ ] Limitations: note intra-observer not completed; n=46 shared set
 
 ## Status
 
-- [x] Protocol rewritten for 3-observer multi-rater ICC (n≈20)
-- [x] `incoming/` drop folders scaffolded
-- [x] `compute_icc_multirater.py` stub (awaits data)
-- [ ] Incoming CSVs from collaborators
-- [ ] Multi-rater ICC(2,1) + 95% CI per metric
-- [ ] Optional multilevel VC ICC (if libraries allow)
-- [ ] Fill Response letter placeholders
+- [x] Protocol rewritten for 3-observer multi-rater ICC
+- [x] `incoming/` drop folders scaffolded (+ Inoue/Osada aliases)
+- [x] Incoming CSVs from YY, Inoue, Osada (n=46 matched)
+- [x] Multi-rater ICC(2,1) + 95% CI per metric (`icc_multirater_results.md`)
+- [x] Pairwise ICC + multilevel / ANOVA variance-component ICC
+- [x] Response letter Comment 4 filled
 - [ ] Optional: legacy Session 2 / intra-observer supplement

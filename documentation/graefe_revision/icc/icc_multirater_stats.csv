@@ -1,0 +1,5 @@
+metric,n,k,icc,ci_low,ci_high,source
+area,46.0,3.0,0.8591499521397153,0.68,0.93,pingouin
+complexity,46.0,3.0,0.8074462961775436,0.66,0.89,pingouin
+caliber_uniformity,46.0,3.0,0.4339281474870397,0.26,0.61,pingouin
+maturity,46.0,3.0,0.6590213855614526,0.51,0.78,pingouin
