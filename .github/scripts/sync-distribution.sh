@@ -82,6 +82,9 @@ git clone --depth 1 "${DIST_REMOTE}" "${CLONE}" 2>/dev/null || {
 rsync -a --delete --exclude='.git' "${CONTENT}/" "${CLONE}/"
 
 cd "${CLONE}"
+if [[ -n "${GH_TOKEN:-}" ]]; then
+  git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${DIST_OWNER}/${DIST_REPO}.git"
+fi
 git add -A
 if git diff --cached --quiet; then
   echo "==> No documentation changes to publish"
