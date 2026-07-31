@@ -1,4 +1,6 @@
-# Blind expert grading (WS2 prep)
+# Blind expert grading (WS2) — **COMPLETED**
+
+Comment 2 / Suppl expert-agreement numbers are locked. This folder is the analysis archive (blind templates, locked grades, κ outputs).
 
 ## Purpose
 

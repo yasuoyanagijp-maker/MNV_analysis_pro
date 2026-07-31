@@ -1,7 +1,9 @@
-# Figure 3 — Processing steps (draft caption)
+# Figure 3 — Caption / assembly note
 
-**Figure 3.** Representative OCTA en-face image of macular neovascularization illustrating the semi-automated processing pipeline. **(A)** Input angiogram with freehand / refined region of interest (ROI; green outline and tint). **(B)** Hybrid multiscale vessel enhancement (Mexican-hat / Laplacian-of-Gaussian component shown; Frangi/tubeness is combined in the full pipeline). **(C)** Adaptive Phansalkar binarization within the ROI after morphological refinement. **(D)** Color-coded vessel visualization used for qualitative review alongside quantitative skeleton-derived metrics (Network Complexity Score, Caliber Uniformity Score, Maturity Index).
+**Journal legend (canonical):** see [`Figure3_processing_steps_legend.md`](Figure3_processing_steps_legend.md)
 
-*Draft assembly note:* Panels from `documentation/graefe_revision/figures/_fig3_runs/838a095e-b730-4446-a23d-a6e4509326d0` with original `/Users/yy/MNV_quantitatibe analysis_original_inputdata/large/81224417_IVF_before_OD.jpg`
+Do not maintain a second full legend here — paste from the legend file into the manuscript / journal form.
 
-Final panels for submission should preferably come from 1–3 cohort cases processed in Flet with the same freehand ROI workflow used clinically (see `scripts/graefe_revision/assemble_figure3.py --from-dir`). Auto-ROI headless frames are acceptable only as interim drafts.
+---
+
+*Assembly note (2026-07-31 evening):* Same freehand furukawa CIRRUS 3×3 mm ORCC case (`b3039a78` / `ee595b46`). Panels rebuilt so B/C are no longer redundant: **B** = continuous Frangi grayscale (regenerated; pipeline `debug_tubeness.png` is post-Sauvola binary only); **C** = `debug_binary_combined.png`; **D** = skeletonize of ROI-masked binary (replaces prior color visualization). Footer metadata strip blanked; labels A–D only; no patient name/ID/DOB. PNG and TIFF assembled together (same timestamp).

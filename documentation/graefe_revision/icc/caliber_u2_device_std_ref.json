@@ -1,0 +1,121 @@
+{
+  "description": "Locked per-size_class (=device) cuts for U2 axes. Estimated from manuscript reference batch CSVs (not ICC pool). stability_ref_*.json has stab_* \u03bc/\u03c3 only \u2014 NV CV / Dilated% absent.",
+  "source_batches": {
+    "small": "documentation/graefe_revision/data/MNV_batch_20260220_083448small.csv",
+    "large": "documentation/graefe_revision/data/MNV_batch_20260220_230245_large.csv",
+    "small_3mm": "documentation/graefe_revision/data/MNV_batch_20260220_223647_small_3mm.csv"
+  },
+  "device_labels": {
+    "small": "Optovue Solix / AngioVue 6\u00d76 mm",
+    "large": "Zeiss PlexElite 9000 6\u00d76 mm",
+    "small_3mm": "Zeiss CIRRUS HD AngioPlex 3\u00d73 mm (Angiography 3x3)"
+  },
+  "weights": {
+    "U_cv": 0.75,
+    "U_dil": 0.25
+  },
+  "strata": {
+    "small": {
+      "device": "Optovue Solix / AngioVue 6\u00d76 mm",
+      "n_cases": 33,
+      "nv_cv": {
+        "n": 33.0,
+        "mean": 41.684309466060604,
+        "std": 2.452431771124612,
+        "min": 37.08579584,
+        "median": 41.30969152,
+        "max": 48.86222772,
+        "p05": 38.93687733,
+        "p95": 45.990796914
+      },
+      "dilated_pct": {
+        "n": 33.0,
+        "mean": 0.08310721827272727,
+        "std": 0.031532732831952966,
+        "min": 0.041908207,
+        "median": 0.076640466,
+        "max": 0.163276356,
+        "p05": 0.051371088,
+        "p95": 0.14152285019999997
+      },
+      "neg_nv_cv_piecewise": {
+        "min": -48.86222772,
+        "median": -41.30969152,
+        "max": -37.08579584
+      },
+      "neg_dilated_piecewise": {
+        "min": -0.163276356,
+        "median": -0.076640466,
+        "max": -0.041908207
+      }
+    },
+    "large": {
+      "device": "Zeiss PlexElite 9000 6\u00d76 mm",
+      "n_cases": 49,
+      "nv_cv": {
+        "n": 49.0,
+        "mean": 38.470361320204084,
+        "std": 1.0862784590038927,
+        "min": 36.51198334,
+        "median": 38.48669875,
+        "max": 40.99387487,
+        "p05": 36.755988148,
+        "p95": 40.117033717999995
+      },
+      "dilated_pct": {
+        "n": 49.0,
+        "mean": 0.13256407251020408,
+        "std": 0.02474087256814598,
+        "min": 0.0761406,
+        "median": 0.130156253,
+        "max": 0.183428607,
+        "p05": 0.08896501700000001,
+        "p95": 0.1698000094
+      },
+      "neg_nv_cv_piecewise": {
+        "min": -40.99387487,
+        "median": -38.48669875,
+        "max": -36.51198334
+      },
+      "neg_dilated_piecewise": {
+        "min": -0.183428607,
+        "median": -0.130156253,
+        "max": -0.0761406
+      }
+    },
+    "small_3mm": {
+      "device": "Zeiss CIRRUS HD AngioPlex 3\u00d73 mm (Angiography 3x3)",
+      "n_cases": 30,
+      "nv_cv": {
+        "n": 30.0,
+        "mean": 51.036101959,
+        "std": 8.954431085607578,
+        "min": 43.07717553,
+        "median": 47.295175835,
+        "max": 79.119217,
+        "p05": 44.103906067000004,
+        "p95": 72.77597075999999
+      },
+      "dilated_pct": {
+        "n": 30.0,
+        "mean": 0.0886819374666667,
+        "std": 0.01979612073356121,
+        "min": 0.04651911,
+        "median": 0.0918942285,
+        "max": 0.121717059,
+        "p05": 0.0619303021,
+        "p95": 0.11657747564999998
+      },
+      "neg_nv_cv_piecewise": {
+        "min": -79.119217,
+        "median": -47.295175835,
+        "max": -43.07717553
+      },
+      "neg_dilated_piecewise": {
+        "min": -0.121717059,
+        "median": -0.0918942285,
+        "max": -0.04651911
+      }
+    }
+  }
+}

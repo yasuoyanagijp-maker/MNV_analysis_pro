@@ -1,4 +1,7 @@
-# Graefe Major Revision — Work Checklist
+# Graefe Major Revision — Work Checklist (ARCHIVED 2026-07-31)
+
+> **Superseded.** Use `documentation/graefe_revision/README.md` for current status.  
+> This file is a 2026-07-27 WIP snapshot: intra was still “optional/not done,” primary Caliber ICC table still reflected the PCA-era numbers, and many manuscript TODOs were open. Kept for history only.
 
 > **Do not push this branch to remote.**  
 > Branch `graefe/major-revision-analyses` and all work under `documentation/graefe_revision/` stay **local only**. Never `git push` unless the user explicitly asks.

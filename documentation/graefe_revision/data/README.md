@@ -1,6 +1,6 @@
-# Recovered batch CSVs (git `1e5d202`)
+# Recovered batch CSVs (git `1e5d202`) — analysis source archive
 
-Primary source for Table 3 effect sizes and (for large / small_3mm) automated subtypes.
+Primary source for Table 3 effect sizes and (for large / small_3mm) automated subtypes. Not for journal zip (may contain identifiable filenames).
 
 | File | Stratum | Notes |
 |------|---------|--------|

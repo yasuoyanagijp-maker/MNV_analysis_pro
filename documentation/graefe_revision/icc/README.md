@@ -1,130 +1,93 @@
-# Multi-rater ICC (WS1) — inter-observer reproducibility
+# Multi-rater ICC (WS1) — inter- and intra-observer reproducibility — **COMPLETED**
 
-## Confirmed design (2026-07-27)
+Parent map: [`../README.md`](../README.md).
+
+## Status (2026-07-31) — complete for Comment 4
+
+| Workstream | Status |
+|------------|--------|
+| Inter-observer (3 raters × **n = 46**) | **Done** — `icc_multirater_results.md` |
+| Intra-observer (YY Session1 vs Session2, **n = 46**) | **Done** — `icc_intra_YY_results.md` |
+| Response Comment 4 | Filled (inter primary + intra supplement) |
+| Caliber framing | **Default** = device-/stratum-locked Standardized Caliber Uniformity Score; **PCA** = legacy / sensitivity only |
+
+Reader-facing prose uses **Standardized Caliber Uniformity Score** (default) and **PCA-based Caliber Uniformity Score (legacy)**. Internal code / paths may still say `caliber_u2_*` / `U2`; do not use “U2” in manuscript or Response summaries.
+
+## Confirmed design
 
 | Item | Decision |
 |------|----------|
-| Observers | **3 independent operators**: YY + 2 external examiners (email replies received) |
-| n | **≈ 20 cases** (stratified subset; images + CSVs to be received from collaborators) |
-| Primary analysis | **Multi-rater / multilevel ICC** (not pairwise Session1 vs Session2) |
-| Metrics | Lesion area, Network Complexity, Caliber Uniformity, Maturity Index |
-| Intra-observer (old Flet S1/S2 plan) | **Deprioritized** — optional supplement only if Session 2 data allow; not the primary ICC for the paper |
+| Observers (inter) | **3 independent operators**: YY + Inoue + Osada |
+| n (inter / intra) | **46** cases (complete intersection; same Files) |
+| Primary analysis | **Multi-rater ICC(2,1)** (3 raters × 46); intra = same-operator supplement |
+| Metrics | Lesion area, Network Complexity, **default** Caliber Uniformity, Maturity Index (from default Caliber) |
+| Caliber default | Device-/stratum-locked: `0.75·piecewise(−NV_CV) + 0.25·piecewise(−Dilated%)` (`caliber_u2_device_ref.json`; internal name) |
+| Caliber legacy | PCA Stability composite — sensitivity only (inter ICC 0.434) |
 
-Legacy same-operator Session1/Session2 files (`icc_session1.csv`, `icc_session2*.csv`, `icc_case_list.csv`, `compute_icc.py`) remain on disk as optional intra-observer material. Do **not** treat them as the primary revision analysis.
+Legacy same-operator Session1/Session2 files (`icc_session1.csv`, `icc_session2*.csv`, `icc_case_list.csv`, `compute_icc.py`) remain on disk as optional older material (different image set). Do **not** mix with the n=46 cohort.
 
 ## Incoming data layout
 
-Drop collaborator outputs here:
-
 ```
 documentation/graefe_revision/icc/incoming/
-  README.md                 ← schema + drop instructions
-  observer_YY/              ← YY scores (+ optional images)
-  observer_A/               ← external examiner A
-  observer_B/               ← external examiner B
+  README.md
+  observer_YY/              ← YY Session 1 scores
+  observer_A/ / observer_inoue/
+  observer_B/ / observer_osada/
 ```
 
-Expected contents per observer folder:
+Intra Session 2:
 
-- **Required:** one or more CSVs with scores (see columns below)
-- **Optional:** source OCTA images or run folders (for audit / re-processing)
-
-Preferred filenames (flexible; script will glob `*.csv`):
-
-- `scores.csv` — long or wide format with required columns
-- Or one CSV per case, as long as columns are present
+```
+documentation/graefe_revision/icc/intra/incoming_session2/
+  MNV_batch_20260731_114427_YY_session2.csv
+```
 
 ## Required CSV columns
 
 | Column | Description |
 |--------|-------------|
 | `case_id` | Shared case identifier across observers (must match) |
-| `area` | Lesion / MNV area (same units across observers) |
-| `complexity` | Network Complexity (standardized score or raw — document which) |
-| `caliber_uniformity` | Caliber Uniformity score |
+| `area` | Lesion / MNV area |
+| `complexity` | Network Complexity |
+| `caliber_uniformity` | Caliber Uniformity score (see default vs PCA note above) |
 | `maturity` | Maturity Index |
 | `observer` | Observer id (`YY`, `A`, `B`, or folder name) |
 | `date` | Analysis / ROI date (ISO `YYYY-MM-DD` preferred) |
 
-Aliases accepted by the analysis stub (when implemented):  
-`MNV Area` → `area`; `Network Complexity` → `complexity`; `Caliber Uniformity` → `caliber_uniformity`; `Maturity` / `Maturity Index` → `maturity`; `icc_id` / `File` → `case_id`.
-
-Optional helpful columns: `stratum` (`large` / `small` / `small_3mm`), `image_key`, `file_name`, `uuid`, `output_path`, `scale_mm`.
+Aliases: `MNV Area` → `area`; `Network Complexity` → `complexity`; `Caliber Uniformity` → `caliber_uniformity`; `Maturity` / `Maturity Index` → `maturity`; `icc_id` / `File` → `case_id`.
 
 ## Primary analysis — multi-rater ICC
 
-**Primary (for paper):** classical **Shrout & Fleiss ICC(2,1)** — two-way **random** effects, **absolute agreement**, **single measures** — for **3 raters × ≈20 cases**, reported **per metric** (area, complexity, caliber uniformity, maturity), each with **95% CI**.
+**Primary (for paper):** classical **Shrout & Fleiss ICC(2,1)** — two-way **random** effects, **absolute agreement**, **single measures** — for **3 raters × 46 cases**, reported **per metric**, each with **95% CI**.
 
-Also report ICC(2,k) (average of k=3 raters) as a secondary column if useful for Methods clarity; primary claim remains ICC(2,1).
+Also report ICC(2,k) and multilevel / ANOVA variance-component ICC as complementary.
 
-### “Multilevel ICC” framing (reviewer-acceptable)
+**Primary inter numbers (default Caliber):** Area 0.859 · Complexity 0.807 · Caliber **0.770** · Maturity **0.593**.  
+**Legacy PCA Caliber (sensitivity):** 0.434. Details: `icc_multirater_results.md`, `caliber_u2_device_std_icc_results.md`, Response Comment 4.
 
-State both approaches in Methods; prefer A when libraries allow:
+**Intra (YY, n=46; same device-locked Caliber on both sessions):** Area 0.979 · Complexity 0.950 · Caliber **0.925** · Maturity **0.917**. Details: `icc_intra_YY_results.md`.
 
-**Option A — linear mixed model variance components (preferred if feasible)**  
-Fit a linear mixed model with random case + random observer (e.g. `statsmodels` MixedLM, or R `lme4` via `rpy2` if available):
-
-\[
-Y_{ij} = \mu + u_{\mathrm{case},i} + v_{\mathrm{observer},j} + \varepsilon_{ij}
-\]
-
-Report:
-
-\[
-\mathrm{ICC}_{\mathrm{case}} = \frac{\sigma^2_{\mathrm{case}}}{\sigma^2_{\mathrm{case}} + \sigma^2_{\mathrm{observer}} + \sigma^2_{\varepsilon}}
-\]
-
-(If the model omits a random observer and observers are fixed, use case / (case + residual) and disclose that choice.)
-
-**Option B — classical multi-rater ICC**  
-ICC(2,1) / ICC(2,k) via ANOVA mean squares (or `pingouin.intraclass_corr` with `targets=case_id`, `raters=observer`, `ratings=<metric>`).
-
-**Reporting rule for this revision:**
-
-1. **Primary:** multi-rater **ICC(2,1)** + 95% CI per metric (Option B; implementable in numpy/scipy or pingouin).
-2. **If** `pingouin` and/or `statsmodels` / `rpy2` are available: also report **multilevel variance-component ICC** (Option A) as sensitivity / Methods supplement.
-3. Do **not** claim completion until ≥3 observers × shared `case_id`s are locked.
-
-## Compute (when data arrive)
+## Compute
 
 ```bash
 .venv/bin/python scripts/graefe_revision/compute_icc_multirater.py
-```
-
-- No / incomplete incoming CSVs → prints `awaiting incoming data` and exits (no claim of completion).
-- When ready → writes `icc/multirater_icc_stats.csv` and `.md` (paths TBD when schema locked).
-
-Optional intra-observer supplement (YY test–retest on the same n=46 Files):
-
-```bash
-# Protocol + case list: icc/intra/README.md
-# Drop Session2 CSV → icc/intra/incoming_session2/
 .venv/bin/python scripts/graefe_revision/compute_icc_intra.py
 ```
 
-Legacy Flet S1/S2 (`icc_session1.csv` / `compute_icc.py`) is a different image set — do not mix with n=46.
+Caliber default / device-locked ICC artifacts: `compute_caliber_u2_device_std_icc.py`, `caliber_u2_device_std_icc_results.md`. Changelog of score hunt: `caliber_cv_strengthening_changelog.md`.
 
-## Checklist — when collaborator data arrive
+## Checklist
 
-- [x] Receive score CSVs from observer A (Inoue) and B (Osada) and YY
-- [x] Drop files under `incoming/observer_A/`, `incoming/observer_B/`, `incoming/observer_YY/` (+ clear-name aliases)
-- [x] Confirm shared `case_id` set (**n = 46**; union = intersection; no dropouts)
-- [x] Confirm metric units / score definitions match (same pipeline columns)
-- [x] Run `compute_icc_multirater.py`
-- [x] Fill Response letter Comment 4 with ICC(2,1) (+ CI) per metric
-- [x] Methods note: ICC(2,1) primary; multilevel VC ICC reported
-- [ ] Limitations: note intra-observer not completed; n=46 shared set
-
-## Status
-
-- [x] Protocol rewritten for 3-observer multi-rater ICC
-- [x] `incoming/` drop folders scaffolded (+ Inoue/Osada aliases)
-- [x] Incoming CSVs from YY, Inoue, Osada (n=46 matched)
-- [x] Multi-rater ICC(2,1) + 95% CI per metric (`icc_multirater_results.md`)
-- [x] Pairwise ICC + multilevel / ANOVA variance-component ICC
-- [x] Response letter Comment 4 filled
-- [ ] Optional: YY intra-observer Session 2 (n=46) → `icc/intra/` + `compute_icc_intra.py`
+- [x] Receive score CSVs from Inoue, Osada, YY
+- [x] Drop files under `incoming/` (+ clear-name aliases)
+- [x] Confirm shared `case_id` set (**n = 46**)
+- [x] Run `compute_icc_multirater.py` → `icc_multirater_results.md`
+- [x] Device-locked default Caliber ICC + PCA legacy sensitivity framed
+- [x] YY intra Session 2 (n=46) → `icc_intra_YY_results.md`
+- [x] Response letter Comment 4 filled (inter + intra; no reader-facing “U2”)
+- [x] Methods: ICC(2,1) primary; multilevel VC ICC reported; Caliber default vs PCA legacy
 
 ## Sensitivity subset (n=20 most concordant)
 
-Optional upper-bound ICC on nested concordance subsets (n=20/30/35/40; lowest mean z-scored cross-rater range). See `icc_cases_ranked_by_concordance.csv`, `icc_multirater_concordance_ladder.md`, and `icc_multirater_results_subset*.md`. Does **not** replace primary n=46 Comment 4 numbers.
+Optional upper-bound ICC on nested concordance subsets (n=20/30/35/40). See `icc_cases_ranked_by_concordance.csv`, `icc_multirater_concordance_ladder.md`, and `icc_multirater_results_subset*.md`. Does **not** replace primary n=46 Comment 4 numbers.

@@ -196,3 +196,16 @@ Caliber 低 ICC が Maturity の中間的 ICC（0.659）の主因（Complexity I
 - Recommended transferable score: `caliber_U2_softcv_dil` (ICC(2,1) **0.838**) vs original Caliber **0.434** and `caliber_C_winsor_inv_nv_cv` **0.765**.
 - Negative controls: residualized CV (ICC collapsed); inverse absolute SD / rank-harmonized scores (higher ICC but wrong construct or non-transferable).
 - Script: `compute_caliber_major_params_new_score.py`
+
+---
+
+## Addendum 2026-07-31 — U2 per-device (size_class) standardization
+
+**Verdict: PARTIAL**
+
+- Original PCA Caliber locks **size_class** μ/σ + piecewise median→50 in `stability_ref_*.json`; strata map to devices (`phase1_collect.log`: small=Optovue, large=PlexElite, small_3mm=CIRRUS 3×3).
+- U2 axes (`NV Diameter (CV)`, `Dilated vessel (%)`) are **absent** from those JSONs → estimated & locked from manuscript reference batch CSVs (`documentation/graefe_revision/data/MNV_batch_*`).
+- Implemented `caliber_U2_device_std` (piecewise locked) and `caliber_U2_device_soft` (locked median/SD tanh), same **75/25** blend.
+- This ICC set is **100% `small_3mm`** → multi-device re-centering not empirically testable; ICC-pool score median ≈64 (distribution shift vs training), not ≈50.
+- ICC(2,1): original **0.434** · C **0.765** · pooled U2 **0.838** · **device_std 0.770** · device_soft **0.751**.
+- Artifacts: [`caliber_u2_device_std_icc_results.md`](caliber_u2_device_std_icc_results.md), `caliber_u2_device_std_ref.json`, `*_long.csv`, `*_icc_stats.csv`, script `compute_caliber_u2_device_std_icc.py`.

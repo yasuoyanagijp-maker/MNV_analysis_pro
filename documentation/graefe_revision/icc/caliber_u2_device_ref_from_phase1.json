@@ -1,0 +1,234 @@
+{
+  "schema": "caliber_u2_device_ref_v1",
+  "description": "Candidate app reference for Caliber U2 (device/size_class-locked). Per-device μ/σ and piecewise median→50 anchors for NV Diameter (CV) and Dilated vessel (%). Values recomputed from manuscript reference batch CSVs (same cohorts named in phase1_collect.log header). IMPORTANT: phase1_collect.log itself does NOT log NV-CV or Dilated%; do not treat this as log-parsed.",
+  "phase1_collect_log": {
+    "path": "output/phase1_collect.log",
+    "contains_nv_cv": false,
+    "contains_dilated_pct": false,
+    "per_case_metrics_logged": [
+      "stab_cv",
+      "loops",
+      "junction"
+    ],
+    "image_counts_in_log": {
+      "small": 11,
+      "large": 49,
+      "small_3mm": 30
+    },
+    "header_cohort_n": {
+      "small": 33,
+      "large": 49,
+      "small_3mm": 30,
+      "total": 112
+    },
+    "note": "Log small section incomplete (11/33 images); large and small_3mm complete. Log cannot supply U2 axes."
+  },
+  "source_batches": {
+    "small": "documentation/graefe_revision/data/MNV_batch_20260220_083448small.csv",
+    "large": "documentation/graefe_revision/data/MNV_batch_20260220_230245_large.csv",
+    "small_3mm": "documentation/graefe_revision/data/MNV_batch_20260220_223647_small_3mm.csv"
+  },
+  "device_labels": {
+    "small": "Optovue Solix / AngioVue 6×6 mm",
+    "large": "Zeiss PlexElite 9000 6×6 mm",
+    "small_3mm": "Zeiss CIRRUS HD AngioPlex 3×3 mm (Angiography 3x3)"
+  },
+  "weights": {
+    "U_cv": 0.75,
+    "U_dil": 0.25
+  },
+  "score_formula": "U_cv = piecewise(−NV_CV; neg_nv_cv min/median/max); U_dil = piecewise(−Dilated%; neg_dilated_pct min/median/max); Score = clip(0.75·U_cv + 0.25·U_dil, 0, 100). Soft twin: U = 50 + 50·tanh((median − x) / std) per axis, same weights.",
+  "app_feature_keys": {
+    "nv_cv": {
+      "internal": "cv_diameter",
+      "csv_column": "NV Diameter (CV)"
+    },
+    "dilated_pct": {
+      "internal": "high_skew_percentage",
+      "csv_column": "Dilated vessel (%)"
+    }
+  },
+  "matches_caliber_u2_device_std_ref_json": true,
+  "comparison_deltas": [],
+  "strata": {
+    "small": {
+      "size_class": "small",
+      "device": "Optovue Solix / AngioVue 6×6 mm",
+      "n_cases": 33,
+      "n_nv_cv": 33,
+      "n_dilated_pct": 33,
+      "metrics": [
+        "nv_cv",
+        "dilated_pct"
+      ],
+      "mu": {
+        "nv_cv": 41.68430946606061,
+        "dilated_pct": 0.08310721827272727
+      },
+      "sigma": {
+        "nv_cv": 2.452431771124612,
+        "dilated_pct": 0.031532732831952966
+      },
+      "distribution": {
+        "nv_cv": {
+          "n": 33,
+          "mean": 41.68430946606061,
+          "std": 2.452431771124612,
+          "min": 37.08579584,
+          "median": 41.30969152,
+          "max": 48.86222772,
+          "p05": 38.93687733,
+          "p95": 45.990796914
+        },
+        "dilated_pct": {
+          "n": 33,
+          "mean": 0.08310721827272727,
+          "std": 0.031532732831952966,
+          "min": 0.041908207,
+          "median": 0.076640466,
+          "max": 0.163276356,
+          "p05": 0.051371088,
+          "p95": 0.14152285019999997
+        }
+      },
+      "scale_correction": {
+        "method": "piecewise_linear_negated",
+        "description": "U = piecewise(−x; min/median/max of −x) so stratum median → 50",
+        "neg_nv_cv": {
+          "min": -48.86222772,
+          "median": -41.30969152,
+          "max": -37.08579584
+        },
+        "neg_dilated_pct": {
+          "min": -0.163276356,
+          "median": -0.076640466,
+          "max": -0.041908207
+        }
+      },
+      "source_batch": "documentation/graefe_revision/data/MNV_batch_20260220_083448small.csv"
+    },
+    "large": {
+      "size_class": "large",
+      "device": "Zeiss PlexElite 9000 6×6 mm",
+      "n_cases": 49,
+      "n_nv_cv": 49,
+      "n_dilated_pct": 49,
+      "metrics": [
+        "nv_cv",
+        "dilated_pct"
+      ],
+      "mu": {
+        "nv_cv": 38.470361320204084,
+        "dilated_pct": 0.13256407251020408
+      },
+      "sigma": {
+        "nv_cv": 1.086278459003893,
+        "dilated_pct": 0.02474087256814598
+      },
+      "distribution": {
+        "nv_cv": {
+          "n": 49,
+          "mean": 38.470361320204084,
+          "std": 1.086278459003893,
+          "min": 36.51198334,
+          "median": 38.48669875,
+          "max": 40.99387487,
+          "p05": 36.755988148,
+          "p95": 40.117033718
+        },
+        "dilated_pct": {
+          "n": 49,
+          "mean": 0.13256407251020408,
+          "std": 0.02474087256814598,
+          "min": 0.0761406,
+          "median": 0.130156253,
+          "max": 0.183428607,
+          "p05": 0.08896501700000001,
+          "p95": 0.1698000094
+        }
+      },
+      "scale_correction": {
+        "method": "piecewise_linear_negated",
+        "description": "U = piecewise(−x; min/median/max of −x) so stratum median → 50",
+        "neg_nv_cv": {
+          "min": -40.99387487,
+          "median": -38.48669875,
+          "max": -36.51198334
+        },
+        "neg_dilated_pct": {
+          "min": -0.183428607,
+          "median": -0.130156253,
+          "max": -0.0761406
+        }
+      },
+      "source_batch": "documentation/graefe_revision/data/MNV_batch_20260220_230245_large.csv"
+    },
+    "small_3mm": {
+      "size_class": "small_3mm",
+      "device": "Zeiss CIRRUS HD AngioPlex 3×3 mm (Angiography 3x3)",
+      "n_cases": 30,
+      "n_nv_cv": 30,
+      "n_dilated_pct": 30,
+      "metrics": [
+        "nv_cv",
+        "dilated_pct"
+      ],
+      "mu": {
+        "nv_cv": 51.036101959,
+        "dilated_pct": 0.08868193746666667
+      },
+      "sigma": {
+        "nv_cv": 8.954431085607578,
+        "dilated_pct": 0.019796120733561205
+      },
+      "distribution": {
+        "nv_cv": {
+          "n": 30,
+          "mean": 51.036101959,
+          "std": 8.954431085607578,
+          "min": 43.07717553,
+          "median": 47.295175835,
+          "max": 79.119217,
+          "p05": 44.103906067,
+          "p95": 72.77597075999999
+        },
+        "dilated_pct": {
+          "n": 30,
+          "mean": 0.08868193746666667,
+          "std": 0.019796120733561205,
+          "min": 0.04651911,
+          "median": 0.0918942285,
+          "max": 0.121717059,
+          "p05": 0.0619303021,
+          "p95": 0.11657747565000001
+        }
+      },
+      "scale_correction": {
+        "method": "piecewise_linear_negated",
+        "description": "U = piecewise(−x; min/median/max of −x) so stratum median → 50",
+        "neg_nv_cv": {
+          "min": -79.119217,
+          "median": -47.295175835,
+          "max": -43.07717553
+        },
+        "neg_dilated_pct": {
+          "min": -0.121717059,
+          "median": -0.0918942285,
+          "max": -0.04651911
+        }
+      },
+      "source_batch": "documentation/graefe_revision/data/MNV_batch_20260220_223647_small_3mm.csv"
+    }
+  },
+  "wiring": {
+    "do_not_wire_yet": true,
+    "suggested_path": "resources/reference_metrics/caliber_u2_device_ref.json (or per-size_class files)",
+    "loader_pattern": "src/core/pattern_metrics.py::_load_reference_json / _load_stability_ref_*",
+    "blockers": [
+      "No production loader/scorer for U2 device_std yet (only PCA stability_ref_*).",
+      "Need new calculate_caliber_u2_device_score() using cv_diameter + high_skew_percentage.",
+      "Decide whether U2 replaces or coexists with PCA Caliber Uniformity Score in CSV/UI.",
+      "phase1_collect.log alone is insufficient; CSV-derived locks already exist as caliber_u2_device_std_ref.json."
+    ]
+  }
+}
