@@ -17,23 +17,29 @@
 
 ## 初回セットアップ（1回だけ）
 
-### 1. GitHub PAT を作成
+### 1. GitHub Fine-grained PAT を作成
 
-Fine-grained personal access token を作成し、以下の権限を付与します。
+**詳細手順（推奨・更新リマインダ込み）**: [DISTRIBUTION_SYNC_TOKEN.md](DISTRIBUTION_SYNC_TOKEN.md)
 
+要点:
+
+- 作成 URL: https://github.com/settings/personal-access-tokens/new
 - **Resource owner**: `yasuoyanagijp-maker`
-- **Repository access**: `MNV_analysis_pro`, `ARIAKE_OCTA-distribution`
-- **Permissions**:
-  - `MNV_analysis_pro`: Contents **Read**
-  - `ARIAKE_OCTA-distribution`: Contents **Read and write**, Metadata **Read**
+- **Repository access**: `MNV_analysis_pro`（Contents **Read-only**）, `ARIAKE_OCTA-distribution`（Contents **Read and write**）
+- **Expiration**: 90 days 推奨（カレンダーに更新リマインダ）
+- **禁止**: `gh auth login` の OAuth トークンを Actions シークレットの長期値にしない（ローカル CLI 用）
 
 ### 2. シークレットを登録
 
-`MNV_analysis_pro` → Settings → Secrets and variables → Actions → **New repository secret**
+```bash
+gh secret set DISTRIBUTION_SYNC_TOKEN --repo yasuoyanagijp-maker/MNV_analysis_pro
+```
+
+または UI: `MNV_analysis_pro` → Settings → Secrets and variables → Actions → `DISTRIBUTION_SYNC_TOKEN`
 
 | Name | Value |
 |------|-------|
-| `DISTRIBUTION_SYNC_TOKEN` | 上記 PAT |
+| `DISTRIBUTION_SYNC_TOKEN` | 上記 Fine-grained PAT |
 
 ### 3. 初回同期
 
