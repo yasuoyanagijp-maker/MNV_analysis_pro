@@ -1,0 +1,63 @@
+name: Build Caliber Uniformity CSV tool
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*-caliber-csv-tool*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Windows x64 one-file EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller numpy
+
+      - name: PyInstaller one-file
+        run: |
+          python -m PyInstaller --noconfirm --clean `
+            --distpath dist/caliber_u2_tool `
+            --workpath build/caliber_u2_tool `
+            tools/caliber_u2/compute_caliber_u2_from_csv.spec
+
+      - name: Stage zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGE=dist/release_caliber_csv_tool/stage_win_x64
+          OUT=dist/release_caliber_csv_tool
+          mkdir -p "$STAGE" "$OUT"
+          test -f dist/caliber_u2_tool/compute_caliber_u2_from_csv.exe
+          cp dist/caliber_u2_tool/compute_caliber_u2_from_csv.exe "$STAGE/"
+          cp tools/caliber_u2/README_USER_JA.md "$STAGE/README.md"
+          mkdir -p "$STAGE/resources/reference_metrics"
+          cp resources/reference_metrics/caliber_u2_device_ref.json \
+            "$STAGE/resources/reference_metrics/"
+          rm -f "$OUT/ARIAKE_caliber_uniformity_csv_tool_win_x64.zip"
+          (
+            cd "$STAGE"
+            7z a -tzip "$OLDPWD/$OUT/ARIAKE_caliber_uniformity_csv_tool_win_x64.zip" . || \
+            powershell -NoProfile -Command "Compress-Archive -Path '$STAGE\*' -DestinationPath '$OUT\ARIAKE_caliber_uniformity_csv_tool_win_x64.zip' -Force"
+          )
+          ls -la "$OUT"
+          unzip -l "$OUT/ARIAKE_caliber_uniformity_csv_tool_win_x64.zip" || \
+            powershell -NoProfile -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::OpenRead('$OUT/ARIAKE_caliber_uniformity_csv_tool_win_x64.zip').Entries | ForEach-Object { $_.FullName }"
+
+      - name: Upload Windows zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARIAKE_caliber_uniformity_csv_tool_win_x64
+          path: dist/release_caliber_csv_tool/ARIAKE_caliber_uniformity_csv_tool_win_x64.zip
+          if-no-files-found: error
