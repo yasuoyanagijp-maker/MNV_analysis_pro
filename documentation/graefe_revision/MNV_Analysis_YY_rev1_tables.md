@@ -1,6 +1,6 @@
-# Tables — MNV Analysis (revision 1)
+# Tables — MNV Analysis
 
-Separate tables file matching the original submission packaging (`MNV_analysis_tables.docx`). The manuscript body cites Tables 1–5 in text only; grids are not embedded in the manuscript.
+The manuscript body cites Tables 1–5 in text only; grids are provided in this separate tables file.
 
 ---
 
@@ -18,7 +18,7 @@ Separate tables file matching the original submission packaging (`MNV_analysis_t
 | Complexity | Fractal Dimension (Df) | Box-counting dimension of the skeletonized MNV (slope of the log–log plot). |
 |  | Tortuosity Index | Mean segment tortuosity: (path length along skeleton / straight-line distance) averaged over eligible branches. |
 |  | Standardized Complexity Score (0–100) | Stratum-specific PCA latent score: 0.7 × PC1 + 0.2 × PC2 + 0.1 × TrunkDist; piecewise map so min/median/max → 0/50/100 within stratum. |
-| Caliber Uniformity | Standardized Caliber Uniformity Score (0–100) | **Default:** device-/stratum-locked 0.75 × U(−NV Diameter CV) + 0.25 × U(−Dilated vessel %). **Legacy (sensitivity):** PCA of four radial-profile metrics. Formerly also called Vascular Stability Score. |
+| Caliber Uniformity | Standardized Caliber Uniformity Score (0–100) | **Default:** device-/stratum-locked 0.75 × U(−NV Diameter CV) + 0.25 × U(−Dilated vessel %). **Legacy (sensitivity):** PCA of four radial-profile metrics. |
 |  | Diameter CV / Dilated vessel % | Skeleton-derived NV Diameter CV and fraction of vessel length exceeding mean + 2.0 × SD (inputs to the default Caliber score). |
 | Advanced | Intelligent ROI Refinement | 5-iteration vertex optimization (3-pixel search radius) to align the ROI boundary with non-perfused tissue. |
 |  | Arteriolarization Detection | Branches with local diameter > mean + 2.0 × SD; reports count, length, and area density. |
@@ -27,7 +27,7 @@ Separate tables file matching the original submission packaging (`MNV_analysis_t
 |  | Field-of-View Correction | Physical unit conversion using device-specific scaling across 3×3 mm and 6×6 mm scans. |
 |  | Standardized Maturity Index (0–100) | clip(50 + (Caliber Uniformity Score − Complexity Score) / 2, 0, 100). Values > 50 indicate uniformity-dominant morphology; < 50 complexity-dominant. |
 
-*Note.* Restored from the original submission tables file (`MNV_analysis_tables.docx`) with notation revised for this revision (Caliber Uniformity; morphology-derived categories; default vs legacy Caliber definition; no claim that Kruskal–Wallis non-significance equals cross-device equivalence).
+*Note.* Default Caliber Uniformity uses skeleton-derived NV Diameter CV and Dilated vessel %; a PCA-based Caliber Uniformity construct is retained only as a sensitivity comparison. Kruskal–Wallis non-significance of standardized scores must not be interpreted as cross-device biological equivalence.
 
 ---
 
@@ -46,7 +46,7 @@ Separate tables file matching the original submission packaging (`MNV_analysis_t
 | Diameter CV (%) | 14.7 ± 6.8 | 16.8 ± 10.9 | 19.4 ± 10.3 |
 | Diameter range / mean (%) | 50.4 ± 25.5 | 55.3 ± 35.1 | 65.9 ± 37.1 |
 
-*Note.* Values are mean ± SD from the original submission tables. Protocols: Zeiss PlexElite 9000 6×6 mm (large); Zeiss CIRRUS HD / AngioPlex 3×3 mm (small_3mm); **Optovue Solix** 6×6 mm (small; corrected from the original “Heidelberg Solix” wording). Total loop count and Euler number include center and periphery zones. Pre-standardization Diameter CV and diameter range/mean are radial-profile features used in the **legacy** PCA Caliber Uniformity construct; the **default** Caliber Uniformity Score in this revision uses skeleton-derived NV Diameter CV and Dilated vessel % (Methods).
+*Note.* Values are mean ± SD. Protocols: Zeiss PlexElite 9000 6×6 mm (large); Zeiss CIRRUS HD / AngioPlex 3×3 mm (small_3mm); Optovue Solix 6×6 mm (small). Total loop count and Euler number include center and periphery zones. Pre-standardization Diameter CV and diameter range/mean are radial-profile features used in the **legacy** PCA Caliber Uniformity construct; the **default** Caliber Uniformity Score uses skeleton-derived NV Diameter CV and Dilated vessel % (Methods).
 
 ---
 
@@ -58,7 +58,7 @@ Separate tables file matching the original submission packaging (`MNV_analysis_t
 | Caliber Uniformity Score (default) | 46.6 / 55.5 / 50.6 | 1.118 | 0.572 | 0.000 | 0.000–0.082 |
 | Maturity Index (from default Caliber) | 49.5 / 53.9 / 51.0 | 1.082 | 0.582 | 0.000 | 0.000–0.077 |
 
-*Note.* ε² = (H − k + 1) / (n − k) with k = 3; bootstrap 95% CIs use 10 000 within-stratum resamples (seed `20260727`). Primary batch CSVs, n = 112 (large = 49, small = 33, small_3mm = 30). Network Complexity PC1 explained variance: 63.7% / 73.9% / 70.2% (large / small_3mm / small). The original submission Table 3 reported PCA-based Caliber Uniformity medians near 50 with Kruskal–Wallis p ≥ 0.276 and no effect sizes; those PCA Caliber/Maturity values are retained only as legacy sensitivity context (Results interpretation / Response Comment 5), not as the primary Table 3 endpoint. Median proximity to 50 after median-anchored piecewise scaling must not be interpreted as biological equivalence across devices.
+*Note.* ε² = (H − k + 1) / (n − k) with k = 3; bootstrap 95% CIs use 10 000 within-stratum resamples (seed 20260727). Primary analysis set, n = 112 (large = 49, small = 33, small_3mm = 30). Network Complexity PC1 explained variance: 63.7% / 73.9% / 70.2% (large / small_3mm / small). PCA-based Caliber/Maturity values are retained only as legacy sensitivity context in the Results and are not the primary Table 3 endpoint. Median proximity to 50 after median-anchored piecewise scaling must not be interpreted as biological equivalence across devices.
 
 ---
 
@@ -72,7 +72,7 @@ Separate tables file matching the original submission packaging (`MNV_analysis_t
 | Tree in bud | 10 (20.4%) | 4 (13.3%) | 14 (42.4%) |
 | Dead tree | 4 (8.2%) | 6 (20.0%) | 5 (15.2%) |
 
-*Note.* Values are n (%) from the original submission tables. The original “Pathophysiological State” column has been removed (Reviewer 2 Comment 3); morphology-derived interpretive mapping is summarized separately in Table 5. Spelling standardized to **Tree in bud**. Device label for the small stratum is **Optovue Solix**.
+*Note.* Values are n (%). Morphology-derived interpretive mapping is summarized separately in Table 5. Spelling is standardized to **Tree in bud**. Device label for the small stratum is **Optovue Solix**.
 
 ---
 
@@ -86,4 +86,4 @@ Separate tables file matching the original submission packaging (`MNV_analysis_t
 | Tree in bud | Active-pattern | Transitional-pattern | High branching density, Euler number |
 | Dead tree | Mature-quiescent-pattern | Arteriolarized-pattern | Mean diameter, Caliber Uniformity Score |
 
-*Note.* Restored from original Table 5 with Reviewer 2 Comments 3 and 7b applied: “pathophysiological state” wording replaced by **morphology-derived interpretive categories**; “Pruned tree” and “Large vessels” rows removed (not part of the operational five-subtype scheme). Categories are hypothesis-generating and are **not** clinically validated disease-behavior classes.
+*Note.* Categories are **morphology-derived interpretive categories** (hypothesis-generating) and are **not** clinically validated disease-behavior classes. Only the five operational subtypes are shown; labels outside this scheme (e.g., “Pruned tree,” “Large vessels”) are omitted.
