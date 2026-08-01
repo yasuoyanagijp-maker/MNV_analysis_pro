@@ -41,14 +41,14 @@ Novel Semi-Automated System for Multi-Dimensional Analysis of Macular Neovascula
 
 Do **not** use the internal alias “U2” in manuscript or Response prose.
 
-## Primary vs sensitivity claims (updated 2026-07-31)
+## Primary Caliber claims (updated 2026-08-01)
 
 - **Primary Caliber Uniformity** = default device-locked score → inter ICC **0.770** (0.660–0.860)
 - **Primary Maturity Index (inter)** = Maturity from default Caliber → ICC **0.593** (0.430–0.730)
-- **Legacy / sensitivity:** PCA Caliber → inter ICC **0.434** (**poor-to-moderate**); robust CV proxy **0.765**; pooled soft CV+Dilated% **0.838**
 - **Intra Caliber/Maturity** = same device-locked default (0.925 / 0.917); supplements multi-rater claim
+- Alternate Winsorized / pooled-soft Caliber ICCs and legacy PCA Caliber are **not** reported in manuscript or Response (removed 2026-08-01 per author).
 
-**Table 3 (default Caliber primary):** Caliber medians 46.6 / 55.5 / 50.6 (p = 0.572); Maturity 49.5 / 53.9 / 51.0 (p = 0.582); Complexity unchanged. Legacy PCA Table 3 Caliber/Maturity KW significance is **not** the primary endpoint narrative.
+**Table 3 (default Caliber primary):** Caliber medians 46.6 / 55.5 / 50.6 (p = 0.572); Maturity 49.5 / 53.9 / 51.0 (p = 0.582); Complexity unchanged.
 
 ## Author decisions applied (2026-07-31 afternoon / evening)
 
