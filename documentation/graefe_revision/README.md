@@ -77,7 +77,8 @@ documentation/graefe_revision/
 
 | File | Role |
 |------|------|
-| `MNV_Analysis_YY_rev1.md` / `.docx` | Revised manuscript (cites Tables/Figures; no embedded Table 1–5 grids) |
+| `MNV_Analysis_YY_rev1.md` / `.docx` | Revised manuscript **clean** = journal File 3 (cites Tables/Figures; no embedded Table 1–5 grids) |
+| `MNV_Analysis_YY_rev1_manuscript_changes_marked.docx` | Journal **File 2** — Word Compare redline (original vs rev1 clean); also in submission package |
 | `MNV_Analysis_YY_rev1_tables.md` / `.docx` | Tables 1–5 (Table 1: Variable \| Description \| Inter-rater ICC(2,1) \| Intra-rater ICC(2,1)) |
 | `MNV_Analysis_YY_rev1_figure_legends.md` / `.docx` | Figure 1–3 legends (separate file) |
 | `MNV_Analysis_YY_rev1_clean.docx` | Clean Word variant (snapshot) |

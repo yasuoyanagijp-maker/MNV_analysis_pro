@@ -96,7 +96,7 @@ Original `MNV_Analysis_YY.docx` was **not** overwritten.
 | **1. Table 1** | **Deferred** — no resubmission/rework this round; keep pipeline-inventory Table 1 |
 | **2. Figure 3** | **Replaced 2026-07-31** — freehand furukawa case `b3039a78` / `ee595b46` (see below); prior auto-ROI draft superseded |
 | **3. Table 4** | **Locked** to original submission narrative % (`MNV_Analysis_YY.docx` / `manuscript_text.txt`); automated_labels refresh **reverted**; no computer-assigned labeling clutter; clinical subtype names only |
-| **4. changes-marked** | **Cancelled** — no `_changes_marked` / redline; working file = `MNV_Analysis_YY_rev1.docx` (`_clean.docx` optional duplicate only) |
+| **4. changes-marked** | **Superseded 2026-08-01** — journal File 2 created via Word Compare (see below); prior Cancelled decision withdrawn |
 | **5. zip** | **Not built** — user will zip if needed; PHI audit kept as reference; no `submission_safe/` mass anonymization |
 | **6. Corvi / Caliber** | **Confirmed** — Corvi year **2020** as cited, no extra prose; Caliber naming unchanged (device-locked default / PCA legacy / no “U2”) |
 
@@ -153,7 +153,8 @@ Residuals: large Medusa+Seafan = 6 (12.2%); small = 2 (6.1%). Split within resid
 ## Files produced
 
 - `documentation/graefe_revision/MNV_Analysis_YY_rev1.md` — primary editable rev1
-- `documentation/graefe_revision/MNV_Analysis_YY_rev1.docx` — pandoc export
+- `documentation/graefe_revision/MNV_Analysis_YY_rev1.docx` — pandoc export (= journal File 3 clean)
+- `documentation/graefe_revision/MNV_Analysis_YY_rev1_manuscript_changes_marked.docx` — journal File 2 (Word Compare redline)
 - `documentation/graefe_revision/MNV_Analysis_YY_rev1_NOTES.md` — decisions / remaining TODOs
 - `documentation/graefe_revision/MNV_Analysis_YY_rev1_CHANGELOG.md` — this file
 - `documentation/graefe_revision/Supplementary_Table_S1.md` / `.docx`
@@ -161,7 +162,16 @@ Residuals: large Medusa+Seafan = 6 (12.2%); small = 2 (6.1%). Split within resid
 - `documentation/graefe_revision/Table2_raw_metrics.md` — standalone Table 2 source mirror
 - `documentation/graefe_revision/Response_to_Reviewers.md` / `.docx` (+ DRAFT copies)
 
-**Not overwritten:** `MNV_Analysis_YY.docx`, `manuscript_text.txt`.
+**Not overwritten:** `MNV_Analysis_YY.docx`, `manuscript_text.txt` (now under `original_submission/`).
+
+## 2026-08-01 — Journal File 2 (changes-marked) created
+
+- Method: Microsoft Word **Compare** (AppleScript `compare` → `compare target new`), author `rev1`
+- Original: `original_submission/MNV_Analysis_YY.docx`
+- Revised (clean): `MNV_Analysis_YY_rev1.docx`
+- Output: `MNV_Analysis_YY_rev1_manuscript_changes_marked.docx` (+ copy in `submission_package_20260731/`)
+- Verified OOXML markup: ~470 `w:ins`, ~373 `w:del` (real track changes, not fake highlighting)
+- Packaging map updated in `submission_package_20260731/README_提出内容.txt` (File 1/2/3)
 
 ## Remaining “U2” (internal only; not manuscript)
 
