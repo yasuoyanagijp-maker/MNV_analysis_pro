@@ -1,4 +1,4 @@
-Graefe's Archive 改訂稿 — 雑誌提出用パッケージ（2026-07-31；File 2 追記 2026-08-01）
+Graefe's Archive 改訂稿 — 雑誌提出用パッケージ（2026-07-31；File 2/3 確定 2026-08-03）
 ============================================================
 
 作業ツリー全体の案内: ../README.md
@@ -11,26 +11,27 @@ ZIP化はご自身で行ってください。
     Response_to_Reviewers.docx
   File 2 — Revised manuscript – changes marked（Word Compare 赤線）
     MNV_Analysis_YY_rev1_manuscript_changes_marked.docx
-    ※ 初稿 original_submission/MNV_Analysis_YY.docx と現行クリーン
-      MNV_Analysis_YY_rev1.docx を Microsoft Word Compare で生成
-      （w:ins / w:del の実トラック変更；着色の擬似赤線ではない）
+    ※ 比較元（Original）= original_submission/MNV_Analysis_YY.docx
+      改訂版（Revised）= 本フォルダの MNV_Analysis_YY_rev1.docx（著者確定クリーン）
+      Microsoft Word Compare で再生成（2026-08-03；w:ins / w:del 実トラック変更）
   File 3 — Revised manuscript – clean（黒字のみ）
-    MNV_Analysis_YY_rev1.docx
+    MNV_Analysis_YY_rev1.docx … 著者編集の確定版（SoT；pandoc で上書きしない）
   Figures / Tables / Supplementary — 下記 2–6 を参照
 
 【同梱内容】
-1. 改訂原稿（rev1）— 本文のみ（Tables 1–5 / Figure legends は埋め込まず引用のみ）
-   - MNV_Analysis_YY_rev1.docx … File 3（クリーン提出用）
+1. 改訂原稿（rev1）— File 3 本文末尾に Figure legends を含む（Tables 1–5 は別ファイル）
+   - MNV_Analysis_YY_rev1.docx … File 3（クリーン提出用；著者 Word 確定版）
    - MNV_Analysis_YY_rev1_manuscript_changes_marked.docx … File 2（変更箇所付き）
-   - MNV_Analysis_YY_rev1.md … テキスト参照用（任意）
+   - MNV_Analysis_YY_rev1.md … テキスト参照用（docx から抽出のミラー；任意）
 
 2. 表（オリジナル提出と同形式：別ファイル1本に Tables 1–5）
    - MNV_Analysis_YY_rev1_tables.docx … 提出用（初稿の MNV_analysis_tables.docx に相当）
    - MNV_Analysis_YY_rev1_tables.md … 編集用ミラー（任意）
 
-3. Figure legends（別ファイル）
+3. Figure legends（別ファイル）— 本文末尾の legends と内容重複（dual）
    - MNV_Analysis_YY_rev1_figure_legends.docx … Fig 1–3 英文レジェンド
    - MNV_Analysis_YY_rev1_figure_legends.md … 参照用（任意）
+   - 初稿慣習・別アップロード枠がある場合は別ファイルも提出可。削除はしていない。
 
 4. 図（figures/）— TIFF 主 / PNG プレビュー
    - Figure 1: Figure.tiff / Figure.png
@@ -64,4 +65,5 @@ ZIP化はご自身で行ってください。
 - 本フォルダ内に *.csv は含めていません。
 - Figure 1–3 の TIFF/PNG は同梱済みです。
 - 原稿本文は Tables 1–5 を表グリッドとして埋め込まず、「Table 1」「Table 2 presents…」等で引用します。
-- File 2 は 2026-08-01 に Word Compare で追加（以前の「changes-marked Cancelled」決定は雑誌要件により撤回）。
+- File 2 は 2026-08-01 初回作成後、2026-08-03 に著者確定クリーン（legends 込み）対 original で Word Compare 再生成。
+- File 3 の SoT は著者編集の MNV_Analysis_YY_rev1.docx（md→pandoc で上書きしない）。

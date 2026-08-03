@@ -55,13 +55,13 @@ Do **not** use the internal alias “U2” in manuscript or Response prose.
 1. **Table 1** — **Restored 2026-07-31 evening** from `MNV_analysis_tables_original.docx` (Category / Parameter / Description) with notation revised (Caliber Uniformity; morphology-derived categories; default vs legacy Caliber). Not a multi-tool literature matrix — original Table 1 was already a pipeline parameter inventory.
 2. **Figure 3** — freehand furukawa case (`b3039a78` / `ee595b46`); **panels rebuilt 2026-07-31 evening** to A ROI / B Frangi / C binary / D skeleton (see section above).
 3. **Table 4** — Restored from `MNV_analysis_tables_original.docx` with full Medusa/Seafan splits (large Medusa 6/12.2%, Seafan 0; small Medusa 0, Seafan 2/6.1%). Pathophysiological State column removed. Not from `grading/automated_labels.csv`.
-4. **changes-marked / redline** — **Created 2026-08-01** (journal File 2). Prior “Cancelled” decision superseded: Word Compare of `original_submission/MNV_Analysis_YY.docx` vs clean `MNV_Analysis_YY_rev1.docx` → `MNV_Analysis_YY_rev1_manuscript_changes_marked.docx` (also in `submission_package_20260731/`). File 3 clean = `MNV_Analysis_YY_rev1.docx`. Optional older `MNV_Analysis_YY_rev1_clean.docx` is a Jul-31 snapshot only — do not submit as File 3.
-5. **Submission zip** — **Not built** (user will zip if needed). `PHI_AUDIT_rev1.md` kept as reference; no `submission_safe/` mass anonymization.
+4. **changes-marked / redline** — **Regenerated 2026-08-03** (journal File 2). Word Compare order locked: **Original** = `original_submission/MNV_Analysis_YY.docx`; **Revised** = author-finalized clean `submission_package_20260731/MNV_Analysis_YY_rev1.docx` (includes Figure legends at end). Output → `MNV_Analysis_YY_rev1_manuscript_changes_marked.docx` (package + parent). File 3 clean SoT = that same author `.docx` (do **not** pandoc-overwrite). Redundant parent `*_clean.docx` archived under `_archive/rev1_snapshots/`. Separate `MNV_Analysis_YY_rev1_figure_legends.docx` kept (dual with in-MS legends; not deleted).
+5. **Submission zip** — **Not built** (user will zip if needed). `working/PHI_AUDIT_rev1.md` kept as reference; no `submission_safe/` mass anonymization.
 6. **Corvi / Caliber naming (confirmed はい)** — Corvi cite year stays **2020** print as already cited; **no extra Corvi discussion** this round. Caliber naming stays as-is: **device-locked default** / **PCA legacy** / **no reader-facing “U2”**; no further rename.
 
-## Packaging (2026-07-31) — match original separate tables/legends
+## Packaging (2026-07-31 / updated 2026-08-03) — tables separate; legends dual
 
-Original: one `MNV_analysis_tables.docx` + manuscript cites Tables/Figures in prose; figure legend at end of MS text. Rev1: `MNV_Analysis_YY_rev1_tables.docx` (Tables 1–5), `MNV_Analysis_YY_rev1_figure_legends.docx` (Fig 1–3), manuscript body without embedded Table 1–5 grids or figure-legend section.
+Original: one `MNV_analysis_tables.docx` + manuscript cites Tables/Figures in prose; figure legend at end of MS text. Rev1 tables remain separate (`MNV_Analysis_YY_rev1_tables.docx`). As of 2026-08-03 author-final clean, **Figure legends are again inside File 3** (end of MS), matching original convention; separate `MNV_Analysis_YY_rev1_figure_legends.docx` is retained for optional upload (dual presence).
 
 ## Tables restore (2026-07-31 evening) — source `MNV_analysis_tables_original.docx`
 
@@ -92,7 +92,7 @@ Sums: 49 / 30 / 33. Residual † gap closed. Batch `Subtype` columns still unuse
 1. Suppl Table S1 + expert agreement Suppl.
 2. Response title synced; no reader-facing “U2”; default Caliber = device-locked.
 3. Methods one-liner: small-stratum Complexity locking n = 34 vs Table 3 analysis batch n = 33.
-4. PHI audit listing: `PHI_AUDIT_rev1.md`.
+4. PHI audit listing: `working/PHI_AUDIT_rev1.md`.
 
 ## Still open (minimal)
 
