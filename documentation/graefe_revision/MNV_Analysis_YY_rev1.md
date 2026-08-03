@@ -195,40 +195,73 @@ We have developed a semi-automated Python-based system for multi-dimensional ana
 
 ## References
 
-1\. Guo, J., Tang, W., Xu, S., Liu, W. & Xu, G. OCTA evaluation of treatment-naïve flat irregular PED (FIPED)-associated CNV in chronic central serous chorioretinopathy before and after half-dose PDT. *Eye* 35, 2871–2878 (2021).
-2\. Zudaire, E., Gambardella, L., Kurcz, C. & Vermeren, S. A Computational Tool for Quantitative Analysis of Vascular Networks. *PLOS ONE* 6, e27385 (2011).
-3\. Told, R. et al. Profiling neovascular age-related macular degeneration choroidal neovascularization lesion response to anti-vascular endothelial growth factor therapy using SSOCTA. *Acta Ophthalmol. (Copenh.)* 99, e240–e246 (2021).
-4\. Montesel, A. et al. Quantitative response of macular neovascularisation to loading phase of aflibercept in neovascular age-related macular degeneration. *Eye* 37, 3648–3655 (2023).
-5\. Carlà, M. M. et al. MORPHOMETRIC CHANGES IN MACULAR NEOVASCULARIZATION ARCHITECTURE AFTER FARICIMAB TREATMENT IN NEOVASCULAR AGE-RELATED MACULAR DEGENERATION: Comparison Between Naive and Switched Eyes. *Retina* 125–135 (2026) doi:10.1097/iae.0000000000004635.
-6\. Munk, M. R. et al. OCT-angiography: A qualitative and quantitative comparison of 4 OCT-A devices. *PLOS ONE* 12, e0177059 (2017).
-7\. Miere, A. et al. VASCULAR REMODELING OF CHOROIDAL NEOVASCULARIZATION AFTER ANTI-VASCULAR ENDOTHELIAL GROWTH FACTOR THERAPY VISUALIZED ON OPTICAL COHERENCE TOMOGRAPHY ANGIOGRAPHY. *Retina* 39, 548–557 (2019).
-8\. Tew, T. B. et al. Comparison of different morphologies of choroidal neovascularization evaluated by ocular coherence tomography angiography in age-related macular degeneration. *Clin. Experiment. Ophthalmol.* 48, 927–937 (2020).
-9\. Oliveira, W. S., Teixeira, J. V., Ren, T. I., Cavalcanti, G. D. C. & Sijbers, J. Unsupervised Retinal Vessel Segmentation Using Combined Filters. *PLoS ONE* 11, e0149943 (2016).
-10\. Ma, Y. et al. Multichannel Retinal Blood Vessel Segmentation Based on the Combination of Matched Filter and U-Net Network. *BioMed Res. Int.* 2021, 5561125 (2021).
-11\. Memari, N., Ramli, A. R., Bin Saripan, M. I., Mashohor, S. & Moghbel, M. Supervised retinal vessel segmentation from color fundus images based on matched filtering and AdaBoost classifier. *PLoS ONE* 12, e0188939 (2017).
-12\. Coscas, F. et al. Optical coherence tomography angiography in exudative age-related macular degeneration: A predictive model for treatment decisions. *Br. J. Ophthalmol.* 103, 1342–1356 (2019).
-13\. Shrout, P. E. & Fleiss, J. L. Intraclass correlations: uses in assessing rater reliability. *Psychol. Bull.* 86, 420–428 (1979).
-14\. McGraw, K. O. & Wong, S. P. Forming inferences about some intraclass correlation coefficients. *Psychol. Methods* 1, 30–46 (1996).
-15\. Koo, T. K. & Li, M. Y. A guideline of selecting and reporting intraclass correlation coefficients for reliability research. *J. Chiropr. Med.* 15, 155–163 (2016).
-16\. Corvi, F. et al. Reproducibility of vessel density, fractal dimension, and foveal avascular zone using 7 different optical coherence tomography angiography devices. *Am. J. Ophthalmol.* 186, 25–31 (2018).
-17\. Corvi, F. et al. Comparison between several optical coherence tomography angiography devices and indocyanine green angiography of choroidal neovascularization. *Retina* 40, 873–880 (2020).
-18\. Wang, M. et al. Evaluating Polypoidal Choroidal Vasculopathy With Optical Coherence Tomography Angiography. *Investig. Opthalmology Vis. Sci.* 57, OCT526-32 (2016).
-19\. Xue, J. et al. Automatic quantification of choroidal neovascularization lesion area on OCT angiography based on density cell-like P systems with active membranes. *Biomed. Opt. Express* 9, 3208–3219 (2018).
-20\. Babiuch, A. et al. IMPACT OF OPTICAL COHERENCE TOMOGRAPHY ANGIOGRAPHY REVIEW STRATEGY ON DETECTION OF CHOROIDAL NEOVASCULARIZATION. *Retina* 672–678 (2020) doi:10.1097/iae.0000000000002443.
-21\. Smith, A. & Zavala, V. The Euler characteristic: A general topological descriptor for complex data. *Comput Chem Eng* 154, 107463 (2021).
-22\. Willführ, A. et al. Estimation of the number of alveolar capillaries by the Euler number (Euler-Poincaré characteristic). *Am. J. Physiol. Lung Cell. Mol. Physiol.* 309, L1286-93 (2015).
-23\. Santos, F. et al. Topological phase transitions in functional brain networks. *bioRxiv* https://doi.org/10.1101/469478 (2018) doi:10.1101/469478.
-24\. Viallard, C. & Larrivée, B. Tumor angiogenesis and vascular normalization: alternative therapeutic targets. *Angiogenesis* 20, 409–426 (2017).
-25\. Goker, Y. S. & Demir, G. Comparison of optical coherence tomography angiography features in type 1 versus type 2 choroidal neovascular membranes secondary to age-related macular degeneration. *Med. Hypothesis Discov. Innov. Ophthalmol. J.* 10, 67–73 (2021).
-26\. Li, J. et al. Comparative quantitative analysis of optical coherence tomography angiography in varied morphologies of macular neovascularization following intravitreal conbercept and ranibizumab treatments for neovascular age‑related macular degeneration. *Exp. Ther. Med.* 27, 214 (2024).
-27\. Mettu, P. S., Allingham, M. J. & Cousins, S. W. Incomplete response to Anti-VEGF therapy in neovascular AMD: Exploring disease mechanisms and therapeutic opportunities. *Prog. Retin. Eye Res.* 82, 100906 (2021).
-28\. Attarde, A., Riad, T., Zhang, Z., Ahir, M. & Fu, Y. Characterization of Vascular Morphology of Neovascular Age-Related Macular Degeneration by Indocyanine Green Angiography. *J. Vis. Exp. JoVE* 198, (2023).
-29\. Fu, Y., Zhang, Z., Webster, K. & Paulus, Y. Treatment Strategies for Anti-VEGF Resistance in Neovascular Age-Related Macular Degeneration by Targeting Arteriolar Choroidal Neovascularization. *Biomolecules* 14, 252 (2024).
-30\. Spaide, R. Optical Coherence Tomography Angiography Signs of Vascular Abnormalization With Antiangiogenic Therapy for Choroidal Neovascularization. *Am. J. Ophthalmol.* 160, 6–16 (2015).
-31\. Shah, P. N. et al. Inter-rater reliability of proliferative diabetic retinopathy assessment on wide-field OCT-angiography and fluorescein angiography. *Transl. Vis. Sci. Technol.* 12(7), 13 (2023).
-32\. Deák, G. G. et al. Comparison of optical coherence tomography vs. fluorescein angiography-based macular neovascularization classifications in age-related macular degeneration. *Sci. Rep.* 15, 4303 (2025) doi:10.1038/s41598-025-87576-6.
-33\. Gan, Y. et al. Novel quantitative OCTA biomarkers of choroidal neovascularization and associations with disease activity and etiology. *Transl. Vis. Sci. Technol.* 15(3), 10 (2026).
-34\. Hsu, C. R. et al. Combined quantitative and qualitative optical coherence tomography angiography biomarkers for predicting active neovascular age-related macular degeneration. *Sci. Rep.* 11, 18068 (2021).
+1. Guo, J., Tang, W., Xu, S., Liu, W. & Xu, G. OCTA evaluation of treatment-naïve flat irregular PED (FIPED)-associated CNV in chronic central serous chorioretinopathy before and after half-dose PDT. *Eye* 35, 2871–2878 (2021).
+
+2. Zudaire, E., Gambardella, L., Kurcz, C. & Vermeren, S. A Computational Tool for Quantitative Analysis of Vascular Networks. *PLOS ONE* 6, e27385 (2011).
+
+3. Told, R. et al. Profiling neovascular age-related macular degeneration choroidal neovascularization lesion response to anti-vascular endothelial growth factor therapy using SSOCTA. *Acta Ophthalmol. (Copenh.)* 99, e240–e246 (2021).
+
+4. Montesel, A. et al. Quantitative response of macular neovascularisation to loading phase of aflibercept in neovascular age-related macular degeneration. *Eye* 37, 3648–3655 (2023).
+
+5. Carlà, M. M. et al. MORPHOMETRIC CHANGES IN MACULAR NEOVASCULARIZATION ARCHITECTURE AFTER FARICIMAB TREATMENT IN NEOVASCULAR AGE-RELATED MACULAR DEGENERATION: Comparison Between Naive and Switched Eyes. *Retina* 125–135 (2026) doi:10.1097/iae.0000000000004635.
+
+6. Munk, M. R. et al. OCT-angiography: A qualitative and quantitative comparison of 4 OCT-A devices. *PLOS ONE* 12, e0177059 (2017).
+
+7. Miere, A. et al. VASCULAR REMODELING OF CHOROIDAL NEOVASCULARIZATION AFTER ANTI-VASCULAR ENDOTHELIAL GROWTH FACTOR THERAPY VISUALIZED ON OPTICAL COHERENCE TOMOGRAPHY ANGIOGRAPHY. *Retina* 39, 548–557 (2019).
+
+8. Tew, T. B. et al. Comparison of different morphologies of choroidal neovascularization evaluated by ocular coherence tomography angiography in age-related macular degeneration. *Clin. Experiment. Ophthalmol.* 48, 927–937 (2020).
+
+9. Oliveira, W. S., Teixeira, J. V., Ren, T. I., Cavalcanti, G. D. C. & Sijbers, J. Unsupervised Retinal Vessel Segmentation Using Combined Filters. *PLoS ONE* 11, e0149943 (2016).
+
+10. Ma, Y. et al. Multichannel Retinal Blood Vessel Segmentation Based on the Combination of Matched Filter and U-Net Network. *BioMed Res. Int.* 2021, 5561125 (2021).
+
+11. Memari, N., Ramli, A. R., Bin Saripan, M. I., Mashohor, S. & Moghbel, M. Supervised retinal vessel segmentation from color fundus images based on matched filtering and AdaBoost classifier. *PLoS ONE* 12, e0188939 (2017).
+
+12. Coscas, F. et al. Optical coherence tomography angiography in exudative age-related macular degeneration: A predictive model for treatment decisions. *Br. J. Ophthalmol.* 103, 1342–1356 (2019).
+
+13. Shrout, P. E. & Fleiss, J. L. Intraclass correlations: uses in assessing rater reliability. *Psychol. Bull.* 86, 420–428 (1979).
+
+14. McGraw, K. O. & Wong, S. P. Forming inferences about some intraclass correlation coefficients. *Psychol. Methods* 1, 30–46 (1996).
+
+15. Koo, T. K. & Li, M. Y. A guideline of selecting and reporting intraclass correlation coefficients for reliability research. *J. Chiropr. Med.* 15, 155–163 (2016).
+
+16. Corvi, F. et al. Reproducibility of vessel density, fractal dimension, and foveal avascular zone using 7 different optical coherence tomography angiography devices. *Am. J. Ophthalmol.* 186, 25–31 (2018).
+
+17. Corvi, F. et al. Comparison between several optical coherence tomography angiography devices and indocyanine green angiography of choroidal neovascularization. *Retina* 40, 873–880 (2020).
+
+18. Wang, M. et al. Evaluating Polypoidal Choroidal Vasculopathy With Optical Coherence Tomography Angiography. *Investig. Opthalmology Vis. Sci.* 57, OCT526-32 (2016).
+
+19. Xue, J. et al. Automatic quantification of choroidal neovascularization lesion area on OCT angiography based on density cell-like P systems with active membranes. *Biomed. Opt. Express* 9, 3208–3219 (2018).
+
+20. Babiuch, A. et al. IMPACT OF OPTICAL COHERENCE TOMOGRAPHY ANGIOGRAPHY REVIEW STRATEGY ON DETECTION OF CHOROIDAL NEOVASCULARIZATION. *Retina* 672–678 (2020) doi:10.1097/iae.0000000000002443.
+
+21. Smith, A. & Zavala, V. The Euler characteristic: A general topological descriptor for complex data. *Comput Chem Eng* 154, 107463 (2021).
+
+22. Willführ, A. et al. Estimation of the number of alveolar capillaries by the Euler number (Euler-Poincaré characteristic). *Am. J. Physiol. Lung Cell. Mol. Physiol.* 309, L1286-93 (2015).
+
+23. Santos, F. et al. Topological phase transitions in functional brain networks. *bioRxiv* https://doi.org/10.1101/469478 (2018) doi:10.1101/469478.
+
+24. Viallard, C. & Larrivée, B. Tumor angiogenesis and vascular normalization: alternative therapeutic targets. *Angiogenesis* 20, 409–426 (2017).
+
+25. Goker, Y. S. & Demir, G. Comparison of optical coherence tomography angiography features in type 1 versus type 2 choroidal neovascular membranes secondary to age-related macular degeneration. *Med. Hypothesis Discov. Innov. Ophthalmol. J.* 10, 67–73 (2021).
+
+26. Li, J. et al. Comparative quantitative analysis of optical coherence tomography angiography in varied morphologies of macular neovascularization following intravitreal conbercept and ranibizumab treatments for neovascular age‑related macular degeneration. *Exp. Ther. Med.* 27, 214 (2024).
+
+27. Mettu, P. S., Allingham, M. J. & Cousins, S. W. Incomplete response to Anti-VEGF therapy in neovascular AMD: Exploring disease mechanisms and therapeutic opportunities. *Prog. Retin. Eye Res.* 82, 100906 (2021).
+
+28. Attarde, A., Riad, T., Zhang, Z., Ahir, M. & Fu, Y. Characterization of Vascular Morphology of Neovascular Age-Related Macular Degeneration by Indocyanine Green Angiography. *J. Vis. Exp. JoVE* 198, (2023).
+
+29. Fu, Y., Zhang, Z., Webster, K. & Paulus, Y. Treatment Strategies for Anti-VEGF Resistance in Neovascular Age-Related Macular Degeneration by Targeting Arteriolar Choroidal Neovascularization. *Biomolecules* 14, 252 (2024).
+
+30. Spaide, R. Optical Coherence Tomography Angiography Signs of Vascular Abnormalization With Antiangiogenic Therapy for Choroidal Neovascularization. *Am. J. Ophthalmol.* 160, 6–16 (2015).
+
+31. Shah, P. N. et al. Inter-rater reliability of proliferative diabetic retinopathy assessment on wide-field OCT-angiography and fluorescein angiography. *Transl. Vis. Sci. Technol.* 12(7), 13 (2023).
+
+32. Deák, G. G. et al. Comparison of optical coherence tomography vs. fluorescein angiography-based macular neovascularization classifications in age-related macular degeneration. *Sci. Rep.* 15, 4303 (2025) doi:10.1038/s41598-025-87576-6.
+
+33. Gan, Y. et al. Novel quantitative OCTA biomarkers of choroidal neovascularization and associations with disease activity and etiology. *Transl. Vis. Sci. Technol.* 15(3), 10 (2026).
+
+34. Hsu, C. R. et al. Combined quantitative and qualitative optical coherence tomography angiography biomarkers for predicting active neovascular age-related macular degeneration. *Sci. Rep.* 11, 18068 (2021).
 
 ## Figure
 
