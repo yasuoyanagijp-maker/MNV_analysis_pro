@@ -226,7 +226,7 @@ We have developed a semi-automated Python-based system for multi-dimensional ana
 29\. Fu, Y., Zhang, Z., Webster, K. & Paulus, Y. Treatment Strategies for Anti-VEGF Resistance in Neovascular Age-Related Macular Degeneration by Targeting Arteriolar Choroidal Neovascularization. *Biomolecules* 14, 252 (2024).
 30\. Spaide, R. Optical Coherence Tomography Angiography Signs of Vascular Abnormalization With Antiangiogenic Therapy for Choroidal Neovascularization. *Am. J. Ophthalmol.* 160, 6–16 (2015).
 31\. Shah, P. N. et al. Inter-rater reliability of proliferative diabetic retinopathy assessment on wide-field OCT-angiography and fluorescein angiography. *Transl. Vis. Sci. Technol.* 12(7), 13 (2023).
-32\. Deák, G. G. et al. Comparison of optical coherence tomography vs. fluorescein angiography-based macular neovascularization classifications in age-related macular degeneration. *Sci. Rep.* 15, 87576 (2025) doi:10.1038/s41598-025-87576-6.
+32\. Deák, G. G. et al. Comparison of optical coherence tomography vs. fluorescein angiography-based macular neovascularization classifications in age-related macular degeneration. *Sci. Rep.* 15, 4303 (2025) doi:10.1038/s41598-025-87576-6.
 33\. Gan, Y. et al. Novel quantitative OCTA biomarkers of choroidal neovascularization and associations with disease activity and etiology. *Transl. Vis. Sci. Technol.* 15(3), 10 (2026).
 34\. Hsu, C. R. et al. Combined quantitative and qualitative optical coherence tomography angiography biomarkers for predicting active neovascular age-related macular degeneration. *Sci. Rep.* 11, 18068 (2021).
 

@@ -116,7 +116,7 @@ We have also replaced wording such as “validated automated classification” w
 **Selected references (Comment 2):**
 - Tew TB et al. Comparison of different morphologies of choroidal neovascularization evaluated by ocular coherence tomography angiography in age-related macular degeneration. *Clin Experiment Ophthalmol*. 2020;48:927–937.
 - Shah PN et al. Inter-rater reliability of proliferative diabetic retinopathy assessment on wide-field OCT-angiography and fluorescein angiography. *Transl Vis Sci Technol*. 2023;12(7):13.
-- Deák GG et al. Comparison of optical coherence tomography vs. fluorescein angiography-based macular neovascularization classifications in age-related macular degeneration. *Sci Rep*. 2025;15:87576 (doi:10.1038/s41598-025-87576-6).
+- Deák GG et al. Comparison of optical coherence tomography vs. fluorescein angiography-based macular neovascularization classifications in age-related macular degeneration. *Sci Rep*. 2025;15:4303 (doi:10.1038/s41598-025-87576-6).
 - Gan Y et al. Novel quantitative OCTA biomarkers of choroidal neovascularization and associations with disease activity and etiology. *Transl Vis Sci Technol*. 2026;15(3):10.
 - Hsu CR et al. Combined quantitative and qualitative optical coherence tomography angiography biomarkers for predicting active neovascular age-related macular degeneration. *Sci Rep*. 2021;11:18068.
 
