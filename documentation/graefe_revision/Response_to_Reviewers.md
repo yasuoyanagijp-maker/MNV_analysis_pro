@@ -37,8 +37,8 @@ We have added a Key Messages box on the Title Page, structured as requested.
 
 **Response:**  
 We agree. Throughout the Abstract, Results, Discussion, and Conclusion we have:
-1. Clarified that median score proximity to 50 after median-anchored normalization is a mathematical consequence of the scaling procedure, not evidence of biological equivalence across devices (see Reviewer 2, Comment 1).
-2. Softened language regarding “pathophysiological classification” and clinical decision-making (see Reviewer 2, Comment 3); **Tables 4–5** rewritten accordingly.
+1. Clarified that median score proximity to 50 after median-anchored normalization is a mathematical consequence of the scaling procedure, not evidence of biological equivalence across devices (see Reviewer 2, Comment 1). The Abstract still reports medians near 50 and non-significant Kruskal–Wallis tests under the standardized reporting framework; Discussion and Limitations state explicitly that this does not establish cross-device biological equivalence.
+2. Replaced “pathophysiological classification” with morphology-derived interpretive categories and reframed clinical utility as requiring future outcome-linked studies (see Reviewer 2, Comment 3); **Tables 4–5** rewritten accordingly.
 3. Expanded the Limitations section to address circularity of median-anchored normalization, absence of longitudinal clinical anchors, anonymized cohort without detailed baseline demographics, reproducibility scope (multi-rater inter-observer primary, with same-operator intra-observer test–retest as a supplement; see Reviewer 2, Comment 4), and the need for multi-center external validation.
 4. Restored and notation-revised **Tables 1–5**. Tables are provided as a **separate Word file** (`MNV_Analysis_YY_rev1_tables.docx`); the manuscript body cites Tables 1–5 in text only. Figure legends for Figures 1–3 are in a separate file (`MNV_Analysis_YY_rev1_figure_legends.docx`). **Table 1** uses columns Variable | Description | Inter-rater ICC(2,1) | Intra-rater ICC(2,1), with κ in the corresponding columns for morphological subtypes (see Reviewer 2, Comment 4).
 
@@ -59,7 +59,7 @@ We thank the Reviewer for these suggestions.
 
 1. **New schematic figure.** We have added a new figure (Figure 2 in the revised manuscript) illustrating the end-to-end processing workflow: freehand ROI → iterative ROI refinement → hybrid multiscale vessel enhancement (Frangi/tubeness + Laplacian of Gaussian) → Phansalkar adaptive binarization → morphological refinement → skeletonization → boundary-branch exclusion → quantitative metrics and standardized scores. The original multi-device segmentation examples remain as Figure 1.
 
-2. **Rationale for Phansalkar rather than global Otsu.** We have expanded the Methods (Binarization subsection). After Frangi/LoG enhancement, MNV vessel maps retain spatially heterogeneous background intensity arising from projection artifacts, signal attenuation, and lesion-internal contrast variation. Global Otsu thresholding assumes a bimodal intensity histogram with a single global cut-point and therefore tends to erode fine peripheral capillaries or, conversely, to include background speckles when lesion and background overlap. Phansalkar adaptive local thresholding estimates a local mean/SD-based threshold within a resolution-calibrated window (approximately 24 µm local radius; k = 0.1, R = 0), preserving locally contrasted fine vessels while suppressing regional background drift. Although Phansalkar thresholding is widely recognized in choriocapillaris flow-deficit analysis, the same property—robustness to local intensity non-uniformity—is advantageous for enhanced MNV vessel maps on the outer-retina/avascular complex slab. Our implementation follows the ImageJ Auto Local Threshold (Phansalkar) convention used in the original macro. We now explicitly acknowledge that Otsu remains common for relatively homogeneous SCP/DCP en-face slabs and state why we preferred a local adaptive method for this MNV application.
+2. **Rationale for Phansalkar rather than global Otsu.** We have expanded the Methods (Binarization subsection). After Frangi/LoG enhancement, MNV vessel maps retain spatially heterogeneous background intensity arising from projection artifacts, signal attenuation, and lesion-internal contrast variation. Global Otsu thresholding assumes a bimodal intensity histogram with a single global cut-point and therefore tends to erode fine peripheral capillaries or, conversely, to include background speckles when lesion and background overlap. Phansalkar adaptive local thresholding estimates a local mean/SD-based threshold within a resolution-calibrated window (approximately 24 µm local radius; k = 0.1, R = 0), preserving locally contrasted fine vessels while suppressing regional background drift. Although Phansalkar thresholding is widely recognized in choriocapillaris flow-deficit analysis, the same property—robustness to local intensity non-uniformity—is advantageous for enhanced MNV vessel maps on the outer-retina/avascular complex slab. Methods note that the analytical framework was initially implemented as an ImageJ macro and later in Python; our Phansalkar parameters follow the ImageJ Auto Local Threshold (Phansalkar) convention used in the original macro. The Abstract and Conclusion describe the submitted system as Python-based. We now explicitly acknowledge that Otsu remains common for relatively homogeneous SCP/DCP en-face slabs and state why we preferred a local adaptive method for this MNV application.
 
 **Changes made:**
 - New Figure 2 (workflow schematic) with legend.
@@ -80,10 +80,10 @@ We thank Reviewer 2 for the rigorous methodological critique. We have undertaken
 We agree. Mapping each stratum’s median to 50 is by construction; therefore median values near 50 after normalization cannot be interpreted as empirical proof of biological equivalence across devices. Under the Standardized Caliber Uniformity Score, between-stratum Kruskal–Wallis tests for Complexity, Caliber, and Maturity are non-significant (ε² ≈ 0; see Comment 5)—but that pattern still does not establish biological equivalence, because median-anchored transforms and locked cuts can attenuate stratum-mean contrasts by design. In all cases, medians near 50 are a mathematical consequence of the transform and do not imply that scores are biologically comparable across devices/FOV strata.
 
 **Changes made:**
-- Abstract, Results (“Stratum-Standardized Scores…”), and Discussion have been rewritten to state that piecewise-linear normalization is a **within-stratum scaling procedure** intended to place scores on a common 0–100 reporting scale for rule-based classification thresholds, **not** a demonstration of cross-device biological equivalence.
+- Results and Discussion/Limitations now state that piecewise-linear normalization is a **within-stratum scaling procedure** intended to place scores on a common 0–100 reporting scale for rule-based classification thresholds, **not** a demonstration of cross-device biological equivalence. The Abstract reports standardized scores on that common reporting scale (medians near 50) together with non-significant between-stratum Kruskal–Wallis tests; the non-equivalence caveat is stated explicitly in the Discussion and Limitations rather than as Abstract-only claim language.
 - We no longer describe median≈50 as “empirical evidence” that device-dependent scaling was removed while “preserving biological information,” and we no longer claim that standardized scores are statistically indistinguishable or biologically equivalent across strata.
-- **Table 3** rewritten: primary endpoint is the Standardized Caliber Uniformity Score with Kruskal–Wallis H/p plus ε² and bootstrap 95% CIs. Original PCA-Caliber Table 3 medians/p-values are no longer the primary table content.
-- Retained and clarified the non-circular elements that remain informative: (i) large between-device differences in **raw** metrics (**Table 2**); (ii) consistency of PCA structure (PC1 loadings and explained variance) across strata; (iii) within-stratum score distributions by morphological category after expert comparison.
+- **Table 3** rewritten: primary endpoint is the Standardized Caliber Uniformity Score with Kruskal–Wallis H/p plus ε² and bootstrap 95% CIs. Original PCA-based Caliber Uniformity Table 3 medians/p-values are no longer the primary table content (PCA Caliber Uniformity remains a non-primary legacy definition mentioned only in Methods context).
+- Retained and clarified the non-circular elements that remain informative: (i) large between-device differences in **raw** metrics (**Table 2**); (ii) consistency of Complexity PCA structure (PC1 loadings and explained variance) across strata; (iii) within-stratum score distributions by morphological category after expert comparison.
 - Title/aim language adjusted from “device-independent quantification” toward “stratum-standardized scoring for cross-device reporting.”
 
 ### Comment 2 — Lack of accuracy assessment for automated morphological classification
@@ -126,11 +126,11 @@ We have also replaced wording such as “validated automated classification” w
 We agree. This anonymized, cross-sectional, treatment-naïve dataset does not contain fluid status, treatment response, or longitudinal outcomes; such data cannot be added for this revision.
 
 **Changes made:**
-- Replaced “pathophysiological classification/states” with **“morphology-derived interpretive categories”** (Active-pattern, Mature-quiescent-pattern, Transitional-pattern, Arteriolarized-pattern) throughout, including the title, Abstract, Methods, Results, Discussion, and Conclusion.
+- Replaced “pathophysiological classification/states” with **“morphology-derived interpretive categories”** (Active-pattern, Mature-quiescent-pattern, Transitional-pattern, Arteriolarized-pattern) in the title, Methods, Results, Tables 4–5, Discussion, and Conclusion. The Abstract presents these as morphology-derived interpretive labels/pattern states rather than clinically validated pathophysiological classes.
 - **Table 4:** removed the original “Pathophysiological State” column; subtype counts/percentages restored.
 - **Table 5:** retitled/rewritten as a morphology-derived interpretive mapping (Primary/Secondary **interpretive category** columns); no pathophysiological-state wording.
 - Explicitly state that these labels are **hypothesis-generating**, based on quantitative morphology and published morphological criteria, and are **not** clinically validated disease-behavior classes.
-- Softened statements implying improved clinical decision-making or prognostic stratification pending outcome-linked studies.
+- Discussion now frames these categories as a **framework for future outcome-linked studies** aimed at clarifying any role in clinical decision-making and prognostic stratification; Abstract Conclusion and Conclusion state that future outcome-linked and multi-center evaluations are required to establish clinical utility.
 
 ### Comment 4 — Missing inter- and intra-observer reproducibility
 
@@ -139,7 +139,7 @@ We agree. This anonymized, cross-sectional, treatment-naïve dataset does not co
 **Response:**
 We agree that ROI-dependent variability should be quantified. For this revision we assessed **inter-observer reproducibility** with **three independent operators** who each performed freehand ROI delineation on the same set of lesions (**n = 46** complete cases matched across all three observers), with subsequent fully automated processing unchanged. We report **multi-rater ICCs** (two-way random-effects, absolute agreement, single measures — ICC(2,1); Shrout & Fleiss; McGraw & Wong) for lesion area and for Standardized Vascular Complexity Score, the Standardized Caliber Uniformity Score, and Maturity Index recomputed from that Caliber score, with pairwise ICCs and a multilevel variance-component ICC as complementary summaries. Interpretive bands follow published guidance (poor <0.50; moderate 0.50–0.75; good 0.75–0.90; excellent >0.90; Koo & Li).
 
-In the revised manuscript, the primary Caliber Uniformity endpoint is the Standardized Caliber Uniformity Score based on NV Diameter CV and Dilated vessel % (weights 0.75 / 0.25; stratum-specific min/median/max piecewise maps). An initial PCA-based Caliber Uniformity Score from the original submission showed suboptimal inter-observer concordance and was replaced by this standardized definition (Methods).
+In the revised manuscript, the primary Caliber Uniformity endpoint is the **Standardized Caliber Uniformity Score** based on NV Diameter CV and Dilated vessel % (weights 0.75 / 0.25; stratum-specific min/median/max piecewise maps). An initial PCA-based Caliber Uniformity Score from the original submission showed suboptimal inter-observer concordance and was replaced by this standardized definition (Methods); the primary reported Caliber ICC is therefore **0.770**, not the legacy PCA-based Caliber ICC.
 
 **Primary results (3-rater ICC(2,1), n = 46):**
 
@@ -147,10 +147,10 @@ In the revised manuscript, the primary Caliber Uniformity endpoint is the Standa
 |--------|----------|--------|
 | MNV Area (mm²) | 0.859 | 0.680–0.930 |
 | Standardized Vascular Complexity Score | 0.807 | 0.660–0.890 |
-| Caliber Uniformity Score | 0.770 | 0.660–0.860 |
-| Maturity Index | 0.593 | 0.430–0.730 |
+| Standardized Caliber Uniformity Score | 0.770 | 0.660–0.860 |
+| Maturity Index (from Caliber) | 0.593 | 0.430–0.730 |
 
-Lesion area, Complexity Score, and the Standardized Caliber Uniformity Score showed good inter-observer agreement on conventional ICC benchmarks; Maturity Index derived from that Caliber score was moderate.
+Lesion area, Complexity Score, and the Standardized Caliber Uniformity Score showed good inter-observer agreement on conventional ICC benchmarks; Maturity Index derived from that Caliber score was moderate (ICC(2,1) **0.593**).
 
 As prompted by the Reviewer, we examined metric-specific reproducibility more closely. The primary Standardized Caliber Uniformity Score showed good inter-observer agreement (ICC(2,1) 0.770). Multi-device ICC spanning all three platforms was not available for this revision (all 46 images were 3×3 mm).
 
@@ -160,8 +160,8 @@ As prompted by the Reviewer, we examined metric-specific reproducibility more cl
 |--------|----------|--------|
 | MNV Area (mm²) | 0.979 | 0.962–0.988 |
 | Standardized Vascular Complexity Score | 0.950 | 0.913–0.973 |
-| Caliber Uniformity Score | 0.925 | 0.871–0.959 |
-| Maturity Index | 0.917 | 0.857–0.954 |
+| Standardized Caliber Uniformity Score | 0.925 | 0.871–0.959 |
+| Maturity Index (from Caliber) | 0.917 | 0.857–0.954 |
 
 Within-rater agreement was excellent for Area, Complexity Score, Caliber Uniformity, and Maturity Index (all ICC(2,1) ≥ 0.917). These intra-observer estimates support within-operator reproducibility under a fixed score definition; they supplement, and do not replace, the three-observer inter-observer ICCs as the primary multi-rater reproducibility claim.
 
@@ -172,7 +172,7 @@ Within-rater agreement was excellent for Area, Complexity Score, Caliber Uniform
 *Non-significant Kruskal–Wallis p-values do not establish equivalence. A formal equivalence testing framework (e.g., TOST with pre-specified margins) or at minimum effect sizes with confidence intervals should replace the current “non-significant therefore comparable” interpretation.*
 
 **Response:**  
-We agree. Absence of a statistically significant Kruskal–Wallis test does not demonstrate equivalence. We now report Kruskal–Wallis H, p, and ε² with bootstrap 95% CIs (10 000 within-stratum resamples) for the Standardized Caliber Uniformity Score used as the primary Caliber endpoint (NV Diameter CV + Dilated vessel %; Maturity Index recomputed from that Caliber score; Complexity Score unchanged), on the primary analysis set (n = 112: large = 49, small = 33, small_3mm = 30):
+We agree. Absence of a statistically significant Kruskal–Wallis test does not demonstrate equivalence. We now report Kruskal–Wallis H, p, and ε² with bootstrap 95% CIs (10 000 within-stratum resamples) for the Standardized Caliber Uniformity Score used as the primary Caliber endpoint (NV Diameter CV + Dilated vessel %; Maturity Index recomputed from that Caliber score; Complexity Score unchanged), on the primary analysis set (n = 112: large = 49, small = 33 Optovue Solix, small_3mm = 30). Methods and Supplementary Table S1 also note that the Optovue Solix Complexity percentile reference cohort included 34 lesions, whereas this primary analysis batch includes 33 in that stratum.
 
 | Metric | H | p | ε² | 95% CI | Medians (L / S / S3) |
 |--------|---|---|-----|--------|----------------------|
@@ -230,7 +230,7 @@ The Abstract, Introduction, Discussion, **Tables 1–5**, and figure legends now
 | Masked expert morphological grading vs automated labels (weighted κ) | Done — agreement assessment (not “validation”); n=54; 57.4%; κ=0.507 (95% CI 0.222–0.714); Glomerular/Seafan merge 75.9%, κ=0.682; confusion matrix in Suppl |
 | Inter-observer multi-rater ICC (3 operators, n=46; area + scores) | Done — ICC(2,1): area 0.859; Complexity Score 0.807; Caliber Uniformity 0.770; Maturity 0.593; also listed in Table 1 |
 | Effect sizes (+ CIs) for between-stratum standardized scores | Added — under Standardized Caliber Uniformity Score: all three scores NS (ε²≈0); not “all KW NS → equivalent” |
-| Softening of pathophysiology language; expanded Limitations | Completed |
+| Morphology-derived (not pathophysiological) framing; clinical utility deferred to future outcome-linked studies; expanded Limitations | Completed |
 | Terminology unification; reference deduplication; Optovue correction; Table cleanup | Completed |
 | Intra-observer test–retest (YY Session1 vs Session2, n=46); longitudinal clinical anchors; full baseline demographics | Intra done — ICC(2,1): area 0.979; Complexity Score 0.950; Caliber 0.925; Maturity 0.917 under same standardized definition applied to both sessions; also listed in Table 1. Clinical anchors / full demographics not feasible in this anonymized dataset — listed as Limitations |
 
