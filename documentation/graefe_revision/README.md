@@ -9,6 +9,7 @@ Author navigation map for `documentation/graefe_revision/` (tidied **2026-08-03*
 | Need / 用途 | Go here / 場所 |
 |------|---------|
 | **提出スナップショット（触らない）** | [`submission_package_20260731/`](submission_package_20260731/) — see `README_提出内容.txt`；**提出用 docx はここだけ** |
+| **本番クエリ再アップ用（2026-08-07）** | [`production_fixes_20260807/`](production_fixes_20260807/) — ESM PDF / Figure1 / Table5 引用 / 返信ドラフト |
 | **初回提出原稿・図表（original）** | [`original_submission/`](original_submission/) |
 | **改訂作業 SoT (rev1 markdown)** | Root: `MNV_Analysis_YY_rev1.md`, `Response_to_Reviewers.md`, `Supplementary_*.md`, tables / legends `.md` |
 | **内部メモ・変更履歴** | [`working/`](working/) — NOTES / CHANGELOG / PHI audit / Table2 helper / ref renumber map |
@@ -35,6 +36,7 @@ Reader-facing Caliber term: **Standardized Caliber Uniformity Score** (device-/s
 documentation/graefe_revision/
 ├── README.md                          ← this map（日英）
 ├── submission_package_20260731/       ← FROZEN journal pack（docx + md 提出コピー；中身は整理しない）
+├── production_fixes_20260807/         ← 本番クエリ再アップ用（ESM PDF / Fig1 / Table5 引用）
 ├── original_submission/               ← 初回提出の原本
 ├── MNV_Analysis_YY_rev1.md            ← File 3 編集 SoT（docx は package のみ）
 ├── MNV_Analysis_YY_rev1_tables.md     ← Tables 1–5 SoT
