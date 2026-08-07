@@ -60,7 +60,7 @@ async def get_mnv_view(ctx: AppContext):
         "Ready to analyze." if scan_path else "Please select an image.",
         color=TEXT_MUTED,
     )
-    progress_bar = ft.ProgressBar(width=400, value=0, visible=False)
+    progress_bar = ft.ProgressBar(width=320, value=0, visible=False)
 
     async def run_analysis(e=None):
         if not scan_path:
@@ -239,12 +239,12 @@ async def get_mnv_view(ctx: AppContext):
                             src="",
                             src_base64=blended_b64,
                             fit=ft.ImageFit.CONTAIN,
-                            width=300,
-                            height=300,
+                            width=240,
+                            height=240,
                         ),
                         border=ft.border.all(2, PRIMARY),
                         border_radius=10,
-                        padding=10,
+                        padding=6,
                         bgcolor=Colors.BLACK,
                     )
         except Exception as e:
@@ -261,12 +261,12 @@ async def get_mnv_view(ctx: AppContext):
                         src="",
                         src_base64=preview_b64,
                         fit=ft.ImageFit.CONTAIN,
-                        width=300,
-                        height=300,
+                        width=240,
+                        height=240,
                     ),
                     border=ft.border.all(2, Colors.AMBER_400),
                     border_radius=10,
-                    padding=10,
+                    padding=6,
                     bgcolor=Colors.BLACK,
                 )
         except Exception:
@@ -312,26 +312,29 @@ async def get_mnv_view(ctx: AppContext):
             [
                 ft.Column(
                     [
-                        ft.Icon(Icons.UPLOAD_FILE, color=PRIMARY),
-                        ft.Text("Setup", size=12),
+                        ft.Icon(Icons.UPLOAD_FILE, color=PRIMARY, size=22),
+                        ft.Text("Setup", size=11),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=2,
                 ),
-                ft.Container(width=100, height=2, bgcolor=PRIMARY),
+                ft.Container(width=72, height=2, bgcolor=PRIMARY),
                 ft.Column(
                     [
-                        ft.Icon(Icons.HUB_ROUNDED, color=PRIMARY),
-                        ft.Text("VD pipeline", size=12),
+                        ft.Icon(Icons.HUB_ROUNDED, color=PRIMARY, size=22),
+                        ft.Text("VD pipeline", size=11),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=2,
                 ),
-                ft.Container(width=100, height=2, bgcolor=Colors.with_opacity(0.3, PRIMARY)),
+                ft.Container(width=72, height=2, bgcolor=Colors.with_opacity(0.3, PRIMARY)),
                 ft.Column(
                     [
-                        ft.Icon(Icons.AUTO_AWESOME, color=TEXT_MUTED),
-                        ft.Text("Results", size=12),
+                        ft.Icon(Icons.AUTO_AWESOME, color=TEXT_MUTED, size=22),
+                        ft.Text("Results", size=11),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=2,
                 ),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
@@ -341,26 +344,29 @@ async def get_mnv_view(ctx: AppContext):
             [
                 ft.Column(
                     [
-                        ft.Icon(Icons.UPLOAD_FILE, color=PRIMARY),
-                        ft.Text("Setup", size=12),
+                        ft.Icon(Icons.UPLOAD_FILE, color=PRIMARY, size=22),
+                        ft.Text("Setup", size=11),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=2,
                 ),
-                ft.Container(width=100, height=2, bgcolor=PRIMARY),
+                ft.Container(width=72, height=2, bgcolor=PRIMARY),
                 ft.Column(
                     [
-                        ft.Icon(Icons.CROP_FREE, color=PRIMARY),
-                        ft.Text("ROI", size=12),
+                        ft.Icon(Icons.CROP_FREE, color=PRIMARY, size=22),
+                        ft.Text("ROI", size=11),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=2,
                 ),
-                ft.Container(width=100, height=2, bgcolor=Colors.with_opacity(0.3, PRIMARY)),
+                ft.Container(width=72, height=2, bgcolor=Colors.with_opacity(0.3, PRIMARY)),
                 ft.Column(
                     [
-                        ft.Icon(Icons.AUTO_AWESOME, color=TEXT_MUTED),
-                        ft.Text("Processing", size=12),
+                        ft.Icon(Icons.AUTO_AWESOME, color=TEXT_MUTED, size=22),
+                        ft.Text("Processing", size=11),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=2,
                 ),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
@@ -370,26 +376,26 @@ async def get_mnv_view(ctx: AppContext):
     return ft.Container(
         content=ft.Column(
             [
-                ft.Text(step_title, size=32, weight=FontWeight.BOLD, color=Colors.WHITE),
-                ft.Text(help_line, color=TEXT_MUTED),
-                ft.Container(height=20),
+                ft.Text(step_title, size=22, weight=FontWeight.BOLD, color=Colors.WHITE),
+                ft.Text(help_line, color=TEXT_MUTED, size=12),
+                ft.Container(height=8),
                 progression,
-                ft.Container(height=10),
+                ft.Container(height=6),
                 ft.Container(
                     content=ft.Column(
                         [
                             img_control,
-                            ft.Text(target_name, size=16, color=Colors.WHITE),
-                            ft.Text(roi_status_txt, size=12, color=roi_status_clr),
-                            ft.Container(height=10),
+                            ft.Text(target_name, size=13, color=Colors.WHITE),
+                            ft.Text(roi_status_txt, size=11, color=roi_status_clr),
+                            ft.Container(height=4),
                             auto_start_btn,
                             status_text,
                             progress_bar,
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=15,
+                        spacing=8,
                     ),
-                    padding=40,
+                    padding=ft.padding.symmetric(horizontal=24, vertical=16),
                     bgcolor=(
                         Colors.with_opacity(0.05, Colors.AMBER_400)
                         if is_vd
@@ -403,14 +409,15 @@ async def get_mnv_view(ctx: AppContext):
                             else Colors.with_opacity(0.2, PRIMARY)
                         ),
                     ),
-                    border_radius=20,
-                    width=800,
+                    border_radius=14,
+                    width=720,
                 ),
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             scroll=ft.ScrollMode.ADAPTIVE,
+            spacing=4,
         ),
-        padding=40,
+        padding=ft.padding.symmetric(horizontal=24, vertical=16),
         expand=True,
         opacity=1.0,
     )

@@ -25,6 +25,9 @@ async def get_roi_view(ctx: AppContext):
 
     await ctx.add_to_console(f"ROI Subtraction Mode: loading {target_path}", "INFO")
 
+    # Display canvas size (compact header/padding target typical laptop viewport).
+    ROI_DISPLAY_MAX = 420
+
     # State Definition
     state = {
         "mode": "draw", # "draw" or "erase"
@@ -32,8 +35,8 @@ async def get_roi_view(ctx: AppContext):
         "current_mask": None,
         "history_masks": [],
         "scale": 1.0,
-        "new_w": 500,
-        "new_h": 500,
+        "new_w": ROI_DISPLAY_MAX,
+        "new_h": ROI_DISPLAY_MAX,
         "drag_start": None,
         "crop_start": None,
         "crop_end": None,
@@ -44,7 +47,13 @@ async def get_roi_view(ctx: AppContext):
     load_error_text = ft.Text("", color=Colors.RED_400, visible=False)
     # 1x1 transparent pixel placeholder to prevent "Image must have either src or src_base64 specified" error
     EMPTY_PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-    img_control = ft.Image(src="", src_base64=EMPTY_PX, fit=ft.ImageFit.CONTAIN, width=500, height=500)
+    img_control = ft.Image(
+        src="",
+        src_base64=EMPTY_PX,
+        fit=ft.ImageFit.CONTAIN,
+        width=ROI_DISPLAY_MAX,
+        height=ROI_DISPLAY_MAX,
+    )
     
     selection_box = ft.Container(
         border=ft.border.all(2, Colors.AMBER_400),
@@ -344,7 +353,7 @@ async def get_roi_view(ctx: AppContext):
         status_text.color = TEXT_MUTED
         ctx.page.update()
 
-    mode_tabs = ft.Column([crop_btn, draw_btn, erase_btn], spacing=10)
+    mode_tabs = ft.Column([crop_btn, draw_btn, erase_btn], spacing=6)
     action_tabs = ft.Row([confirm_crop_btn, redo_crop_btn], wrap=True, spacing=10)
 
     # GestureDetector wrapping the image and selection frame
@@ -352,7 +361,7 @@ async def get_roi_view(ctx: AppContext):
         content=ft.Stack([
             img_control,
             selection_box
-        ], width=500, height=500),
+        ], width=ROI_DISPLAY_MAX, height=ROI_DISPLAY_MAX),
         on_pan_start=on_pan_start,
         on_pan_update=on_pan_update,
         on_pan_end=on_pan_end,
@@ -364,28 +373,28 @@ async def get_roi_view(ctx: AppContext):
     loading_layer = ft.Container(
         content=ft.Column(
             [
-                ft.ProgressRing(width=50, height=50, stroke_width=4, color=PRIMARY),
-                ft.Text("画像を読み込み中...", color=TEXT_MUTED, size=14),
+                ft.ProgressRing(width=40, height=40, stroke_width=4, color=PRIMARY),
+                ft.Text("画像を読み込み中...", color=TEXT_MUTED, size=13),
                 load_error_text,
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=15,
+            spacing=10,
         ),
-        width=500, height=500,
+        width=ROI_DISPLAY_MAX, height=ROI_DISPLAY_MAX,
         alignment=ft.alignment.center,
         visible=True,
     )
     
     image_layer = ft.Container(
         content=gesture,
-        width=500, height=500,
+        width=ROI_DISPLAY_MAX, height=ROI_DISPLAY_MAX,
         visible=False,
     )
     
     img_stack = ft.Container(
         content=ft.Stack([loading_layer, image_layer]),
-        width=500, height=500,
+        width=ROI_DISPLAY_MAX, height=ROI_DISPLAY_MAX,
         bgcolor=Colors.BLACK,
         border_radius=10,
         border=ft.border.all(1, Colors.with_opacity(0.3, PRIMARY)),
@@ -472,7 +481,7 @@ async def get_roi_view(ctx: AppContext):
                 return
 
             orig_h, orig_w = base_img.shape[:2]
-            sc = min(500 / orig_w, 500 / orig_h)
+            sc = min(ROI_DISPLAY_MAX / orig_w, ROI_DISPLAY_MAX / orig_h)
             new_w, new_h = int(orig_w * sc), int(orig_h * sc)
             resized = cv2.resize(base_img, (new_w, new_h))
 
@@ -529,22 +538,23 @@ async def get_roi_view(ctx: AppContext):
         content=ft.Column([
             ft.Row([
                 ft.Column([
-                    ft.Text("Step 1: ROI selection", size=32, weight=FontWeight.BOLD, color=PRIMARY),
+                    ft.Text("Step 1: ROI selection", size=22, weight=FontWeight.BOLD, color=PRIMARY),
                     ft.Text(
                         batch_caption or "Draw ROI and click dark areas to erase background noise.",
                         color=Colors.AMBER_400 if is_reanalysis else TEXT_MUTED,
-                        max_lines=3,
+                        size=12,
+                        max_lines=2,
                         overflow=ft.TextOverflow.ELLIPSIS,
                     ),
-                ], expand=True),
+                ], expand=True, spacing=2),
                 ft.ElevatedButton(
                     "Confirm & Re-analyze" if is_reanalysis else "Confirm ROI & Proceed", 
                     icon=Icons.CHECK_CIRCLE,
-                    height=50, bgcolor=Colors.AMBER_400 if is_reanalysis else PRIMARY, 
+                    height=40, bgcolor=Colors.AMBER_400 if is_reanalysis else PRIMARY, 
                     color=Colors.BLACK, on_click=confirm_roi
                 )
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Divider(height=20, color=Colors.TRANSPARENT),
+            ft.Divider(height=8, color=Colors.TRANSPARENT),
             ft.Row([
                 img_stack,
                 ft.Column([
@@ -552,23 +562,23 @@ async def get_roi_view(ctx: AppContext):
                     mode_tabs,
                     action_tabs,
                     ft.Row([undo_button, reset_button]),
-                    ft.Divider(height=20, color=Colors.TRANSPARENT),
+                    ft.Divider(height=8, color=Colors.TRANSPARENT),
                     ft.Container(
                         content=ft.Column([
-                            ft.Row([ft.Icon(Icons.CROP_SQUARE, color=PRIMARY), ft.Text("1. ドラッグして囲む", color=Colors.WHITE)]),
-                            ft.Row([ft.Icon(Icons.BACKSPACE, color=Colors.RED_400), ft.Text("2. 黒い背景をクリックして削る", color=Colors.WHITE)]),
-                            ft.Row([ft.Icon(Icons.UNDO, color=Colors.AMBER_400), ft.Text("3. ミスしたらUndoで戻る", color=Colors.WHITE)])
-                        ], spacing=10),
-                        padding=20,
+                            ft.Row([ft.Icon(Icons.CROP_SQUARE, color=PRIMARY, size=18), ft.Text("1. ドラッグして囲む", color=Colors.WHITE, size=12)]),
+                            ft.Row([ft.Icon(Icons.BACKSPACE, color=Colors.RED_400, size=18), ft.Text("2. 黒い背景をクリックして削る", color=Colors.WHITE, size=12)]),
+                            ft.Row([ft.Icon(Icons.UNDO, color=Colors.AMBER_400, size=18), ft.Text("3. ミスしたらUndoで戻る", color=Colors.WHITE, size=12)])
+                        ], spacing=6),
+                        padding=12,
                         bgcolor=Colors.with_opacity(0.05, Colors.WHITE),
-                        border_radius=10
+                        border_radius=8
                     )
-                ], expand=True, spacing=15,
+                ], expand=True, spacing=10,
                    alignment=ft.MainAxisAlignment.START,
                    horizontal_alignment=ft.CrossAxisAlignment.START)
-            ], spacing=40, vertical_alignment=ft.CrossAxisAlignment.START),
-        ], spacing=10, scroll=ft.ScrollMode.ADAPTIVE),
-        padding=40,
+            ], spacing=24, vertical_alignment=ft.CrossAxisAlignment.START),
+        ], spacing=6, scroll=ft.ScrollMode.ADAPTIVE),
+        padding=ft.padding.symmetric(horizontal=24, vertical=16),
         expand=True,
         opacity=1.0,
     )

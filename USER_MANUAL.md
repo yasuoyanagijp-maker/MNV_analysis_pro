@@ -168,7 +168,7 @@ Web モードでは、フォルダ／画像の指定に **手動パス入力**�
 
 - 直近の解析結果やバッチ結果のサマリーを閲覧します。
 - **Save CSV** — ImageJ 互換の MNV / VD バッチ CSV を出力フォルダへ保存します。
-- **Export Metadata & Data** — 学習・解析ログ用に `export/{institution_id}/{lesion_id}/` へ `image_raw.png`・`mask_roi.png`・`meta.json` を書き出します（画像書き出しはバックグラウンド実行）。
+- **Export Metadata & Data** — **MedSAM 型**データ（`export/images|masks|meta/…` + `manifest.csv`）に加え、個別 PDF を **`export/pdfs/{institution_id}/{lesion_id}.pdf`** へ一括書き出します（バックグラウンド実行）。
 - データ量が多いと表示に時間がかかる場合があります。
 
 ### 10.1 MNV の主要スコア（Complexity / Uniformity）
@@ -212,7 +212,7 @@ Web モードでは、フォルダ／画像の指定に **手動パス入力**�
 | `src/api/main.py` | FastAPI バックエンド |
 | `uploads/` | アップロード用（実行時に作成されることがある） |
 | `backend.log` | API 起動をスクリプトでリダイレクトしている場合のログ例 |
-| `export/{institution_id}/{lesion_id}/` | Metadata & Data エクスポート（生画像・ROI マスク・meta.json） |
+| `export/images|masks|meta/{institution_id}/` + `manifest.csv` | Metadata & Data（MedSAM 型・OCTA MNV ROI） |
 
 ---
 
