@@ -43,7 +43,7 @@ async def get_login_view(ctx: AppContext):
             ft.dropdown.Option(code, f"{code} — {label}")
             for code, label in INSTITUTION_PRESETS
         ],
-        tooltip="Site code for export/{institution_id}/… (stable for multi-site ML). "
+        tooltip="Site code for export/images|masks|meta/{institution_id}/… (MedSAM multi-site). "
         "Locked installs can set ARIAKE_INSTITUTION_ID.",
     )
     institution_custom = ft.TextField(

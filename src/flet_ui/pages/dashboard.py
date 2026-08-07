@@ -281,22 +281,35 @@ async def get_dashboard_view(ctx: AppContext):
     async def show_folder_explorer(title="Select Folder", on_select=None):
         explorer_list = ft.ListView(expand=True, spacing=5)
         current_path_text = ft.Text(size=12, color=TEXT_MUTED, weight=FontWeight.BOLD)
-        selection_hint = ft.Text("", size=11, color=PRIMARY)
-        
+        how_to_text = ft.Text(
+            "How to select: open the folder that contains your images, then press Confirm "
+            "(do not need to click each image). If you click an image by mistake, Confirm "
+            "still uses that image’s folder for batch analysis.",
+            size=11,
+            color=TEXT_MUTED,
+        )
+        selection_hint = ft.Text(
+            "Current folder will be used on Confirm.",
+            size=11,
+            color=PRIMARY,
+        )
+
         state = {"path": str(Path.home()), "selected_file": None}
-        
+
         async def load_dir(target_path):
             state["path"] = target_path
             state["selected_file"] = None
-            selection_hint.value = ""
+            selection_hint.value = (
+                f"Ready: analyze images in this folder → {Path(target_path).name}"
+            )
             res = await ctx.client.list_dir(target_path)
             if "error" in res:
                 await ctx.add_to_console(f"Explorer Error: {res['error']}", "ERROR")
                 return
-            
+
             current_path_text.value = res.get("current_path")
             explorer_list.controls.clear()
-            
+
             async def handle_item_click(e):
                 path = e.control.data["path"]
                 is_dir = e.control.data["is_dir"]
@@ -304,13 +317,17 @@ async def get_dashboard_view(ctx: AppContext):
                     await load_dir(path)
                 else:
                     state["selected_file"] = path
-                    selection_hint.value = f"Selected file: {path}"
+                    parent_name = Path(path).parent.name
+                    selection_hint.value = (
+                        f"Image clicked — Confirm will analyze the whole folder "
+                        f"「{parent_name}」(not only this file)."
+                    )
                     ctx.page.update()
 
             for item in res.get("items", []):
                 icon = Icons.FOLDER_ROUNDED if item["is_dir"] else Icons.INSERT_DRIVE_FILE_OUTLINED
                 color = PRIMARY if item["is_dir"] else Colors.WHITE
-                
+
                 explorer_list.controls.append(
                     ft.ListTile(
                         leading=ft.Icon(icon, color=color),
@@ -326,6 +343,8 @@ async def get_dashboard_view(ctx: AppContext):
             ctx.page.close(dlg)
             if on_select:
                 try:
+                    # Prefer current folder; if a file was clicked, still pass that path —
+                    # load_batch_from_directory normalizes files → parent folder.
                     final_path = state.get("selected_file") or state["path"]
                     await on_select(final_path)
                 except Exception as ex:
@@ -341,13 +360,14 @@ async def get_dashboard_view(ctx: AppContext):
             title=ft.Text(title, size=20, weight=FontWeight.BOLD),
             content=ft.Container(
                 content=ft.Column([
+                    how_to_text,
                     current_path_text,
                     selection_hint,
                     ft.Divider(color=Colors.with_opacity(0.1, Colors.WHITE)),
-                    ft.Container(explorer_list, height=400, border=ft.border.all(1, Colors.with_opacity(0.1, Colors.WHITE)), border_radius=10),
+                    ft.Container(explorer_list, height=360, border=ft.border.all(1, Colors.with_opacity(0.1, Colors.WHITE)), border_radius=10),
                 ], spacing=10),
-                width=600,
-                height=500
+                width=620,
+                height=520
             ),
             actions=[
                 ft.TextButton("Cancel", on_click=lambda _: ctx.page.run_task(cancel_selection)),
@@ -360,7 +380,7 @@ async def get_dashboard_view(ctx: AppContext):
             ],
             bgcolor=GLASS_BG,
         )
-        
+
         ctx.page.open(dlg)
         await load_dir(state["path"])
 
@@ -791,14 +811,24 @@ async def get_dashboard_view(ctx: AppContext):
     async def load_batch_from_directory(fspath):
         if not fspath:
             return
-        
-        # Save original input directory for output path determination later
-        ctx.page.session.set("original_input_dir", fspath)
+
         """Build batch queue from a server-side directory path. Used by desktop FilePicker and web explorer."""
         p = Path(fspath)
+        # Forgiving UX: if the user clicked an image then Confirm, use its parent folder
+        # (common “normalize selection to container” pattern for batch tools).
+        if p.is_file():
+            parent = p.parent
+            await ctx.add_to_console(
+                f"File selected ({p.name}) — using parent folder for batch: {parent}",
+                "INFO",
+            )
+            p = parent
         if not p.is_dir():
             await ctx.add_to_console(f"Not a directory: {fspath}", "ERROR")
             return
+
+        # Save resolved input directory for output path determination later
+        ctx.page.session.set("original_input_dir", str(p.resolve()))
         await ctx.add_to_console(f"Scanning directory: {p.name}", "INFO")
 
         patterns = ["*.tif", "*.tiff", "*.png", "*.jpg", "*.jpeg"]
@@ -1260,8 +1290,13 @@ async def get_dashboard_view(ctx: AppContext):
                         border_radius=12,
                         border=ft.border.all(1, Colors.with_opacity(0.15, ACCENT)),
                     ),
-                    ft.Text("Click  'Select Folder →'  to open the folder browser.",
-                            size=12, color=TEXT_MUTED),
+                    ft.Text(
+                        "Click ‘Select Folder →’, open the folder that holds your OCTA images, "
+                        "then Confirm. You do not need to click individual images — "
+                        "if you do, the whole folder is still analyzed.",
+                        size=12,
+                        color=TEXT_MUTED,
+                    ),
                 ], spacing=14)
 
         def _step_lbl():
@@ -1351,24 +1386,42 @@ async def get_dashboard_view(ctx: AppContext):
     return ft.Container(
         content=ft.Column([
             ft.Container(
-                content=ft.Column([
-                    ft.Text("ARIAKE OCTA", size=55, weight=FontWeight.W_900, color=Colors.WHITE),
-                    ft.Text("Unified Analytics Command Center", size=18, color=TEXT_MUTED),
-                ]),
-                margin=ft.margin.only(bottom=50, top=20)
+                content=ft.Row(
+                    [
+                        ft.Column(
+                            [
+                                ft.Text(
+                                    "ARIAKE OCTA",
+                                    size=26,
+                                    weight=FontWeight.W_800,
+                                    color=Colors.WHITE,
+                                ),
+                                ft.Text(
+                                    "Unified Analytics Command Center",
+                                    size=12,
+                                    color=TEXT_MUTED,
+                                ),
+                            ],
+                            spacing=2,
+                            expand=True,
+                        ),
+                    ],
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                margin=ft.margin.only(bottom=12, top=0),
             ),
-            
+
             ft.Container(
                 content=ft.Column([
                     # ── Primary action ────────────────────────────────────
-                    ft.Text("Launch Analysis", size=20,
+                    ft.Text("Launch Analysis", size=16,
                             weight=FontWeight.BOLD, color=PRIMARY),
                     ft.Container(
                         visible=_is_web(),
                         content=ft.Text(
                             "Web mode: folder browser uses server-side paths. "
                             "Paths must exist on the host running the API.",
-                            size=12, color=TEXT_MUTED,
+                            size=11, color=TEXT_MUTED,
                         ),
                     ),
                     ft.Row(
@@ -1377,14 +1430,14 @@ async def get_dashboard_view(ctx: AppContext):
                                 content=ft.Column(
                                     [
                                         ft.Icon(Icons.ROCKET_LAUNCH_ROUNDED,
-                                                size=64, color=PRIMARY),
+                                                size=40, color=PRIMARY),
                                         ft.Text("Guided Analysis Wizard",
-                                                size=17, color=Colors.WHITE,
+                                                size=15, color=Colors.WHITE,
                                                 weight=FontWeight.BOLD),
                                         ft.Text(
-                                            "Select analysis type, scale, and options\n"
+                                            "Select analysis type, scale, and options "
                                             "before choosing your data folder.",
-                                            size=12, color=TEXT_MUTED,
+                                            size=11, color=TEXT_MUTED,
                                             text_align=ft.TextAlign.CENTER,
                                         ),
                                         ft.ElevatedButton(
@@ -1394,27 +1447,27 @@ async def get_dashboard_view(ctx: AppContext):
                                             color=Colors.BLACK,
                                             on_click=lambda _: ctx.page.run_task(
                                                 show_launch_wizard),
-                                            width=280,
+                                            width=260,
                                             style=ft.ButtonStyle(
                                                 shape=ft.RoundedRectangleBorder(
-                                                    radius=12)),
+                                                    radius=10)),
                                         ),
                                     ],
                                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                                    spacing=14,
+                                    spacing=8,
                                 ),
-                                padding=36,
+                                padding=ft.padding.symmetric(horizontal=24, vertical=18),
                                 bgcolor=Colors.with_opacity(0.07, PRIMARY),
                                 border=ft.border.all(
                                     2, Colors.with_opacity(0.35, PRIMARY)),
-                                border_radius=24,
-                                width=560,
+                                border_radius=16,
+                                width=520,
                             ),
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
                     ),
 
-                    ft.Divider(height=20, color=Colors.TRANSPARENT),
+                    ft.Divider(height=10, color=Colors.TRANSPARENT),
 
                     # ── Advanced Settings (collapsible) ───────────────────
                     ft.ExpansionTile(
@@ -1451,7 +1504,7 @@ async def get_dashboard_view(ctx: AppContext):
                                     vertical_alignment=ft.CrossAxisAlignment.END,
                                 ),
                                 ft.Text(
-                                    "Institution code → export/{institution_id}/{lesion_id}/ "
+                                    "Institution code → export/images|masks|meta/{institution_id}/ "
                                     "(Login name = rater_id). Override with env ARIAKE_INSTITUTION_ID.",
                                     size=11, color=TEXT_MUTED,
                                 ),
@@ -1485,15 +1538,15 @@ async def get_dashboard_view(ctx: AppContext):
                         ],
                     ),
 
-                    ft.Divider(height=20, color=Colors.TRANSPARENT),
+                    ft.Divider(height=10, color=Colors.TRANSPARENT),
                     batch_container,
-                ], spacing=14),
-                padding=30,
+                ], spacing=10),
+                padding=16,
                 bgcolor=GLASS_BG,
-                border_radius=20,
+                border_radius=16,
             )
-        ], scroll=ft.ScrollMode.ADAPTIVE),
-        padding=60,
+        ], scroll=ft.ScrollMode.ADAPTIVE, spacing=0),
+        padding=ft.padding.symmetric(horizontal=28, vertical=16),
         expand=True,
         opacity=1.0,
     )

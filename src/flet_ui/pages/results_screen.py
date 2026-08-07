@@ -34,7 +34,10 @@ from src.utils.batch_csv_export import (
     collect_batch_csv_exports,
     write_batch_csv_exports,
 )
-from src.utils.metadata_export import export_batch_metadata_bundles
+from src.utils.metadata_export import (
+    export_batch_metadata_bundles,
+    export_batch_pdf_reports,
+)
 from src.utils.institution_config import resolve_institution_id
 from src.utils.mnv_results_chart import (
     SUMMARY_TABLE_COLUMNS,
@@ -255,7 +258,7 @@ async def get_results_view(ctx: AppContext):
         ctx.page.update()
 
     async def on_export_metadata_data(_=None):
-        """Export image_raw + mask_roi + meta.json under export/{institution}/{lesion}/ (off UI thread)."""
+        """Export MedSAM bundles + individual PDFs under export/ (off UI thread)."""
         try:
             if not batch_results:
                 await ctx.add_to_console("Export Metadata: no results in this batch.", "WARN")
@@ -282,15 +285,13 @@ async def get_results_view(ctx: AppContext):
             rows = [dict(r) if isinstance(r, dict) else r for r in batch_results]
 
             await ctx.add_to_console(
-                f"Export Metadata & Data… institution={institution}",
+                f"Export Metadata & Data (+ PDFs)… institution={institution}",
                 "INFO",
             )
             ctx.page.update()
 
-            loop = asyncio.get_running_loop()
-            summary = await loop.run_in_executor(
-                None,
-                lambda: export_batch_metadata_bundles(
+            def _run_export():
+                meta_summary = export_batch_metadata_bundles(
                     rows,
                     institution_id=institution,
                     rater_id=rater,
@@ -299,33 +300,56 @@ async def get_results_view(ctx: AppContext):
                     session_mask_b64=mask_b64,
                     scale_mm_hint=scale_hint,
                     device_hint=str(device_hint) if device_hint else None,
-                ),
-            )
+                )
+                pdf_summary = export_batch_pdf_reports(
+                    rows,
+                    institution_id=institution,
+                    output_dir=target_dir,
+                )
+                return meta_summary, pdf_summary
+
+            loop = asyncio.get_running_loop()
+            summary, pdf_summary = await loop.run_in_executor(None, _run_export)
 
             n_ok = len(summary.get("exported") or [])
             n_skip = len(summary.get("skipped") or [])
             n_err = len(summary.get("errors") or [])
+            n_pdf = int(pdf_summary.get("exported_count") or 0)
+            n_pdf_err = int(pdf_summary.get("error_count") or 0)
             root = summary.get("export_root") or str(target_dir / "export")
+            pdf_root = pdf_summary.get("pdf_root") or str(Path(root) / "pdfs" / institution)
 
             lines = [
-                f"Wrote {n_ok} bundle(s) under:",
+                f"Wrote {n_ok} MedSAM bundle(s) under:",
                 str(root),
                 "",
-                "Each lesion: image_raw.png, mask_roi.png, meta.json",
-                f"rater_id = login username; institution_id = {summary.get('institution_id')}",
+                f"Wrote {n_pdf} PDF report(s) under:",
+                str(pdf_root),
+                "",
+                "MedSAM: export/images|masks|meta/{institution}/{lesion} + manifest.csv",
+                "PDFs:   export/pdfs/{institution}/{lesion}.pdf",
+                f"task=octa_mnv_roi; rater_id=login; institution_id={summary.get('institution_id')}",
             ]
             if n_skip:
                 lines.append("")
-                lines.append(f"Skipped ({n_skip}):")
+                lines.append(f"Skipped metadata ({n_skip}):")
                 for s in (summary.get("skipped") or [])[:8]:
-                    lines.append(f"  • {s.get('source')}: {s.get('reason')}")
+                    lines.append(
+                        f"  • {s.get('source_filename') or s.get('source')}: {s.get('reason')}"
+                    )
                 if n_skip > 8:
                     lines.append(f"  … and {n_skip - 8} more")
-            if n_err:
+            if n_err or n_pdf_err:
                 lines.append("")
-                lines.append(f"Errors ({n_err}):")
-                for s in (summary.get("errors") or [])[:5]:
-                    lines.append(f"  • {s.get('source')}: {s.get('reason')}")
+                lines.append(f"Errors (metadata {n_err}, PDF {n_pdf_err}):")
+                for s in (summary.get("errors") or [])[:4]:
+                    lines.append(
+                        f"  • meta {s.get('source_filename') or s.get('source')}: {s.get('reason')}"
+                    )
+                for s in (pdf_summary.get("errors") or [])[:4]:
+                    lines.append(
+                        f"  • pdf {s.get('source_filename') or s.get('source')}: {s.get('reason')}"
+                    )
 
             ctx.page.open(
                 ft.AlertDialog(
@@ -343,9 +367,14 @@ async def get_results_view(ctx: AppContext):
                 )
             )
 
-            level = "SUCCESS" if n_ok and not n_err else ("WARN" if n_ok else "ERROR")
+            level = (
+                "SUCCESS"
+                if (n_ok or n_pdf) and not n_err and not n_pdf_err
+                else ("WARN" if (n_ok or n_pdf) else "ERROR")
+            )
             await ctx.add_to_console(
-                f"Metadata export: {n_ok} ok, {n_skip} skipped, {n_err} errors → {root}",
+                f"Export: meta {n_ok} ok / {n_skip} skip / {n_err} err; "
+                f"PDF {n_pdf} ok / {n_pdf_err} err → {root}",
                 level,
             )
         except Exception as ex:
@@ -879,7 +908,7 @@ async def get_results_view(ctx: AppContext):
                         icon=Icons.FOLDER_SPECIAL_ROUNDED,
                         bgcolor=Colors.with_opacity(0.2, PRIMARY),
                         color=PRIMARY,
-                        tooltip="export/{institution_id}/{lesion_id}/ → image_raw, mask_roi, meta.json",
+                        tooltip="MedSAM images/masks/meta + bulk PDFs under export/pdfs/{institution_id}/",
                         on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                     ),
                 ], spacing=8),
@@ -913,16 +942,21 @@ async def get_results_view(ctx: AppContext):
             if vsl_only
             else "aligned with VDAnalyzer densities (%) & mainstreamer.run_vd_batch-style engine settings."
         )
+        _vd_fname = str(res.get("source_filename") or "VD Result")
         ctrls = [
             ft.Row(
                 [
                     ft.Column(
                         [
                             ft.Text(
-                                res.get("source_filename", "VD Result"),
-                                size=28,
-                                weight=FontWeight.BOLD,
+                                _vd_fname,
+                                size=14,
+                                weight=FontWeight.W_600,
                                 color=Colors.WHITE,
+                                max_lines=2,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                                selectable=True,
+                                tooltip=_vd_fname,
                             ),
                             ft.Text(
                                 f"Analysis type: VD | Timestamp: {res.get('analysis_timestamp', 'N/A')} — "
@@ -932,6 +966,7 @@ async def get_results_view(ctx: AppContext):
                             ),
                         ],
                         expand=True,
+                        spacing=4,
                     ),
                     ft.Row(
                         [
@@ -947,7 +982,7 @@ async def get_results_view(ctx: AppContext):
                                 icon=Icons.FOLDER_SPECIAL_ROUNDED,
                                 bgcolor=Colors.with_opacity(0.2, PRIMARY),
                                 color=PRIMARY,
-                                tooltip="export/{institution_id}/{lesion_id}/ → image_raw, mask_roi, meta.json",
+                                tooltip="MedSAM images/masks/meta + bulk PDFs under export/pdfs/{institution_id}/",
                                 on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                             ),
                             ft.ElevatedButton(
@@ -961,8 +996,11 @@ async def get_results_view(ctx: AppContext):
                             ),
                         ],
                         spacing=8,
+                        wrap=True,
                     ),
-                ]
+                ],
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                spacing=12,
             ),
             ft.Divider(height=20, color=Colors.TRANSPARENT),
         ]
@@ -1389,48 +1427,65 @@ async def get_results_view(ctx: AppContext):
         except:
             pass
 
+        # Compact filename (was size=28). Keep Row+Column like VD detail —
+        # a ListView child Column with no_wrap Text + wrap Row broke individual results layout.
+        _mnv_fname = str(res.get("source_filename") or "Result Detail")
         ctrls = [
             ft.Row(
                 [
                     ft.Column(
                         [
                             ft.Text(
-                                res.get("source_filename", "Result Detail"),
-                                size=28,
-                                weight=FontWeight.BOLD,
+                                _mnv_fname,
+                                size=14,
+                                weight=FontWeight.W_600,
                                 color=Colors.WHITE,
+                                max_lines=1,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                                selectable=True,
+                                tooltip=_mnv_fname,
                             ),
                             ft.Text(
                                 f"Analysis type: MNV | Timestamp: {res.get('analysis_timestamp', 'N/A')}",
                                 color=TEXT_MUTED,
+                                size=12,
                             ),
                         ],
                         expand=True,
+                        spacing=4,
                     ),
-                    ft.ElevatedButton(
-                        "Save PDF Report",
-                        icon=Icons.PICTURE_AS_PDF_ROUNDED,
-                        bgcolor=PRIMARY,
-                        color=Colors.BLACK,
-                        on_click=lambda _: ctx.page.run_task(on_save_individual_pdf, res),
+                    ft.Row(
+                        [
+                            ft.ElevatedButton(
+                                "Save PDF Report",
+                                icon=Icons.PICTURE_AS_PDF_ROUNDED,
+                                bgcolor=PRIMARY,
+                                color=Colors.BLACK,
+                                on_click=lambda _: ctx.page.run_task(on_save_individual_pdf, res),
+                            ),
+                            ft.ElevatedButton(
+                                "Export Metadata & Data",
+                                icon=Icons.FOLDER_SPECIAL_ROUNDED,
+                                bgcolor=Colors.with_opacity(0.2, PRIMARY),
+                                color=PRIMARY,
+                                tooltip="MedSAM images/masks/meta + bulk PDFs under export/pdfs/{institution_id}/",
+                                on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
+                            ),
+                            ft.ElevatedButton(
+                                "ROI再指定・再解析",
+                                icon=Icons.CROP_FREE,
+                                bgcolor=Colors.AMBER_400,
+                                color=Colors.BLACK,
+                                tooltip="ROI（抽出領域）を選択し直して、この画像の解析をやり直します",
+                                on_click=lambda _: ctx.page.run_task(on_reanalyze_mnv, idx),
+                            ),
+                        ],
+                        spacing=8,
+                        wrap=True,
                     ),
-                    ft.ElevatedButton(
-                        "Export Metadata & Data",
-                        icon=Icons.FOLDER_SPECIAL_ROUNDED,
-                        bgcolor=Colors.with_opacity(0.2, PRIMARY),
-                        color=PRIMARY,
-                        tooltip="export/{institution_id}/{lesion_id}/ → image_raw, mask_roi, meta.json",
-                        on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
-                    ),
-                    ft.ElevatedButton(
-                        "ROI再指定・再解析",
-                        icon=Icons.CROP_FREE,
-                        bgcolor=Colors.AMBER_400,
-                        color=Colors.BLACK,
-                        tooltip="ROI（抽出領域）を選択し直して、この画像の解析をやり直します",
-                        on_click=lambda _: ctx.page.run_task(on_reanalyze_mnv, idx),
-                    ),
-                ]
+                ],
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                spacing=12,
             )
         ]
 
