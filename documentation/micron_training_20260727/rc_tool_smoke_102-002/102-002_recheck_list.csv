@@ -1,0 +1,4 @@
+﻿Case,Visit,MatchKey,Metric,SiteReader,SecondReader,Value_site,Value_reader2,RPD_pct,Adopted,Rule
+102-002,Week1,102-002|Week1,MNV Area (mm2),Inoue,Inoda_ARIAKE,1.225063477,1.743156738,34.9094,NA,RPD>20%
+102-002,Week1,102-002|Week1,Vsl Area (mm2),Inoue,Inoda_ARIAKE,0.5588745117,0.8257104492,38.5438,NA,RPD>20%
+102-002,Week24,102-002|Week24,Caliber Uniformity Score (U2),Inoue,Inoda_ARIAKE,33.3882,50.252,40.3246,NA,RPD>20%

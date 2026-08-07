@@ -1,0 +1,26 @@
+# Example site-specific matching (YAML is documentation-only for now;
+# pass equivalent flags on the CLI until manifest runner is added.)
+
+rpd_threshold_pct: 20
+size_class: small_3mm   # or null to infer from File
+
+# When CSVs have explicit columns:
+case_col: null          # e.g. CaseID
+visit_col: null         # e.g. Visit
+
+# When IDs live in File names only (multi-center examples):
+# case_regex: '(?P<case>\\d{3}-\\d{3})'          # 102-001
+# case_regex: '(?P<case>[A-Z]{3}_\\d{5})'        # TOK_00012
+# case_regex: '(?P<case>SITE\\d+-\\d{4})'        # SITE01-0042
+
+site_label: FacilityReader
+reader2_label: CentralReader2
+
+outputs:
+  - adopted_values.csv
+  - recheck_list.csv
+  - summary.md
+
+notes: |
+  20%は測定誤差を許容しつつ、過度な除外を避けるために設定した。
+  Standalone app packaging: after input/output contract is frozen.

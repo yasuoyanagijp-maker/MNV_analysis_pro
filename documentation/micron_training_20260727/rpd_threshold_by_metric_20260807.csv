@@ -1,0 +1,25 @@
+﻿Metric,RPD_threshold_pct,n,RECHECK,OK,exclusion_rate_pct
+MNV Area (mm2),10.0,23,12,11,52.17
+MNV Area (mm2),20.0,23,4,19,17.39
+MNV Area (mm2),10_to_20_improvement,23,8,,66.67
+Vsl Area (mm2),10.0,23,6,17,26.09
+Vsl Area (mm2),20.0,23,3,20,13.04
+Vsl Area (mm2),10_to_20_improvement,23,3,,50.0
+Vsl Density (Vessel Area/MNV (%)),10.0,23,3,20,13.04
+Vsl Density (Vessel Area/MNV (%)),20.0,23,0,23,0.0
+Vsl Density (Vessel Area/MNV (%)),10_to_20_improvement,23,3,,100.0
+Caliber Uniformity Score (U2),10.0,23,7,16,30.43
+Caliber Uniformity Score (U2),20.0,23,2,21,8.7
+Caliber Uniformity Score (U2),10_to_20_improvement,23,5,,71.43
+Maturity Index (U2),10.0,23,2,21,8.7
+Maturity Index (U2),20.0,23,0,23,0.0
+Maturity Index (U2),10_to_20_improvement,23,2,,100.0
+Network Complexity Score,10.0,23,2,21,8.7
+Network Complexity Score,20.0,23,0,23,0.0
+Network Complexity Score,10_to_20_improvement,23,2,,100.0
+Fractal Dim,10.0,23,0,23,0.0
+Fractal Dim,20.0,23,0,23,0.0
+Fractal Dim,10_to_20_improvement,23,0,,0.0
+Tortuosity,10.0,23,0,23,0.0
+Tortuosity,20.0,23,0,23,0.0
+Tortuosity,10_to_20_improvement,23,0,,0.0

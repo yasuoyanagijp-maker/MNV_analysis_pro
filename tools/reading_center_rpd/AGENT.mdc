@@ -1,0 +1,38 @@
+---
+description: リーディングセンター二重読影・RPD20%採用値（施設CSV×第2読影CSV、U2必須、マイクロン3点出力）
+globs: tools/reading_center_rpd/**/*
+alwaysApply: false
+---
+
+# Reading Center RPD Adoption
+
+施設 CSV × 第2読影 CSV から採用値を出すときは、必ず次を使う。
+
+## 正本
+
+- ツール: `tools/reading_center_rpd/compute_adopted_from_dual_csv.py`
+- 手順: `tools/reading_center_rpd/PROCEDURE_JA.md`
+- README: `tools/reading_center_rpd/README.md`
+- 根拠メモ（トレーニング）: `documentation/micron_training_20260727/RPD20_根拠メモ_20260807.md`
+
+## 固定ルール
+
+1. 入力は常に **2本**（`--site-csv`, `--reader2-csv`）
+2. **U2 再計算は必須**（ツール内 Step1。スキップしない）
+3. 既定 **RPD ≤ 20%** → 算術平均、超過/欠損 → **NA**
+4. 説明文: 「20%は測定誤差を許容しつつ、過度な除外を避けるために設定した。」
+5. 出力はマイクロン向け3点:
+   - `*_adopted_values.csv`
+   - `*_recheck_list.csv`
+   - `*_summary.md`
+6. 単独アプリ化は仕様固定後（今は CLI）
+
+## 多施設突合
+
+- 列があれば `--case-col` / `--visit-col`
+- なければ File/ID から推定。施設固有は `--case-regex '(?P<case>...)'`
+
+## 実行
+
+リポジトリの `.venv/bin/python` で上記スクリプトを実行する。  
+再発明のワンオフスクリプトを増やさない。
