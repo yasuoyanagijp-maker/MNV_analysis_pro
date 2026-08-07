@@ -1,10 +1,12 @@
 # Caliber Uniformity U2 — packaging notes for release kits
 
 ## What changed
-- **Default** `Caliber Uniformity Score` = U2 (device-locked NV Diameter CV + Dilated %)
+- **Default** `Caliber Uniformity Score` = Standardized Caliber Uniformity Score (device-locked NV Diameter CV + Dilated %; internal name U2 / `caliber_u2`)
 - **Fallback** `Caliber Uniformity Score (PCA)` = previous Stability/PCA score
-- **Maturity Index** = `50 + (U2 − Complexity) / 2` (uses U2, not PCA)
+- **Maturity Index** = `50 + (Standardized Caliber − Complexity) / 2` (uses default Caliber, not PCA)
 - **Maturity Index (PCA)** = same formula with PCA Caliber
+
+**Main app / batch pipeline:** wired in `src/core/mnv_pipeline.py` (`_perform_pattern_classification`). CSV export columns live in `src/utils/mnv_imagej_csv.py`.
 
 Reference JSON: `resources/reference_metrics/caliber_u2_device_ref.json`
 

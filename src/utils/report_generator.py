@@ -557,7 +557,7 @@ def generate_pdf_report(data: dict, output_path: str) -> None:
     )
     _metrics_table_row(pdf, "End Density", _float_metric(pm, "endpoint_density"))
     _metrics_table_row(pdf, "Branch Density", _float_metric(pm, "branch_density"))
-    _metrics_table_row(pdf, "Uniformity", _round_fmt(data.get("stability_score", 0)))
+    _metrics_table_row(pdf, "Caliber Uniformity", _round_fmt(data.get("stability_score", 0)))
     _metrics_table_row(pdf, "Maturity Index", _round_fmt(data.get("maturity_index", 0)))
     pdf.ln(8)
 
