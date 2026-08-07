@@ -2,6 +2,8 @@
 
 **Do not push this branch to remote** (`graefe/major-revision-analyses` stays local unless you explicitly ask to push).
 
+**境界**: Graefe 改訂・提出・ICC・Response・S1 等は **本ツリーのみ**。Textbook Editor（第6章プルダウン・章ID・moumaku 節改行など）は `/Users/yy/.gemini/antigravity/scratch/dr-yanagi-content-studio`（GitHub `GA_Consensus`）で扱い、こちらに混ぜない。
+
 Author navigation map for `documentation/graefe_revision/` (tidied **2026-08-03**; parent decluttered same day). Analyses for Comment 2 / 4 / 5 and rev1 packet are **complete**. **`submission_package_20260731/` is the frozen submission snapshot — do not reshape it for cleanliness.**
 
 ## Quick start / どこに何があるか
