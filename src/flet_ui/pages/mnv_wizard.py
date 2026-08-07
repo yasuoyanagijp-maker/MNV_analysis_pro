@@ -143,6 +143,10 @@ async def get_mnv_view(ctx: AppContext):
                 except (TypeError, ValueError):
                     pass
                 result["fov_mm"] = result.get("scale_mm")
+                if not is_vd:
+                    result["mnv_present"] = True
+                    if not result.get("annotation_status"):
+                        result["annotation_status"] = "labeled"
 
             if ctx.page.session.get("is_reanalysis_mode"):
                 re_idx = ctx.page.session.get("reanalysis_index")
@@ -296,14 +300,15 @@ async def get_mnv_view(ctx: AppContext):
         roi_status_txt = "VD mode — ROI step skipped"
         roi_status_clr = PRIMARY
     else:
+        _roi_mask = ctx.page.session.get("roi_mask_b64")
         roi_status_txt = (
             "ROI selected"
-            if ctx.page.session.get("roi") or roi_mask_b64
+            if ctx.page.session.get("roi") or _roi_mask
             else "No ROI mask found"
         )
         roi_status_clr = (
             Colors.GREEN_400
-            if ctx.page.session.get("roi") or roi_mask_b64
+            if ctx.page.session.get("roi") or _roi_mask
             else Colors.RED_400
         )
 

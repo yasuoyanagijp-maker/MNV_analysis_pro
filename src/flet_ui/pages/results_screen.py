@@ -39,6 +39,7 @@ from src.utils.metadata_export import (
     export_batch_pdf_reports,
 )
 from src.utils.institution_config import resolve_institution_id
+from src.utils.mnv_absent import is_mnv_absent_result
 from src.utils.mnv_results_chart import (
     SUMMARY_TABLE_COLUMNS,
     build_batch_metric_chart_pdf,
@@ -714,13 +715,17 @@ async def get_results_view(ctx: AppContext):
             for r in batch_results
             if str(r.get("result_type") or "").upper() == "MNV"
         ]
-        nm = len(mnv_rows)
+        # Exclude MNV-absent skips from mean morphometrics (empty/zero would bias averages).
+        mnv_metric_rows = [r for r in mnv_rows if not is_mnv_absent_result(r)]
+        nm = len(mnv_metric_rows)
         avg_area = safe_round(
-            sum(r.get("mnv_area_mm2", 0) for r in mnv_rows) / nm if nm > 0 else 0,
+            sum(r.get("mnv_area_mm2", 0) or 0 for r in mnv_metric_rows) / nm if nm > 0 else 0,
             3,
         )
         avg_vd = safe_round(
-            sum(r.get("vessel_density", 0) for r in mnv_rows) / nm * 100 if nm > 0 else 0,
+            sum((r.get("vessel_density", 0) or 0) for r in mnv_metric_rows) / nm * 100
+            if nm > 0
+            else 0,
             2,
         )
 
@@ -1504,6 +1509,39 @@ async def get_results_view(ctx: AppContext):
                 )
             )
 
+        if is_mnv_absent_result(res):
+            ctrls.append(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Icon(Icons.REMOVE_CIRCLE_OUTLINE, color=Colors.WHITE),
+                                    ft.Text(
+                                        "MNV absent (skipped)",
+                                        color=Colors.WHITE,
+                                        weight=FontWeight.BOLD,
+                                    ),
+                                ],
+                                spacing=8,
+                            ),
+                            ft.Text(
+                                "No morphometrics. Empty (all-black) mask + mnv_present=false "
+                                "are stored for AI training. Quality of analysis = N/A "
+                                "(not Fail). CSV column «MNV present» = 0.",
+                                color=TEXT_MUTED,
+                                size=12,
+                            ),
+                        ],
+                        spacing=4,
+                    ),
+                    bgcolor=Colors.with_opacity(0.35, Colors.BLUE_GREY_700),
+                    padding=12,
+                    border_radius=10,
+                    margin=ft.margin.only(top=10),
+                )
+            )
+
         ctrls.extend([
             ft.Divider(height=20, color=Colors.TRANSPARENT),
             ft.Text(
@@ -1720,11 +1758,21 @@ async def get_results_view(ctx: AppContext):
     # Current QC step is for image index idx_mnv (0-based); last folder image => open combined summary next.
     is_final_mnv_image = awaiting_mnv_batch_qc and paths_mnv and (idx_mnv + 1 >= len(paths_mnv))
     ok_button_label = "OK — open final report" if is_final_mnv_image else "OK — next image"
-    qc_help_text = (
-        "これがフォルダ内の最後の画像です。OK で全件サマリー（個別詳細との切り替え・Combined CSV・各PDF）に進みます。"
-        if is_final_mnv_image
-        else "Review this result. OK continues to the next image (ROI again). Redo ROI reopens the ROI editor for the same file without keeping this run."
-    )
+    _cur = batch_results[selected_index] if (
+        awaiting_mnv_batch_qc and batch_results and 0 <= selected_index < len(batch_results)
+    ) else (batch_results[0] if batch_results else None)
+    if awaiting_mnv_batch_qc and is_mnv_absent_result(_cur):
+        qc_help_text = (
+            "MNV absent を記録しました（空マスク）。OK で陰性サンプルを確定し、最終サマリーへ進みます。"
+            if is_final_mnv_image
+            else "MNV absent を記録しました（空マスク）。OK で陰性サンプルを残して次の画像へ進みます。"
+        )
+    else:
+        qc_help_text = (
+            "これがフォルダ内の最後の画像です。OK で全件サマリー（個別詳細との切り替え・Combined CSV・各PDF）に進みます。"
+            if is_final_mnv_image
+            else "Review this result. OK continues to the next image (ROI again). Redo ROI reopens the ROI editor for the same file without keeping this run."
+        )
     if awaiting_mnv_batch_qc and paths_mnv:
         qc_banner = ft.Container(
             content=ft.Column(

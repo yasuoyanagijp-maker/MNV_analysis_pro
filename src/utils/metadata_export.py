@@ -13,10 +13,15 @@ Layout under the CSV target output dir (or app data root)::
 
   export/
     images/{institution_id}/{lesion_id}.png   — en-face without ROI overlay
-    masks/{institution_id}/{lesion_id}.png    — binary ROI mask (0/255)
-    meta/{institution_id}/{lesion_id}.json    — acquisition / rater metadata
+    masks/{institution_id}/{lesion_id}.png    — binary ROI mask (0/255);
+                                                all-zero when ``mnv_present=false``
+    meta/{institution_id}/{lesion_id}.json    — acquisition / rater / presence metadata
     pdfs/{institution_id}/{lesion_id}.pdf     — per-case analysis PDF (clinical archive)
     manifest.csv                              — MedSAM-ready path list (append/upsert)
+
+Negative / MNV-absent cases (user Skip): keep the paired mask file as an empty
+(all-zero) mask and set ``mnv_present=false`` in meta + manifest. Do **not** encode
+absence only in QC — QC remains Pass/Fail/N/A for analysis quality.
 
 Designed for multi-site Hold-out splits via ``institution_id``.
 """
@@ -37,9 +42,15 @@ from src.utils.app_paths import get_base_data_dir, sanitize_path_component
 from src.utils.cv2_path import imread_grayscale
 from src.utils.image_utils import ScaleManager
 from src.utils.institution_config import normalize_institution_id
+from src.utils.mnv_absent import (
+    ANNOTATION_STATUS_ABSENT,
+    SKIP_REASON_NO_CLEAR_MNV,
+    is_mnv_absent_result,
+    zero_mask_array,
+)
 from src.utils.vd_batch_csv import is_vd_result_row
 
-SOP_VERSION = "1.1"
+SOP_VERSION = "1.2"
 LAYOUT_ID = "medsam_v1"
 TASK_ID = "octa_mnv_roi"
 SESSION_LABEL = "initial"
@@ -58,6 +69,8 @@ MANIFEST_FIELDS = [
     "px_per_mm",
     "rater_id",
     "acquisition_date",
+    "mnv_present",
+    "annotation_status",
     "task",
     "layout",
 ]
@@ -229,8 +242,11 @@ def build_meta_dict(
     px_per_mm: float,
     rater_id: str,
     acquisition_date: str,
+    mnv_present: bool = True,
+    annotation_status: str = "labeled",
+    skip_reason: Optional[str] = None,
 ) -> Dict[str, Any]:
-    return {
+    meta: Dict[str, Any] = {
         "lesion_id": lesion_id,
         "institution_id": institution_id,
         "device": device,
@@ -246,7 +262,15 @@ def build_meta_dict(
         "layout": LAYOUT_ID,
         "modality": "OCTA",
         "label_type": "mnv_roi",
+        # Presence is a diagnosis/annotation label — not image QC (Pass/Fail).
+        "mnv_present": bool(mnv_present),
+        "annotation_status": annotation_status,
     }
+    if skip_reason:
+        meta["skip_reason"] = str(skip_reason)
+    if not mnv_present:
+        meta["negative_sample"] = True
+    return meta
 
 
 def resolve_export_root(output_dir: Optional[Path] = None) -> Path:
@@ -331,16 +355,22 @@ def export_result_metadata_bundle(
     if raw is None:
         raise ValueError(f"Failed to load en-face image: {source}")
 
+    absent = is_mnv_absent_result(result)
     mask = _load_roi_mask(
         result,
         session_mask_b64=session_mask_b64,
         target_shape=raw.shape[:2],
     )
+    if mask is None and absent:
+        # Negative samples: all-zero mask keeps MedSAM image/mask pairing.
+        mask = zero_mask_array(raw.shape[0], raw.shape[1])
     if mask is None:
         raise ValueError(
             f"ROI mask not available for {result.get('source_filename', '?')} "
             "(mask_path / mask_base64 missing)"
         )
+    if absent:
+        mask = np.zeros_like(mask)
 
     lesion_id = _lesion_id_from_result(result, source)
     fov = _fov_mm(result, scale_mm_hint=scale_mm_hint)
@@ -348,6 +378,20 @@ def export_result_metadata_bundle(
     pxpm = _px_per_mm(result, raw.shape[1], fov)
     device = _infer_device(stratum, result, device_hint=device_hint)
     acq = _acquisition_date(source, result)
+
+    mnv_present = False if absent else bool(result.get("mnv_present", True))
+    annotation_status = (
+        ANNOTATION_STATUS_ABSENT
+        if absent
+        else str(result.get("annotation_status") or "labeled")
+    )
+    skip_reason = None
+    if absent:
+        skip_reason = str(
+            result.get("skip_reason")
+            or (result.get("csv_metrics") or {}).get("skip_reason")
+            or SKIP_REASON_NO_CLEAR_MNV
+        )
 
     root = resolve_export_root(output_dir)
     export_root = root / "export"
@@ -367,6 +411,9 @@ def export_result_metadata_bundle(
         px_per_mm=pxpm,
         rater_id=rater_id or "Unknown",
         acquisition_date=acq,
+        mnv_present=mnv_present,
+        annotation_status=annotation_status,
+        skip_reason=skip_reason,
     )
     meta_path.parent.mkdir(parents=True, exist_ok=True)
     meta_path.write_text(
@@ -386,6 +433,8 @@ def export_result_metadata_bundle(
         "px_per_mm": f"{float(pxpm):.6g}",
         "rater_id": rater_id or "Unknown",
         "acquisition_date": acq,
+        "mnv_present": "1" if mnv_present else "0",
+        "annotation_status": annotation_status,
         "task": TASK_ID,
         "layout": LAYOUT_ID,
     }
@@ -492,6 +541,7 @@ def export_batch_pdf_reports(
     pdf_root.mkdir(parents=True, exist_ok=True)
 
     exported: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, str]] = []
     errors: List[Dict[str, str]] = []
 
     for result in batch_results or []:
@@ -500,6 +550,15 @@ def export_batch_pdf_reports(
         name = str(result.get("source_filename") or "?")
         if result.get("error") or result.get("status") == "failed":
             errors.append({"source_filename": name, "reason": "Failed analysis result"})
+            continue
+        if is_mnv_absent_result(result):
+            # Clinical PDF is optional for negatives; MedSAM image/mask/meta is the ML record.
+            skipped.append(
+                {
+                    "source_filename": name,
+                    "reason": "MNV absent — PDF skipped (meta/mask export still applies)",
+                }
+            )
             continue
         try:
             source = _resolve_source_path(result)
@@ -521,7 +580,9 @@ def export_batch_pdf_reports(
         "institution_id": inst,
         "pdf_root": str(pdf_root),
         "exported_count": len(exported),
+        "skipped_count": len(skipped),
         "error_count": len(errors),
         "exported": exported,
+        "skipped": skipped,
         "errors": errors,
     }

@@ -23,6 +23,7 @@ from src.utils.vd_batch_csv import is_vd_result_row
 SUMMARY_TABLE_COLUMNS = [
     "File",
     "Subtype",
+    "MNV present",
     "Pathophysiology",
     "Maturity Index",
     "Network Complexity Score",
@@ -38,6 +39,7 @@ _NON_NUMERIC_CSV = frozenset(
         "Subtype",
         "Pathophysiology",
         "Quality of analysis",
+        "MNV present",
         "FD quality reason",
         "FD box sizes",
         "Exclude from FD analysis",
