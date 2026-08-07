@@ -27,6 +27,10 @@ from core.pattern_classifier import (
     compute_overall_confidence,
     validate_combination_final,
 )
+from core.caliber_u2 import (
+    calculate_caliber_u2_score,
+    calculate_maturity_index,
+)
 from core.pattern_metrics import (
     apply_trunk_scale_correction,
     calculate_complexity_pca,
@@ -813,7 +817,14 @@ class MNVPipeline:
             self.logger.info("✓ Pattern Classification completed")
             self.logger.info(f"  Subtype: {results['mnv_subtype']}")
             self.logger.info(f"  Complexity Score: {results['complexity_score']:.1f}")
-            self.logger.info(f"  Stability Score: {results['stability_score']:.1f}")
+            self.logger.info(
+                f"  Caliber Uniformity Score: {results['stability_score']:.1f}"
+            )
+            if results.get("stability_score_pca") is not None:
+                self.logger.info(
+                    f"  Caliber Uniformity Score (PCA): "
+                    f"{float(results['stability_score_pca']):.1f}"
+                )
             self.logger.info(
                 f"  Maturity Index: {results.get('maturity_index', 0):.1f}"
             )
@@ -1294,13 +1305,14 @@ class MNVPipeline:
         complexity_ref = load_complexity_ref(size_class)
         trunk_score = apply_trunk_scale_correction(trunk_score_raw, complexity_ref)
 
-        # Phase 2: use normalized trunk score for stability too.
+        # Legacy PCA Caliber Uniformity (kept as optional / fallback column).
         radial_profile = spatial_results.get("radial_profile", {})
         diameters = (
             radial_profile.get("diameters")
             if isinstance(radial_profile, dict)
             else None
         )
+        stability_score_pca = float(spatial_results.get("stability_score", 50.0))
         if diameters is not None:
             try:
                 stability_with_norm_trunk = calculate_stability_metrics(
@@ -1308,10 +1320,33 @@ class MNVPipeline:
                     size_class=size_class,
                     trunk_score=trunk_score,
                 )
-                spatial_results["stability_score"] = float(stability_with_norm_trunk)
+                stability_score_pca = float(stability_with_norm_trunk)
             except Exception:
-                # keep spatial_results["stability_score"] as computed upstream
+                # keep upstream PCA stability_score
                 pass
+        spatial_results["stability_score_pca"] = stability_score_pca
+
+        # Default Caliber Uniformity = Standardized (device-/stratum-locked) score.
+        cv_diameter = float(skeleton_results.get("cv_diameter", float("nan")))
+        high_skew_pct = float(
+            skeleton_results.get("high_skew_percentage", float("nan"))
+        )
+        caliber_u2, caliber_u2_details = calculate_caliber_u2_score(
+            cv_diameter,
+            high_skew_pct,
+            size_class=size_class,
+        )
+        if np.isfinite(caliber_u2):
+            stability_score = float(caliber_u2)
+        else:
+            stability_score = stability_score_pca
+            caliber_u2_details = {
+                **caliber_u2_details,
+                "fallback": True,
+                "fallback_to": "pca",
+            }
+        spatial_results["stability_score"] = stability_score
+
         complexity_score = calculate_complexity_pca(
             euler_center=float(euler_center),
             euler_periphery=float(euler_periphery),
@@ -1331,7 +1366,7 @@ class MNVPipeline:
         _t_classify = time.perf_counter()
         classification = classify_morphology_final(
             complexity_score=complexity_score,
-            stability_score=spatial_results["stability_score"],
+            stability_score=stability_score,
             trunk_pattern=spatial_results["trunk_pattern"],
             size_class=size_class,
             eccentricity=spatial_results.get("trunk_eccentricity", -1.0),
@@ -1341,9 +1376,14 @@ class MNVPipeline:
         if classification is None:
             classification = MNVClassifier.classify(
                 complexity_score=complexity_score,
-                stability_score=spatial_results["stability_score"],
+                stability_score=stability_score,
                 trunk_pattern=spatial_results["trunk_pattern"],
             )
+        # Maturity from default (Standardized) Caliber; PCA Maturity kept separately.
+        maturity_index = float(classification["maturity_index"])
+        maturity_index_pca = calculate_maturity_index(
+            stability_score_pca, complexity_score
+        )
         self.logger.debug(
             f"[Step6] 1d. mnv_classify: {time.perf_counter()-_t_classify:.3f}s"
         )
@@ -1355,8 +1395,8 @@ class MNVPipeline:
 
         loop_total = loops_center + loops_periphery
         pathophysiology = classify_pathophysiology_final(
-            maturity_index=classification["maturity_index"],
-            stability_score=spatial_results["stability_score"],
+            maturity_index=maturity_index,
+            stability_score=stability_score,
             segment_count=float(skeleton_results.get("segment_count", 0)),
             junction_density=junction_density,
             endpoint_density=endpoint_density,
@@ -1382,7 +1422,11 @@ class MNVPipeline:
             "trunk_score": float(trunk_score),
             "mnv_subtype": classification["subtype"],
             "subtype_confidence": classification["confidence"],
-            "maturity_index": classification["maturity_index"],
+            "maturity_index": maturity_index,
+            "maturity_index_pca": maturity_index_pca,
+            "stability_score": stability_score,
+            "stability_score_pca": stability_score_pca,
+            "caliber_u2_details": caliber_u2_details,
             "junction_density": junction_density,
             "endpoint_density": endpoint_density,
             "pathophysiology": pathophysiology,
@@ -1713,7 +1757,9 @@ class MNVBatchAnalyzer:
             "num_endpoints": [],
             "complexity_scores": [],
             "stability_scores": [],
+            "stability_scores_pca": [],
             "maturity_indices": [],
+            "maturity_indices_pca": [],
             "trunk_patterns": [],
             "trunk_eccentricities": [],
             "FD_percent_R1": [],
@@ -1772,7 +1818,9 @@ class MNVBatchAnalyzer:
         results["num_endpoints"].append(result.get("num_endpoints", 0))
         results["complexity_scores"].append(result.get("complexity_score", 0))
         results["stability_scores"].append(result.get("stability_score", 0))
+        results["stability_scores_pca"].append(result.get("stability_score_pca", 0))
         results["maturity_indices"].append(result.get("maturity_index", 0))
+        results["maturity_indices_pca"].append(result.get("maturity_index_pca", 0))
         results["trunk_patterns"].append(result.get("trunk_pattern", "Unknown"))
         results["trunk_eccentricities"].append(result.get("trunk_eccentricity", -1))
         results["FD_percent_R1"].append(result.get("FD_percent_R1", 0))
@@ -1989,7 +2037,9 @@ class MNVBatchAnalyzer:
         results["num_endpoints"].append(0)
         results["complexity_scores"].append(0)
         results["stability_scores"].append(0)
+        results["stability_scores_pca"].append(0)
         results["maturity_indices"].append(0)
+        results["maturity_indices_pca"].append(0)
         results["trunk_patterns"].append("Unknown")
         results["trunk_eccentricities"].append(-1)
         results["FD_percent_R1"].append(0)
@@ -2077,7 +2127,9 @@ class MNVBatchAnalyzer:
             "vessel_length_mm": results.get("vessel_lengths", []),
             "high_skew_percentage": [0] * len(results.get("patient_ids", [])),  # 未実装
             "maturity_index": results.get("maturity_indices", []),
+            "maturity_index_pca": results.get("maturity_indices_pca", []),
             "stability_score": results.get("stability_scores", []),
+            "stability_score_pca": results.get("stability_scores_pca", []),
             "complexity_score": results.get("complexity_scores", []),
             "junction_density": [0] * len(results.get("patient_ids", [])),  # 計算が必要
             "endpoint_density": [0] * len(results.get("patient_ids", [])),  # 計算が必要

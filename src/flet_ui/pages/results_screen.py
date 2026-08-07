@@ -1389,7 +1389,7 @@ async def get_results_view(ctx: AppContext):
                             Colors.BLUE_200,
                         ),
                         metric_tile(
-                            "Uniformity",
+                            "Caliber Uniformity",
                             safe_round(res.get("stability_score", 0), 2),
                             "",
                             Icons.BALANCE_ROUNDED,

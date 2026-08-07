@@ -111,5 +111,56 @@ class TestCaliberU2(unittest.TestCase):
             self.assertTrue(outp.is_file())
 
 
+class TestCaliberU2AppWiring(unittest.TestCase):
+    """Main-app CSV column mapping: default Caliber = Standardized, PCA as fallback."""
+
+    def test_imagej_csv_pca_columns_after_default(self):
+        from src.utils.mnv_imagej_csv import IMAGEJ_CSV_COLUMNS, _PIPELINE_TO_IMAGEJ
+
+        i_mat = IMAGEJ_CSV_COLUMNS.index("Maturity Index")
+        self.assertEqual(IMAGEJ_CSV_COLUMNS[i_mat + 1], "Maturity Index (PCA)")
+        i_cal = IMAGEJ_CSV_COLUMNS.index("Caliber Uniformity Score")
+        self.assertEqual(
+            IMAGEJ_CSV_COLUMNS[i_cal + 1], "Caliber Uniformity Score (PCA)"
+        )
+        self.assertEqual(
+            _PIPELINE_TO_IMAGEJ["stability_score"], "Caliber Uniformity Score"
+        )
+        self.assertEqual(
+            _PIPELINE_TO_IMAGEJ["stability_score_pca"],
+            "Caliber Uniformity Score (PCA)",
+        )
+
+    def test_metrics_row_maps_default_and_pca(self):
+        from src.utils.mnv_imagej_csv import _metrics_to_imagej_row
+
+        row = _metrics_to_imagej_row(
+            "demo.tif",
+            0,
+            "OK",
+            True,
+            {
+                "maturity_index": 55.0,
+                "maturity_index_pca": 48.0,
+                "stability_score": 60.0,
+                "stability_score_pca": 40.0,
+                "complexity_score": 50.0,
+            },
+        )
+        self.assertEqual(float(row["Caliber Uniformity Score"]), 60.0)
+        self.assertEqual(float(row["Caliber Uniformity Score (PCA)"]), 40.0)
+        self.assertEqual(float(row["Maturity Index"]), 55.0)
+        self.assertEqual(float(row["Maturity Index (PCA)"]), 48.0)
+
+    def test_pipeline_uses_caliber_u2(self):
+        pipeline_src = (REPO / "src" / "core" / "mnv_pipeline.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("calculate_caliber_u2_score", pipeline_src)
+        self.assertIn("stability_score_pca", pipeline_src)
+        self.assertIn("maturity_index_pca", pipeline_src)
+        self.assertIn("from core.caliber_u2 import", pipeline_src)
+
+
 if __name__ == "__main__":
     unittest.main()
