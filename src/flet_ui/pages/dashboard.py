@@ -16,6 +16,11 @@ from src.utils.cv2_path import (
 from src.utils.batch_input_filter import select_mnv_images_for_batch
 from src.utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
 from src.utils.batch_csv_export import mark_analysis_started
+from src.utils.institution_config import (
+    INSTITUTION_PRESETS,
+    load_persisted_institution_id,
+    persist_institution_id,
+)
 from src.utils.vd_folder_preflight import (
     scan_vd_folder_pairs,
     vd_pair_suffixes_configured,
@@ -190,6 +195,60 @@ async def get_dashboard_view(ctx: AppContext):
         height=40,
         value=ctx.page.session.get("output_folder") or "",
     )
+
+    _inst_persisted = load_persisted_institution_id(
+        ctx.page.session, getattr(ctx.page, "client_storage", None)
+    )
+    _inst_preset_codes = {c for c, _ in INSTITUTION_PRESETS if c != "CUSTOM"}
+    _inst_initial = (
+        _inst_persisted
+        if _inst_persisted in _inst_preset_codes
+        else ("CUSTOM" if _inst_persisted else "ARIAKE_OHANACHAYA")
+    )
+    institution_dd = ft.Dropdown(
+        label="Institution code",
+        width=280,
+        border_color=PRIMARY,
+        value=_inst_initial,
+        options=[
+            ft.dropdown.Option(code, f"{code} — {label}")
+            for code, label in INSTITUTION_PRESETS
+        ],
+        tooltip="Tags export/{institution_id}/… for multi-site ML datasets.",
+    )
+    institution_custom = ft.TextField(
+        label="Custom institution code",
+        width=220,
+        border_color=PRIMARY,
+        text_size=12,
+        height=40,
+        value=_inst_persisted if _inst_initial == "CUSTOM" else "",
+        visible=(_inst_initial == "CUSTOM"),
+        hint_text="UPPER_SNAKE",
+    )
+
+    def _sync_institution_session(_=None):
+        raw = (
+            (institution_custom.value or "").strip()
+            if institution_dd.value == "CUSTOM"
+            else (institution_dd.value or "")
+        )
+        if institution_dd.value == "CUSTOM" and not raw:
+            return
+        persist_institution_id(
+            raw,
+            ctx.page.session,
+            getattr(ctx.page, "client_storage", None),
+        )
+
+    def _on_institution_dd_change(e):
+        institution_custom.visible = institution_dd.value == "CUSTOM"
+        _sync_institution_session()
+        ctx.page.update()
+
+    institution_dd.on_change = _on_institution_dd_change
+    institution_custom.on_blur = lambda _: _sync_institution_session()
+    institution_custom.on_submit = lambda _: _sync_institution_session()
 
     async def _on_output_picker_result(e: ft.FilePickerResultEvent):
         if e.path:
@@ -545,6 +604,11 @@ async def get_dashboard_view(ctx: AppContext):
                 row.cells[3].content.color = Colors.GREEN_400
                 if analysis_mode == "MNV":
                     res["_absolute_source_path"] = file_path
+                    try:
+                        res["scale_mm"] = float(scale_mm.value)
+                        res["fov_mm"] = res["scale_mm"]
+                    except (TypeError, ValueError):
+                        pass
                     all_results.append(res)
                 else:
                     out = dict(res)
@@ -1381,6 +1445,16 @@ async def get_dashboard_view(ctx: AppContext):
                                     ),
                                 ], spacing=10,
                                     vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                                ft.Row(
+                                    [institution_dd, institution_custom],
+                                    spacing=16,
+                                    vertical_alignment=ft.CrossAxisAlignment.END,
+                                ),
+                                ft.Text(
+                                    "Institution code → export/{institution_id}/{lesion_id}/ "
+                                    "(Login name = rater_id). Override with env ARIAKE_INSTITUTION_ID.",
+                                    size=11, color=TEXT_MUTED,
+                                ),
                                 ft.Row(
                                     [vd_sup_suffix, vd_deep_suffix, vd_side, vd_pair_mode_switch],
                                     spacing=16,

@@ -34,6 +34,8 @@ from src.utils.batch_csv_export import (
     collect_batch_csv_exports,
     write_batch_csv_exports,
 )
+from src.utils.metadata_export import export_batch_metadata_bundles
+from src.utils.institution_config import resolve_institution_id
 from src.utils.mnv_results_chart import (
     SUMMARY_TABLE_COLUMNS,
     build_batch_metric_chart_pdf,
@@ -250,6 +252,104 @@ async def get_results_view(ctx: AppContext):
             await ctx.add_to_console(f"CSV export ready ({kinds})", "SUCCESS")
         except Exception as ex:
             await ctx.add_to_console(f"Batch Export Error: {ex}", "ERROR")
+        ctx.page.update()
+
+    async def on_export_metadata_data(_=None):
+        """Export image_raw + mask_roi + meta.json under export/{institution}/{lesion}/ (off UI thread)."""
+        try:
+            if not batch_results:
+                await ctx.add_to_console("Export Metadata: no results in this batch.", "WARN")
+                ctx.page.update()
+                return
+
+            target_dir = get_target_output_dir()
+            institution = resolve_institution_id(
+                ctx.page.session,
+                getattr(ctx.page, "client_storage", None),
+            )
+            rater = (ctx.page.session.get("username") or "").strip() or "Unknown"
+            source_hint = (
+                ctx.page.session.get("target_path")
+                or ctx.page.session.get("original_target_path")
+            )
+            mask_b64 = ctx.page.session.get("roi_mask_b64")
+            try:
+                scale_hint = float(ctx.page.session.get("scale") or 0) or None
+            except (TypeError, ValueError):
+                scale_hint = None
+            device_hint = ctx.page.session.get("device")
+            # Snapshot rows so the worker does not touch live session state
+            rows = [dict(r) if isinstance(r, dict) else r for r in batch_results]
+
+            await ctx.add_to_console(
+                f"Export Metadata & Data… institution={institution}",
+                "INFO",
+            )
+            ctx.page.update()
+
+            loop = asyncio.get_running_loop()
+            summary = await loop.run_in_executor(
+                None,
+                lambda: export_batch_metadata_bundles(
+                    rows,
+                    institution_id=institution,
+                    rater_id=rater,
+                    output_dir=target_dir,
+                    source_path_hint=str(source_hint) if source_hint else None,
+                    session_mask_b64=mask_b64,
+                    scale_mm_hint=scale_hint,
+                    device_hint=str(device_hint) if device_hint else None,
+                ),
+            )
+
+            n_ok = len(summary.get("exported") or [])
+            n_skip = len(summary.get("skipped") or [])
+            n_err = len(summary.get("errors") or [])
+            root = summary.get("export_root") or str(target_dir / "export")
+
+            lines = [
+                f"Wrote {n_ok} bundle(s) under:",
+                str(root),
+                "",
+                "Each lesion: image_raw.png, mask_roi.png, meta.json",
+                f"rater_id = login username; institution_id = {summary.get('institution_id')}",
+            ]
+            if n_skip:
+                lines.append("")
+                lines.append(f"Skipped ({n_skip}):")
+                for s in (summary.get("skipped") or [])[:8]:
+                    lines.append(f"  • {s.get('source')}: {s.get('reason')}")
+                if n_skip > 8:
+                    lines.append(f"  … and {n_skip - 8} more")
+            if n_err:
+                lines.append("")
+                lines.append(f"Errors ({n_err}):")
+                for s in (summary.get("errors") or [])[:5]:
+                    lines.append(f"  • {s.get('source')}: {s.get('reason')}")
+
+            ctx.page.open(
+                ft.AlertDialog(
+                    title=ft.Text("Export Metadata & Data", color=Colors.WHITE),
+                    content=ft.Container(
+                        content=ft.Text(
+                            "\n".join(lines),
+                            selectable=True,
+                            size=12,
+                            color=TEXT_MUTED,
+                        ),
+                        width=560,
+                    ),
+                    bgcolor=GLASS_BG,
+                )
+            )
+
+            level = "SUCCESS" if n_ok and not n_err else ("WARN" if n_ok else "ERROR")
+            await ctx.add_to_console(
+                f"Metadata export: {n_ok} ok, {n_skip} skipped, {n_err} errors → {root}",
+                level,
+            )
+        except Exception as ex:
+            await ctx.add_to_console(f"Metadata Export Error: {ex}", "ERROR")
         ctx.page.update()
 
     async def on_mnv_batch_ok(_=None):
@@ -774,7 +874,15 @@ async def get_results_view(ctx: AppContext):
                         color=Colors.BLACK,
                         on_click=lambda _: ctx.page.run_task(on_export_batch_csv),
                     ),
-                ]),
+                    ft.ElevatedButton(
+                        "Export Metadata & Data",
+                        icon=Icons.FOLDER_SPECIAL_ROUNDED,
+                        bgcolor=Colors.with_opacity(0.2, PRIMARY),
+                        color=PRIMARY,
+                        tooltip="export/{institution_id}/{lesion_id}/ → image_raw, mask_roi, meta.json",
+                        on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
+                    ),
+                ], spacing=8),
                 ft.Text(f"Overview of {total} processed images", color=TEXT_MUTED),
                 reorder_hint,
                 ft.Divider(height=24, color=Colors.TRANSPARENT),
@@ -833,6 +941,14 @@ async def get_results_view(ctx: AppContext):
                                 bgcolor=PRIMARY,
                                 color=Colors.BLACK,
                                 on_click=lambda _: ctx.page.run_task(on_export_batch_csv),
+                            ),
+                            ft.ElevatedButton(
+                                "Export Metadata & Data",
+                                icon=Icons.FOLDER_SPECIAL_ROUNDED,
+                                bgcolor=Colors.with_opacity(0.2, PRIMARY),
+                                color=PRIMARY,
+                                tooltip="export/{institution_id}/{lesion_id}/ → image_raw, mask_roi, meta.json",
+                                on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                             ),
                             ft.ElevatedButton(
                                 "Save PDF Report",
@@ -1297,6 +1413,14 @@ async def get_results_view(ctx: AppContext):
                         bgcolor=PRIMARY,
                         color=Colors.BLACK,
                         on_click=lambda _: ctx.page.run_task(on_save_individual_pdf, res),
+                    ),
+                    ft.ElevatedButton(
+                        "Export Metadata & Data",
+                        icon=Icons.FOLDER_SPECIAL_ROUNDED,
+                        bgcolor=Colors.with_opacity(0.2, PRIMARY),
+                        color=PRIMARY,
+                        tooltip="export/{institution_id}/{lesion_id}/ → image_raw, mask_roi, meta.json",
+                        on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                     ),
                     ft.ElevatedButton(
                         "ROI再指定・再解析",

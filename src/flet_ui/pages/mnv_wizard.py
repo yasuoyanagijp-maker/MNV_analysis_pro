@@ -138,6 +138,11 @@ async def get_mnv_view(ctx: AppContext):
                     result["vd_layout"] = VD_LAYOUT_VSL_DENSITY_ONLY
                 if scan_path and str(scan_path) != "None":
                     result["_absolute_source_path"] = str(scan_path)
+                try:
+                    result["scale_mm"] = float(scale)
+                except (TypeError, ValueError):
+                    pass
+                result["fov_mm"] = result.get("scale_mm")
 
             if ctx.page.session.get("is_reanalysis_mode"):
                 re_idx = ctx.page.session.get("reanalysis_index")

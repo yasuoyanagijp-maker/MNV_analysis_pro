@@ -118,6 +118,17 @@ async def main(page: ft.Page):
         print("!!! [SECURITY WARNING] DEV_MODE IS ACTIVE. LOGIN BYPASSED. !!!", flush=True)
         page.session.set("username", "DEV_USER")
         page.session.set("user", {"username": "DEV_USER", "is_admin": True})
+        if not page.session.get("institution_id"):
+            from src.utils.institution_config import resolve_institution_id, persist_institution_id
+            code = resolve_institution_id(page.session, getattr(page, "client_storage", None))
+            if code == "UNKNOWN":
+                code = persist_institution_id(
+                    "ARIAKE_OHANACHAYA",
+                    page.session,
+                    getattr(page, "client_storage", None),
+                )
+            else:
+                page.session.set("institution_id", code)
         
         # Inject mock result for instant debugging of /results
         mock_res = {

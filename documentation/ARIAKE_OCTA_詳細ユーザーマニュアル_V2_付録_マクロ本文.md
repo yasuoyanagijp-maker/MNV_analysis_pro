@@ -4,8 +4,8 @@
 
 - [Appendix A: VD output details](#appendix-a-vd-output-details-macro-section-5)
 - [Appendix B: MNV output tables](#appendix-b-mnv-output-tables-macro-section-61)
-- [Appendix C: Network Complexity Score](#appendix-c-network-complexity-score-macro-detail)
-- [Appendix D: Stability and radial profile score](#appendix-d-stability-and-radial-profile-score-macro-detail)
+- [Appendix C: Network Complexity Score](#appendix-c-network-complexity-score)
+- [Appendix D: Caliber Uniformity Score](#appendix-d-caliber-uniformity-score)
 - [Appendix E: Constants and thresholds](#appendix-e-constants-and-thresholds-macro-section-7)
 - [Appendix F: Troubleshooting](#appendix-f-troubleshooting-macro-section-8)
 - [Appendix G: Algorithms summary](#appendix-g-algorithms-summary-macro-section-9)
@@ -15,7 +15,7 @@
 - [Appendix K: FAQ](#appendix-k-faq-macro-section-13)
 - [Appendix L: Support and disclaimer](#appendix-l-support-and-disclaimer-macro-sections-14-15)
 
-本付録は **ImageJ マクロ版**「ARIAKE OCTA 詳細ユーザーマニュアル V2」（Team Yanagi, 2025年12月頃）の記述を、研究室内参照用に整理したものです。**Flet アプリ版の操作・画面・一部アルゴリズム差分**は、正本である **[ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md)** を優先してください。
+本付録は **ImageJ マクロ版**「ARIAKE OCTA 詳細ユーザーマニュアル V2」（Team Yanagi, 2025年12月頃）の記述を、研究室内参照用に整理したものです。**Flet アプリ版の操作・画面・Complexity / Caliber Uniformity の現行定義（PCA）**は、正本である **[ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md) §6.3** を優先してください。Appendix C/D の「マクロ版」節は歴史的参照です。
 
 ---
 
@@ -122,11 +122,13 @@
 
 ### B.5 形態学的スコア
 
-| 列名 | 単位 | 説明 | 算出方法 | 解釈（目安） |
-|------|------|------|----------|--------------|
-| Caliber Uniformity Score | 0–100 | 血管口径の均一性 | 複合スコア（6 指標の加重平均） | &gt;85 非常に均一 |
-| Network Complexity Score | 0–100 | 血管網の構造的複雑性 | 複合スコア（7 指標の加重平均） | &gt;80 非常に複雑 |
-| Maturity Index | 0–100 | 口径–複雑性バランス | 50 + (Caliber Uniformity − Network Complexity) / 2 | &gt;70 成熟優位 |
+| 列名 | 単位 | 説明 | 算出方法（現行 Flet 版） | 解釈（目安） |
+|------|------|------|--------------------------|--------------|
+| Caliber Uniformity Score | 0–100 | 血管口径の均一性 | **10-bin 径プロファイル → 4 指標 → 層別 PCA**（0.7·(−PC1)+0.2·PC2+0.1·Trunk）。詳細は本編 **§6.3** | &gt;85 非常に均一 |
+| Network Complexity Score | 0–100 | 血管網の構造的複雑性 | **4 特徴量の層別 PCA + EVR 加重 + 正規化 Trunk**。詳細は本編 **§6.3** | &gt;80 非常に複雑 |
+| Maturity Index | 0–100 | 口径–複雑性バランス | \(50 + (\mathrm{CaliberUniformity} - \mathrm{NetworkComplexity}) / 2\)（0–100 clip） | &gt;70 成熟優位 |
+
+※ マクロ版マニュアルにあった「6 指標／7 指標の単純加重」は **現行パイプラインでは使いません**（歴史的説明は Appendix C/D の「マクロ版」節）。
 
 ### B.6 信号強度パラメータ
 
@@ -184,7 +186,24 @@ Flet 版では **CSV の ImageJ 互換列**（Arteriolarization Segment Count �
 
 ---
 
-## Appendix C: Network Complexity Score (macro detail)
+## Appendix C: Network Complexity Score
+
+> **現行 Flet 版の正本**は [詳細マニュアル §6.3](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md#63-network-complexity--caliber-uniformity現行-flet-版--正) です。以下は (1) 現行の要約と (2) マクロ版の歴史的説明です。
+
+### C.1 現行（Python · PCA）— 要約
+
+| 項目 | 内容 |
+|------|------|
+| 関数 | `calculate_complexity_pca`（`src/core/pattern_metrics.py`） |
+| 特徴量 | `euler_total_inv`, `loop_total`, `junction_density`, `FD_global` |
+| 参照 | `resources/reference_metrics/complexity_ref_{small\|large\|small_3mm}.json` |
+| 合成 | \(w_1\cdot\mathrm{PC1}_{0\text{–}100}+w_2\cdot\mathrm{PC2}_{0\text{–}100}+w_T\cdot\mathrm{Trunk}_{norm}\)、\(w\) = explained variance ratio |
+| Trunk | Centrality 0.4 + Radiality 0.3 + Diameter Uniformity 0.2 + Central Density Bonus 0.1 → `trunk_scale_correction` で正規化 |
+| CSV / UI | Network Complexity Score / **Complexity** |
+
+層別 EVR 例: large ≈ (0.663, 0.226, Trunk≈0.111)。詳細パラメータ表は本編 §6.3.2。
+
+### C.2 マクロ版（歴史的 · 7 指標加重）— 参照のみ
 
 **構成要素（7 指標）と重み付け**
 
@@ -215,9 +234,9 @@ Flet 版では **CSV の ImageJ 互換列**（Arteriolarization Segment Count �
 7. **Loop Density Score**  
    - ループ密度（内部計算用）。0–8 個/mm を想定。  
 
-**最終統合**: Total Loops 30% + Euler 30% + Trunk 20% + 空間分布 12% + 吻合 5% + 分岐密度 3%。
+**最終統合（マクロ）**: Total Loops 30% + Euler 30% + Trunk 20% + 空間分布 12% + 吻合 5% + 分岐密度 3%。
 
-**補正ロジック（マクロ版マニュアル記載の要約）**
+**補正ロジック（マクロ版マニュアル記載の要約 · 現行未使用）**
 
 - 超高ループ + 低分岐密度 → 複雑性スコア最低 80 点に引き上げ  
 - 超高 Euler 複雑性 → 最低 80 点  
@@ -227,7 +246,25 @@ Flet 版では **CSV の ImageJ 互換列**（Arteriolarization Segment Count �
 
 ---
 
-## Appendix D: Stability and radial profile score (macro detail)
+## Appendix D: Caliber Uniformity Score
+
+> **現行 Flet 版の正本**は [詳細マニュアル §6.3](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md#63-network-complexity--caliber-uniformity現行-flet-版--正) です。CSV 列名は **Caliber Uniformity Score**、UI は **Uniformity**（内部キー `stability_score`）。
+
+### D.1 現行（Python · PCA）— 要約
+
+| 項目 | 内容 |
+|------|------|
+| 関数 | `calculate_stability_score`（method v3 PCA） |
+| 前処理 | 放射状 **10 bin** 平均径（μm） |
+| 特徴量 | `stab_cv`, `stab_mean_adjacent_change`, `stab_residual_cv`, `stab_range_percent` |
+| 参照 | `resources/reference_metrics/stability_ref_{small\|large\|small_3mm}.json` |
+| 合成 | **0.7·(−PC1) + 0.2·PC2 + 0.1·Trunk_norm**（PC は区分線形、median→50） |
+| Trunk 正規化 | `complexity_ref` の `trunk_scale_correction` を使用 |
+| 特殊 | 径 SD=0 → 100；空 → 0 |
+
+詳細・解釈・「25.0」警告の意味は本編 §6.3.3。
+
+### D.2 マクロ版（歴史的 · 6 指標加重）— 参照のみ
 
 マクロ版マニュアルでは **放射状径プロファイル（10 リング）** に基づく **6 指標**を重み付けして Stability を構成する説明があります。
 
@@ -248,7 +285,7 @@ Flet 版では **CSV の ImageJ 互換列**（Arteriolarization Segment Count �
 - **75–85**: 中等度の安定性  
 - **75 未満**: 血管径が不安定 → 活動性・未成熟病変、不規則な径変化  
 
-※ Flet 版 CSV では **Caliber Uniformity Score** 等の列名で出力されます。実装の数値は Python パイプラインに従います。
+※ Flet 版 CSV では **Caliber Uniformity Score** 等の列名で出力されます。**数値の正は現行 PCA（D.1 / 本編 §6.3）**です。参照 JSON 欠落時のみ上記に近い 6 成分フォールバックがコード上残っています。
 
 ---
 
@@ -294,7 +331,7 @@ Flet 版では **CSV の ImageJ 互換列**（Arteriolarization Segment Count �
 **結果解釈の注意（マクロ版より）**
 
 - **VD**: 左右差 &gt;10%、領域間差 &gt;15%、FAZ 拡大+低密度 等の組み合わせに注意  
-- **MNV**: Complexity&gt;80 + Stability&lt;70 → 活動性病変の目安、Dilated vessel&gt;20% → 不安定性疑い  
+- **MNV**: Complexity&gt;80 + Caliber Uniformity（旧称 Stability）&lt;70 → 活動性病変の目安、Dilated vessel&gt;20% → 不安定性疑い（**閾値は施設で検証**。スコア定義は本編 §6.3 の PCA）  
 
 ---
 
@@ -376,4 +413,13 @@ Flet 版では **CSV の ImageJ 互換列**（Arteriolarization Segment Count �
 
 ---
 
-*出典は ImageJ マクロ版 V2 マニュアル。全文の一字一句の転載ではなく、表・手順の整理・要約を含みます。Flet アプリ版の差分は [ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md) を参照。*
+## 付録・変更履歴
+
+| 日付 | 内容 |
+|------|------|
+| 2026-08-07 | B.5 を現行 PCA 定義に合わせて更新。Appendix C／D を「現行（PCA）」＋「マクロ版（歴史）」に再編。目次アンカーと冒頭注記を本編 §6.3 正本に合わせて修正。 |
+| （既往） | マクロ版 V2 から VD／MNV 表・Complexity／Stability・定数・FAQ 等を整理・要約として分離。 |
+
+---
+
+*出典は ImageJ マクロ版 V2 マニュアル。全文の一字一句の転載ではなく、表・手順の整理・要約を含みます。Flet アプリ版の差分・Complexity／Caliber Uniformity の正本は [ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md) §6.3 を参照。*

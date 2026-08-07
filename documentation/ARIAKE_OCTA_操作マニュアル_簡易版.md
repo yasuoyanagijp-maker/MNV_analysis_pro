@@ -54,7 +54,9 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
    - 緑の領域が問題なければ、右上の **「Confirm ROI & Proceed」**（再解析のときは **「Confirm & Re-analyze」**）で次の画面へ進みます。**ROI が空のままでは進めません。**  
 3. **MNV ウィザード**でプレビューを確認し、案内に従い **解析の実行**（**Confirm & Start Analysis** 等）へ進みます。  
 4. 完了後、**結果画面**に進み、**一覧またはサイドバーで症例ごと（各解析ごと）**の数値・画像・グラフを確認します。  
-5. 内容に問題がある場合は、**ROI のやり直し（Redo ROI 等）**や、結果画面の **再解析（Re-analyze）** から同じ画像でやり直し、結果を上書きできることがあります。
+   - **Complexity**（Network Complexity）と **Uniformity**（Caliber Uniformity）は層別 **PCA** に基づく 0–100 スコアです。定義・パラメータは詳細マニュアル **§6.3** を参照。  
+   - **Save CSV** / **Export Metadata & Data**（生画像・ROI マスク・meta.json）で結果を保存できます。  
+5. 内容に問題がある場合は、**ROI のやり直し（Redo ROI 等）**や、結果画面の **再解析（Re-analyze）** から同じ画像でやり直し、結果を上書きできることがあります。Uniformity が **25.0** と出た場合は再解析を検討してください。
 
 バッチ解析のときは、フォルダ内の複数枚を順に処理し、**最後にまとめて結果画面**で各症例を切り替えながら確認する流れになります。バッチ途中では **OK — next image**／**Redo ROI**／**Stop Here** で品質を確認しながら進みます。
 
@@ -63,6 +65,24 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 ## 5. 問い合わせの例（返信用メモ）
 
 > スクリーンショットの画面では、画像をダブルクリックするのではなく、画面上の **「Confirm Selection」** ボタンを押して進んでください。一度クリックでファイルが選ばれたあと、そのボタンで確定となります。
+
+---
+
+## 6. 関連ドキュメント
+
+| 内容 | リンク |
+|------|--------|
+| 起動・ログイン・結果画面 | [USER_MANUAL.md](https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/USER_MANUAL.md) |
+| Complexity / Caliber Uniformity（パラメータ含む） | [詳細マニュアル §6.3](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md#63-network-complexity--caliber-uniformity現行-flet-版--正) |
+
+---
+
+## 7. 変更履歴
+
+| 日付 | 内容 |
+|------|------|
+| 2026-08-07 | 結果画面の Complexity／Uniformity（PCA）・Save CSV／Export Metadata・Uniformity=25.0 の注意、関連ドキュメントへのリンクを追加。 |
+| （既往） | Confirm Selection、画像形式、MNV ROI 手順の要点を記載。 |
 
 ---
 
