@@ -25,6 +25,14 @@ from src.utils.vd_folder_preflight import (
     scan_vd_folder_pairs,
     vd_pair_suffixes_configured,
 )
+from src.utils.second_reader import (
+    SR_FIRST_GRADER_CSV_KEY,
+    SR_SCAN_ROOT_KEY,
+    SR_CSV_PATH_KEY,
+    is_second_reader,
+    resolve_second_reader_scan,
+    second_reader_output_dir,
+)
 
 
 def _prepare_results_session(page, all_results, *, vd_only: bool = False) -> None:
@@ -808,7 +816,7 @@ async def get_dashboard_view(ctx: AppContext):
         await asyncio.sleep(0.35)
         ctx.page.go("/roi")
 
-    async def load_batch_from_directory(fspath):
+    async def _load_batch_from_directory_core(fspath):
         if not fspath:
             return
 
@@ -1015,6 +1023,61 @@ async def get_dashboard_view(ctx: AppContext):
         await ctx.add_to_console(f"Found {len(files)} images. Auto-starting analysis...", "INFO")
         await run_batch_analysis(None)
 
+    async def load_second_reader_batch(fspath):
+        """
+        第2リーダー: メタデータフォルダの親フォルダを自動スキャンし、
+        エキスポート済み画像を通常の MNV 読影キューへ投入する。
+        """
+        if not fspath:
+            return
+        raw = str(fspath).strip().strip("'").strip('"')
+        try:
+            scan = resolve_second_reader_scan(Path(raw))
+        except ValueError as ex:
+            await ctx.add_to_console(f"第2リーダー スキャン失敗: {ex}", "ERROR")
+            return
+
+        await ctx.add_to_console(
+            f"第2リーダー スキャン: {scan.export_dir} — 画像 {len(scan.images)} 件 / "
+            f"メタデータ {len(scan.meta_files)} 件",
+            "INFO",
+        )
+        for w in scan.warnings:
+            await ctx.add_to_console(f"第2リーダー スキャン: {w}", "WARN")
+
+        if scan.first_grader_csvs:
+            first_csv = scan.first_grader_csvs[0]
+            ctx.page.session.set(SR_FIRST_GRADER_CSV_KEY, str(first_csv))
+            await ctx.add_to_console(
+                f"第1グレーダーCSVを検出: {first_csv.name}", "INFO"
+            )
+        else:
+            session_discard(ctx.page.session, SR_FIRST_GRADER_CSV_KEY)
+            await ctx.add_to_console(
+                "第1グレーダーCSVが見つかりません。統合時に再検索します。", "WARN"
+            )
+
+        # Second-reader outputs go next to (not inside) the first grader's files
+        out_dir = second_reader_output_dir(scan.scan_root)
+        ctx.page.session.set(SR_SCAN_ROOT_KEY, str(scan.scan_root))
+        ctx.page.session.set("output_folder", str(out_dir))
+        output_path_input.value = str(out_dir)
+        session_discard(ctx.page.session, SR_CSV_PATH_KEY)
+
+        # Exported lesion images are analyzed one by one — no suffix filtering
+        analysis_type.value = "MNV"
+        ctx.page.session.set("mnv_select_all_images", True)
+        mnv_select_all_switch.value = True
+        ctx.page.update()
+
+        await _load_batch_from_directory_core(str(scan.images_dir))
+
+    async def load_batch_from_directory(fspath):
+        if is_second_reader(ctx.page.session):
+            await load_second_reader_batch(fspath)
+            return
+        await _load_batch_from_directory_core(fspath)
+
     ctx.folder_batch_loader = load_batch_from_directory
     ctx.process_target_path = load_batch_from_directory
 
@@ -1033,6 +1096,12 @@ async def get_dashboard_view(ctx: AppContext):
     async def handle_select_folder(_=None):
         print("DEBUG: [SELECT_FOLDER] Clicked", flush=True)
         await show_folder_explorer("Select batch folder (Server Path)", on_select=load_batch_from_directory)
+
+    async def handle_second_reader_start(_=None):
+        await show_folder_explorer(
+            "第2リーダー: 第1グレーダーの出力フォルダ（export の親フォルダ）を選択",
+            on_select=load_second_reader_batch,
+        )
 
     # ─────────────────────────────────────────────────────────────────────
     # Guided Launch Analysis Wizard
@@ -1383,6 +1452,48 @@ async def get_dashboard_view(ctx: AppContext):
         _refresh()
         ctx.page.open(dlg)
 
+    _is_sr = is_second_reader(ctx.page.session)
+    second_reader_card = ft.Container(
+        visible=_is_sr,
+        content=ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Icon(Icons.PEOPLE_ALT_ROUNDED, size=28, color=Colors.AMBER_400),
+                        ft.Text(
+                            "第2リーダー（二重読影）モード",
+                            size=15,
+                            weight=FontWeight.BOLD,
+                            color=Colors.WHITE,
+                        ),
+                    ],
+                    spacing=10,
+                ),
+                ft.Text(
+                    "第1グレーダーの出力フォルダ（メタデータ export の親フォルダ）を選択すると、"
+                    "エキスポート済み画像を自動スキャンして順次読影します。"
+                    "読影完了後に Save CSV を押すと「統合解析データ」ボタンが表示され、"
+                    "第1グレーダーCSVと RPD≤20% ルールで統合できます。",
+                    size=11,
+                    color=TEXT_MUTED,
+                ),
+                ft.ElevatedButton(
+                    "第2リーダー読影を開始（自動スキャン）",
+                    icon=Icons.TRAVEL_EXPLORE_ROUNDED,
+                    bgcolor=Colors.AMBER_400,
+                    color=Colors.BLACK,
+                    on_click=lambda _: ctx.page.run_task(handle_second_reader_start),
+                    width=340,
+                ),
+            ],
+            spacing=10,
+        ),
+        padding=18,
+        bgcolor=Colors.with_opacity(0.08, Colors.AMBER_400),
+        border=ft.border.all(2, Colors.with_opacity(0.45, Colors.AMBER_400)),
+        border_radius=16,
+    )
+
     return ft.Container(
         content=ft.Column([
             ft.Container(
@@ -1397,7 +1508,8 @@ async def get_dashboard_view(ctx: AppContext):
                                     color=Colors.WHITE,
                                 ),
                                 ft.Text(
-                                    "Unified Analytics Command Center",
+                                    "Unified Analytics Command Center"
+                                    + (" — 第2リーダー" if _is_sr else ""),
                                     size=12,
                                     color=TEXT_MUTED,
                                 ),
@@ -1410,6 +1522,9 @@ async def get_dashboard_view(ctx: AppContext):
                 ),
                 margin=ft.margin.only(bottom=12, top=0),
             ),
+
+            second_reader_card,
+            ft.Divider(height=10, color=Colors.TRANSPARENT) if _is_sr else ft.Container(height=0),
 
             ft.Container(
                 content=ft.Column([

@@ -40,6 +40,14 @@ from src.utils.metadata_export import (
 )
 from src.utils.institution_config import resolve_institution_id
 from src.utils.mnv_absent import is_mnv_absent_result
+from src.utils.second_reader import (
+    SR_FIRST_GRADER_CSV_KEY,
+    SR_SCAN_ROOT_KEY,
+    SR_CSV_PATH_KEY,
+    find_first_grader_mnv_csvs,
+    is_second_reader,
+)
+from src.utils.dual_grader_merge import RPD_THRESHOLD_PCT, merge_dual_grader_csvs
 from src.utils.mnv_results_chart import (
     SUMMARY_TABLE_COLUMNS,
     build_batch_metric_chart_pdf,
@@ -61,6 +69,13 @@ async def get_results_view(ctx: AppContext):
     )
 
     awaiting_mnv_batch_qc = bool(ctx.page.session.get("mnv_batch_awaiting_qc")) and not vd_only_batch
+
+    # 第2リーダー: Save CSV (export) 後にのみ統合解析データボタンを表示する
+    is_sr_session = is_second_reader(ctx.page.session)
+    _sr_csv_saved = ctx.page.session.get(SR_CSV_PATH_KEY)
+    _sr_csv_ready = bool(
+        is_sr_session and _sr_csv_saved and Path(str(_sr_csv_saved)).is_file()
+    )
 
     # Selection State (Default to Summary if multiple, or the first result)
     # We use a simple list index, -1 means Summary
@@ -208,6 +223,17 @@ async def get_results_view(ctx: AppContext):
             mnv_bytes = next((b for k, _, _, b in saved if k == "MNV"), None)
             vd_full_bytes = next((b for k, _, _, b in saved if k == "VD (full)"), None)
             vd_vsl_bytes = next((b for k, _, _, b in saved if k == "VD (single)"), None)
+
+            # 第2リーダー: エキスポート実行時のみ統合解析データボタンを有効化
+            if is_sr_session:
+                sr_mnv_path = next((p for k, p in written if k == "MNV"), None)
+                if sr_mnv_path is not None:
+                    ctx.page.session.set(SR_CSV_PATH_KEY, str(sr_mnv_path))
+                    integrated_data_btn.visible = True
+                    await ctx.add_to_console(
+                        "第2リーダーCSVを保存しました。「統合解析データ」ボタンが利用できます。",
+                        "INFO",
+                    )
 
             try:
                 prefer = mnv_bytes or vd_full_bytes or vd_vsl_bytes
@@ -381,6 +407,137 @@ async def get_results_view(ctx: AppContext):
         except Exception as ex:
             await ctx.add_to_console(f"Metadata Export Error: {ex}", "ERROR")
         ctx.page.update()
+
+    def _find_first_grader_csv():
+        """Auto-locate the first grader's MNV CSV (session hint → scan search)."""
+        hint = ctx.page.session.get(SR_FIRST_GRADER_CSV_KEY)
+        if hint and Path(str(hint)).is_file():
+            return Path(str(hint))
+        scan_root = ctx.page.session.get(SR_SCAN_ROOT_KEY)
+        second_csv = ctx.page.session.get(SR_CSV_PATH_KEY)
+        exclude = [Path(str(second_csv))] if second_csv else []
+        if scan_root and Path(str(scan_root)).is_dir():
+            candidates = find_first_grader_mnv_csvs(
+                Path(str(scan_root)), exclude_paths=exclude
+            )
+            if candidates:
+                return candidates[0]
+        return None
+
+    async def on_create_integrated_data(_=None):
+        """統合解析データ: 第1グレーダーCSVを自動検索し、RPD≤20% ルールで統合CSVを作成。"""
+        try:
+            second_csv = ctx.page.session.get(SR_CSV_PATH_KEY)
+            if not second_csv or not Path(str(second_csv)).is_file():
+                await ctx.add_to_console(
+                    "統合解析データ: 先にエキスポート（Save CSV）で第2リーダーCSVを保存してください。",
+                    "ERROR",
+                )
+                ctx.page.update()
+                return
+            second_csv = Path(str(second_csv))
+
+            first_csv = _find_first_grader_csv()
+            if first_csv is None:
+                ctx.page.open(
+                    ft.AlertDialog(
+                        title=ft.Text("統合解析データ", color=Colors.WHITE),
+                        content=ft.Container(
+                            content=ft.Text(
+                                "第1グレーダーのCSVファイルが見つかりませんでした。\n"
+                                "第1グレーダーの出力フォルダ（MNV_*.csv がある場所）を"
+                                "スキャン対象として選択したか確認してください。",
+                                size=12,
+                                color=TEXT_MUTED,
+                            ),
+                            width=520,
+                        ),
+                        bgcolor=GLASS_BG,
+                    )
+                )
+                await ctx.add_to_console(
+                    "統合解析データ: 第1グレーダーCSVが見つかりません。", "ERROR"
+                )
+                ctx.page.update()
+                return
+
+            grader1 = "Grader1"
+            reader2 = (ctx.page.session.get("username") or "").strip() or "Reader2"
+            out_dir = get_target_output_dir()
+
+            await ctx.add_to_console(
+                f"統合解析データ: {first_csv.name} × {second_csv.name} "
+                f"(RPD≤{RPD_THRESHOLD_PCT:g}%) …",
+                "INFO",
+            )
+            ctx.page.update()
+
+            loop = asyncio.get_running_loop()
+            summary = await loop.run_in_executor(
+                None,
+                lambda: merge_dual_grader_csvs(
+                    first_csv,
+                    second_csv,
+                    out_dir,
+                    rpd_threshold=RPD_THRESHOLD_PCT,
+                    first_label=grader1,
+                    second_label=reader2,
+                ),
+            )
+
+            lines = [
+                f"第1グレーダー: {first_csv}",
+                f"第2リーダー:   {second_csv}",
+                "",
+                f"突合成功: {summary['n_matched']} 行"
+                f"（第1のみ {summary['n_first_only']} / 第2のみ {summary['n_second_only']}）",
+                f"採用ルール: RPD ≤ {summary['threshold_pct']:g}% → 平均値、超過 → NA（再計測）",
+                f"RECHECK: 主要指標 {summary['recheck_cells']} セル / "
+                f"{summary['recheck_files']} ファイル",
+                "",
+                "出力ファイル:",
+                f"  {summary['adopted_csv']}",
+                f"  {summary['recheck_csv']}",
+                f"  {summary['summary_md']}",
+            ]
+            for w in summary.get("warnings") or []:
+                lines.append(f"⚠ {w}")
+
+            ctx.page.open(
+                ft.AlertDialog(
+                    title=ft.Text("統合解析データを作成しました", color=Colors.WHITE),
+                    content=ft.Container(
+                        content=ft.Text(
+                            "\n".join(lines), selectable=True, size=12, color=TEXT_MUTED
+                        ),
+                        width=620,
+                    ),
+                    bgcolor=GLASS_BG,
+                )
+            )
+            await ctx.add_to_console(
+                f"統合解析データ完成: {Path(summary['adopted_csv']).name} "
+                f"(matched={summary['n_matched']}, recheck={summary['recheck_cells']})",
+                "SUCCESS",
+            )
+        except ValueError as ex:
+            await ctx.add_to_console(f"統合解析データ エラー: {ex}", "ERROR")
+        except Exception as ex:
+            await ctx.add_to_console(f"統合解析データ 失敗: {ex}", "ERROR")
+        ctx.page.update()
+
+    integrated_data_btn = ft.ElevatedButton(
+        "統合解析データ",
+        icon=Icons.MERGE_ROUNDED,
+        bgcolor=Colors.AMBER_400,
+        color=Colors.BLACK,
+        tooltip=(
+            "第1グレーダーCSVを自動検索し、第2リーダーCSVと統合します"
+            f"（RPD≤{RPD_THRESHOLD_PCT:g}%: 平均値を採用 / 超過: NA=再計測）。"
+        ),
+        visible=_sr_csv_ready,
+        on_click=lambda _: ctx.page.run_task(on_create_integrated_data),
+    )
 
     async def on_mnv_batch_ok(_=None):
         res = ctx.page.session.get("last_result")
@@ -916,6 +1073,7 @@ async def get_results_view(ctx: AppContext):
                         tooltip="MedSAM images/masks/meta + bulk PDFs under export/pdfs/{institution_id}/",
                         on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                     ),
+                    integrated_data_btn,
                 ], spacing=8),
                 ft.Text(f"Overview of {total} processed images", color=TEXT_MUTED),
                 reorder_hint,
@@ -1484,6 +1642,7 @@ async def get_results_view(ctx: AppContext):
                                 tooltip="ROI（抽出領域）を選択し直して、この画像の解析をやり直します",
                                 on_click=lambda _: ctx.page.run_task(on_reanalyze_mnv, idx),
                             ),
+                            integrated_data_btn,
                         ],
                         spacing=8,
                         wrap=True,
