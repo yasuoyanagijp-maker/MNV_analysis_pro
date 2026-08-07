@@ -15,10 +15,13 @@
 | バッチ後の QC | 各画像ごと「Yes / Quality is low」ダイアログ、`To_be_reanalyzed` への 4 倍拡大保存等 | **MNV フォルダバッチ**では解析直後に結果画面へ進み、**「OK — next image」「Redo ROI」「Stop Here」**でレビュー（`results_screen.py`）。**自動 4 倍拡大と専用サブフォルダ出力はマクロ版と同一ではない**場合があります。低品質時は **ROI のやり直し**、**結果画面の再解析**、必要なら **画像解像度の前処理**および **Image Scale (mm)** の見直しを推奨します。 |
 | 細動脈化 | マニュアル §9.2 相当の説明 | **Arteriolarization** 指標を CSV に **ImageJ 互換列名**で出力（下記 §6.1 補足）。病態分類に **Arteriolarized** が現れることがあります。 |
 | CSV / 式 | マクロの測定表 | **MNV 列順・一部派生指標**は `src/utils/mnv_imagej_csv.py` の実装が正。**aVDI / aMNV** 等はコードコメントに準拠し、マクロ版マニュアル中の数式と字面が異なる場合があります。 |
+| Complexity / Caliber Uniformity | 7 成分／6 成分の加重（マクロ） | **層別 PCA**（`pattern_metrics.py` + `complexity_ref_*` / `stability_ref_*`）。定義は **§6.3** |
 
 **操作手順の早見**は [USER_MANUAL.md](../USER_MANUAL.md)、開発者向けは [DEVELOPER.md](../DEVELOPER.md) を参照してください。
 
-**マクロ版 V2 に基づく整理・要約（VD/MNV 列定義、Complexity・Stability の内訳、定数一覧、FAQ 等）**は別紙 **[ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md)** に分離しています（RTF／PDF の一字一句の転載ではありません）。
+**マクロ版 V2 に基づく整理・要約（VD/MNV 列定義、旧マクロの Complexity・Stability 加重、定数一覧、FAQ 等）**は別紙 **[ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md)** に分離しています。
+
+**重要（2026-08 時点）**: Flet 版の **Network Complexity Score** と **Caliber Uniformity Score** は、マクロ版の「7 成分／6 成分の単純加重」ではなく、層別参照 JSON に基づく **PCA 合成**です。定義・パラメータは本書 **§6.3** を正とし、付録 C/D のマクロ説明は歴史的参照として残しています。
 
 ---
 
@@ -129,7 +132,8 @@ ROI・ウィザード上の **Confirm & Start Analysis** 等で解析を開始�
 
 **スコアの異常（例）**
 
-- Stability / Caliber Uniformity や Complexity が極端、または計算不能に近い値  
+- Caliber Uniformity（UI: Uniformity）や Complexity が極端、または計算不能に近い値  
+- **Uniformity が厳密に 25.0** — 結果画面が再解析を勧める（§6.3.3）。ROI・画質を見直す  
 - 解像度不足を示唆するログ・警告  
 
 ### 3.3 技術的な警告（ログ）
@@ -245,9 +249,137 @@ ROI・ウィザード上の **Confirm & Start Analysis** 等で解析を開始�
 
 **臨床応用の一般論**はマクロ版 §10.2 と同様ですが、**診断はソフトウェア出力のみで行わず**、画像所見および施設基準に従ってください。
 
-**Network Complexity Score の 7 成分・補正ロジック（整理版）** → [付録・Appendix C](ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md#appendix-c-network-complexity-score-macro-detail)
+スコアの**現行定義（PCA・パラメータ）**は次節 **§6.3** を参照してください。
 
-**Stability / 放射状径プロファイルに基づくスコアの 6 成分（整理版）** → [付録・Appendix D](ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md#appendix-d-stability-and-radial-profile-score-macro-detail)
+**（参考）マクロ版の 7 成分 Complexity / 6 成分 Stability の整理** → [付録・Appendix C](ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md#appendix-c-network-complexity-score) · [Appendix D](ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md#appendix-d-caliber-uniformity-score)
+
+### 6.3 Network Complexity / Caliber Uniformity（現行 Flet 版 · 正）
+
+結果画面のタイル名と CSV 列名の対応は次のとおりです。
+
+| UI（結果画面） | CSV 列名（ImageJ 互換） | 内部キー | 意味（高いほど） |
+|----------------|-------------------------|----------|------------------|
+| **Complexity** | Network Complexity Score | `complexity_score` | 血管網の構造的複雑性 |
+| **Uniformity** | Caliber Uniformity Score | `stability_score` | 口径の均一性（旧称 Stability） |
+| Maturity Index | Maturity Index | `maturity_index` | 口径均一 − 複雑性のバランス |
+
+実装の正本: `src/core/pattern_metrics.py`（`calculate_complexity_pca` / `calculate_stability_score`）、呼出は `src/core/mnv_pipeline.py` のパターン分類。参照統計は `resources/reference_metrics/complexity_ref_*.json` および `stability_ref_*.json`（層別、2026-05-28 再構築）。
+
+#### 6.3.1 層（size_class）の決め方
+
+Image Scale (mm) と画像幅から参照 JSON を切り替えます（`mnv_pipeline` と同一ロジック）。
+
+| 条件 | size_class | 参照ファイル接尾辞 |
+|------|-------------|-------------------|
+| スケール ≈ **3.0 mm** | `small_3mm` | `_small_3mm` |
+| 画像幅 **> 800 px**、またはスケール **≥ 6.0 mm** | `large` | `_large` |
+| それ以外 | `small` | `_small` |
+
+他施設・他装置と比較するときは、**同じ size_class（同じスケール設定）同士**で比べてください。
+
+#### 6.3.2 Network Complexity Score（0–100）
+
+**何をもとにしているか（入力 4 特徴量）**
+
+| 内部名 | 定義 |
+|--------|------|
+| `euler_total_inv` | −(中心 Euler + 周辺 Euler)。メッシュ状ほど大きくなりやすい |
+| `loop_total` | 中心ループ数 + 周辺ループ数 |
+| `junction_density` | (中心+周辺の分岐点数) / 総血管長 (mm) |
+| `FD_global` | スケルトン全体のフラクタル次元 |
+
+**計算の流れ**
+
+1. 各特徴量を層別の μ / σ で **Z スコア化**（参照 JSON）。  
+2. 層別の **PC1 / PC2 ローディング**で主成分生値を算出。  
+3. PC1・PC2 を参照の `score_min`/`score_max`・`PC2_min`/`PC2_max` で **0–100 の線形スケール**（クリップ）。  
+4. **Trunk Distribution** 生スコア（下表）を、`complexity_ref` の `trunk_scale_correction`（層別 min / median / max、median→50 の区分線形）で 0–100 に正規化。  
+5. 最終合成（重みは **explained variance ratio**。JSON の `final_weights` 0.7/0.2/0.1 は Complexity では使わない）:
+
+\[
+\mathrm{Complexity}
+= w_{\mathrm{PC1}}\cdot\mathrm{PC1}_{0\text{–}100}
++ w_{\mathrm{PC2}}\cdot\mathrm{PC2}_{0\text{–}100}
++ w_{\mathrm{Trunk}}\cdot\mathrm{Trunk}_{norm}
+\]
+
+\(w_{\mathrm{Trunk}}=\max(0,\,1-w_{\mathrm{PC1}}-w_{\mathrm{PC2}})\)。
+
+**層別の最終合成ウェイト（EVR）**
+
+| size_class | \(w_{\mathrm{PC1}}\) | \(w_{\mathrm{PC2}}\) | \(w_{\mathrm{Trunk}}\) | 参照 n |
+|------------|----------------------|----------------------|------------------------|--------|
+| small | 0.634 | 0.265 | ≈0.102 | 34 |
+| large | 0.663 | 0.226 | ≈0.111 | 49 |
+| small_3mm | 0.633 | 0.301 | ≈0.066 | 30 |
+
+**Trunk Distribution 生スコアの内訳**（Complexity / Caliber Uniformity 共通）
+
+| 成分 | 重み | 概要 |
+|------|------|------|
+| Centrality | 0.40 | \(100\times(1-\mathrm{trunk\_eccentricity})\) |
+| Radiality | 0.30 | \(100\times\exp(-2\cdot\mathrm{angular\_CV})\) |
+| Diameter Uniformity | 0.20 | 中心/周辺径比が 1.0–1.5 付近で高得点 |
+| Central Density Bonus | 0.10 | 中心の太い血管割合に応じた加点 |
+
+**解釈の目安（研究用・施設で検証すること）**: 高値ほど吻合・ループ・分岐が多く構造が複雑。マクロ版の「7 成分加重＋特殊補正（最低 80 点など）」は **現行パイプラインでは適用されません**。
+
+#### 6.3.3 Caliber Uniformity Score（0–100）
+
+UI では **Uniformity**、CSV では **Caliber Uniformity Score**。内部変数名は歴史的経緯で `stability_score` です。
+
+**何をもとにしているか**
+
+1. MNV ROI を病変中心から **放射状に 10 bin** に分割し、各 bin の平均血管径（μm、距離変換に基づく）を算出。  
+2. その 10 点プロファイルから次の **4 指標**を計算:
+
+| 内部名 | 意味 |
+|--------|------|
+| `stab_cv` | 10 bin 径の変動係数 (%) = (SD/mean)×100 |
+| `stab_mean_adjacent_change` | 隣接 bin 間の相対変化率の平均 (%) |
+| `stab_residual_cv` | 線形トレンドに対する残差の CV (%) |
+| `stab_range_percent` | (max−min)/mean × 100 |
+
+3. 層別 `stability_ref_*.json` で Z → PC1 / PC2。**PC1 は不安定性軸**のため、スコア化では **−PC1** を用いる。  
+4. −PC1 と PC2 をそれぞれ区分線形（median→50）で 0–100 に写像。  
+5. 最終合成（全 size_class で共通。JSON `final_weights`）:
+
+\[
+\mathrm{CaliberUniformity}
+= 0.7\cdot(-\mathrm{PC1})_{0\text{–}100}
++ 0.2\cdot\mathrm{PC2}_{0\text{–}100}
++ 0.1\cdot\mathrm{Trunk}_{norm}
+\]
+
+Trunk 正規化は Complexity と同じく **`complexity_ref` の `trunk_scale_correction`** を使用します。
+
+**特殊ケース**
+
+| 条件 | 返り値 |
+|------|--------|
+| 径プロファイルが空 | 0 |
+| 10 bin の SD = 0（完全一定） | **100** |
+| 参照 JSON 欠落 | 旧 6 成分加重へフォールバック（通常の配布ビルドでは起きない） |
+
+**結果画面の「Uniformity = 25.0」警告**: 値が厳密に 25.0 のとき再解析を勧める UI フラグです。スコア計算側が 25 をセンチネルとして代入する処理はありません（偶然 25.0 になる場合と、旧マクロ由来の運用慣習を含む）。
+
+**解釈の目安**: 高値ほど中心〜周辺の口径が均一（成熟・不活性寄りに読まれることが多い）。低値は径のばらつき・急峻な動径変化。
+
+#### 6.3.4 Maturity Index
+
+\[
+\mathrm{Maturity}
+= \mathrm{clip}\bigl(50 + (\mathrm{CaliberUniformity} - \mathrm{NetworkComplexity})/2,\; 0,\; 100\bigr)
+\]
+
+口径が均一で複雑性が低いほど高くなりやすい、というバランス指標です。
+
+#### 6.3.5 論文・施設間比較での記載例
+
+- ソフトウェア: ARIAKE OCTA（Flet 版）、Complexity / Caliber Uniformity は **層別 PCA**（参照 JSON 再構築日 2026-05-28）。  
+- 報告する列名: `Network Complexity Score` / `Caliber Uniformity Score` / `Maturity Index`。  
+- 併記推奨: **Image Scale (mm)**、画像幅（px）、推定 size_class。  
+- マクロ版や他施設の旧スコアと数値を直接比較しないこと。
 
 ---
 
@@ -331,6 +463,14 @@ ROI・ウィザード上の **Confirm & Start Analysis** 等で解析を開始�
 - **本書（Flet 版）**: マクロ版 V2 を基に、リポジトリの UI・パイプライン実装に合わせて改訂。  
 - **免責**: 本ソフトウェアは現状有姿（AS IS）で提供されます。医療判断は医師の総合評価に基づいて行ってください。
 
+### 15.1 変更履歴
+
+| 日付 | 内容 |
+|------|------|
+| 2026-08-07 | **§6.3** 新設: Network Complexity / Caliber Uniformity の現行定義（層別 PCA・入力特徴量・EVR／0.7·(−PC1)+0.2·PC2+0.1·Trunk・size_class・Trunk 正規化・Maturity・Uniformity=25.0 警告）。冒頭差分表・§3.2・文書情報を更新。操作マニュアル側の施設コード／Export Metadata と整合。 |
+| 2026-08-07 | 付録 B.5／C／D を「現行 PCA」＋「マクロ版（歴史）」に再編するよう指示（詳細は付録の変更履歴）。 |
+| （既往） | マクロ版 V2 構成を Flet＋FastAPI 実装に合わせて移植（起動差分、VD サフィックス、MNV バッチ QC、aVDI／aMNV、細動脈化 CSV 等）。 |
+
 ---
 
-*詳細な操作手順: [USER_MANUAL.md](../USER_MANUAL.md) · 概要とインストール: [README.md](../README.md) · 開発者向け: [DEVELOPER.md](../DEVELOPER.md) · マクロ版整理付録: [ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md)*
+*詳細な操作手順: [USER_MANUAL.md](../USER_MANUAL.md) · 概要とインストール: [README.md](../README.md) · 開発者向け: [DEVELOPER.md](../DEVELOPER.md) · マクロ版整理付録: [ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md) · Complexity/Uniformity 正本: 本書 §6.3*

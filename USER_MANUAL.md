@@ -104,7 +104,8 @@ Web モードでは、フォルダ／画像の指定に **手動パス入力**�
 ## 6. ログイン
 
 - 通常起動時は **`/login`** から開始し、**研究者名**と**パスワード**を入力します。
-- ログイン成功後、ホーム（`/`）へ遷移します。
+- **Institution code（施設コード）** をプルダウン（または Custom 手入力）で選びます。学習用エクスポートや多施設集計で表記揺れを防ぐための **コード化された ID** です（環境変数 `ARIAKE_INSTITUTION_ID` があればそちらが優先されます）。
+- ログイン成功後、ホーム（`/`）へ遷移します。研究者名は CSV の Analyst / メタデータの `rater_id` に使われます。
 - API の `/login` と連携します。接続できない場合はエラーメッセージを確認してください。
 
 ### 開発者向け注意（DEV_MODE）
@@ -166,7 +167,27 @@ Web モードでは、フォルダ／画像の指定に **手動パス入力**�
 ## 10. 結果画面（`/results`）
 
 - 直近の解析結果やバッチ結果のサマリーを閲覧します。
+- **Save CSV** — ImageJ 互換の MNV / VD バッチ CSV を出力フォルダへ保存します。
+- **Export Metadata & Data** — 学習・解析ログ用に `export/{institution_id}/{lesion_id}/` へ `image_raw.png`・`mask_roi.png`・`meta.json` を書き出します（画像書き出しはバックグラウンド実行）。
 - データ量が多いと表示に時間がかかる場合があります。
+
+### 10.1 MNV の主要スコア（Complexity / Uniformity）
+
+結果画面のタイルと CSV 列の対応:
+
+| UI | CSV 列 | 意味 |
+|----|--------|------|
+| **Complexity** | Network Complexity Score | 血管網の複雑性（0–100） |
+| **Uniformity** | Caliber Uniformity Score | 口径の均一性（0–100） |
+| Maturity Index | Maturity Index | \(50+(\mathrm{Uniformity}-\mathrm{Complexity})/2\) |
+
+**現行実装は層別 PCA**です（マクロ版の「7 成分／6 成分の単純加重」ではありません）。
+
+- **Complexity**: Euler（符号反転）・ループ数・分岐密度・フラクタル次元を Z 化し、層別主成分＋正規化 Trunk を EVR で合成。  
+- **Caliber Uniformity**: 放射状 10 bin の径プロファイルから CV・隣接変化・残差 CV・レンジ％を算出し、PCA（0.7·(−PC1)+0.2·PC2+0.1·Trunk）で合成。  
+- 層（`small` / `large` / `small_3mm`）は **Image Scale (mm)** と画像幅で決まります。
+
+パラメータ表・式の詳細は **[documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md) §6.3** を参照してください。Uniformity が厳密に **25.0** のときは再解析を勧める警告が出ます（計算上の固定センチネルではありません）。
 
 ---
 
@@ -191,6 +212,7 @@ Web モードでは、フォルダ／画像の指定に **手動パス入力**�
 | `src/api/main.py` | FastAPI バックエンド |
 | `uploads/` | アップロード用（実行時に作成されることがある） |
 | `backend.log` | API 起動をスクリプトでリダイレクトしている場合のログ例 |
+| `export/{institution_id}/{lesion_id}/` | Metadata & Data エクスポート（生画像・ROI マスク・meta.json） |
 
 ---
 
@@ -203,7 +225,18 @@ Web モードでは、フォルダ／画像の指定に **手動パス入力**�
 
 ## 14. 関連ドキュメント
 
+- **操作の要点（Confirm Selection 等）:** [documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md](documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md)
+- **理論・出力定義・Complexity / Caliber Uniformity:** [documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md)（§6.3）
 - **開発者向け（実装・拡張）:** [DEVELOPER.md](DEVELOPER.md)
+
+---
+
+## 15. 変更履歴
+
+| 日付 | 内容 |
+|------|------|
+| 2026-08-07 | ログインに **Institution code** を追記。結果画面に **Export Metadata & Data**（`export/{institution_id}/{lesion_id}/`）を追記。§10.1 に **Complexity / Caliber Uniformity**（層別 PCA）の要約と詳細マニュアル §6.3 へのリンクを追加。関連ドキュメント・ログ表を更新。 |
+| （既往） | 起動（`run_flet.sh`）、Web／ネイティブ切替、ログイン、ダッシュボード、ROI／結果画面、トラブルシューティングを記載。 |
 
 ---
 
