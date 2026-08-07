@@ -64,6 +64,8 @@ IMAGEJ_CSV_COLUMNS = [
     "Raw Vsl Length",
     "Raw Vsl Diameter",
     "Quality of analysis",
+    # Presence label (0/1) — not QC. Empty metrics + 0 = MNV absent / Skip.
+    "MNV present",
     "FD% (R1)",
     "FD Avg Area µm² (R1)",
     "FD number (R1)",
@@ -192,6 +194,19 @@ def _metrics_to_imagej_row(
     row["File"] = filename
     row["Subtype"] = metrics.get("mnv_subtype", "")
     row["Quality of analysis"] = qc_status if success else "Error"
+
+    # Dedicated presence field (DRAC-style has_*); do not overload QC.
+    if metrics.get("mnv_present") is False or metrics.get("mnv_absent") is True:
+        row["MNV present"] = 0
+    elif metrics.get("mnv_present") is True:
+        row["MNV present"] = 1
+    elif success and any(
+        metrics.get(k) is not None
+        for k in ("mnv_area_mm2", "vessel_density", "vessel_area_mm2")
+    ):
+        row["MNV present"] = 1
+    else:
+        row["MNV present"] = ""
 
     def _to_csv_value(val):
         if val is None:
@@ -386,37 +401,46 @@ def metrics_from_session_result_row(r: Dict[str, Any]) -> Dict[str, Any]:
     """
     cm = r.get("csv_metrics")
     if isinstance(cm, dict) and cm:
-        return dict(cm)
-    m: Dict[str, Any] = {}
-    skip = frozenset(
-        {
-            "result_type",
-            "source_filename",
-            "analysis_timestamp",
-            "binary_path",
-            "mask_path",
-            "visualization_path",
-            "visualization_base64",
-            "mask_base64",
-            "error",
-            "csv_metrics",
-        }
-    )
-    for k, v in r.items():
-        if k in skip or v is None:
-            continue
-        if isinstance(v, str) and k.endswith("base64"):
-            continue
-        m[k] = v
-    for flat_k, pipe_k in _FLAT_TO_PIPELINE_FD:
-        if flat_k in r and r[flat_k] is not None:
-            m[pipe_k] = r[flat_k]
-    if "diameter_ratio" in r and r["diameter_ratio"] is not None:
-        m["diameter_center_periphery_ratio"] = r["diameter_ratio"]
+        m = dict(cm)
+    else:
+        m = {}
+        skip = frozenset(
+            {
+                "result_type",
+                "source_filename",
+                "analysis_timestamp",
+                "binary_path",
+                "mask_path",
+                "visualization_path",
+                "visualization_base64",
+                "mask_base64",
+                "error",
+                "csv_metrics",
+            }
+        )
+        for k, v in r.items():
+            if k in skip or v is None:
+                continue
+            if isinstance(v, str) and k.endswith("base64"):
+                continue
+            m[k] = v
+        for flat_k, pipe_k in _FLAT_TO_PIPELINE_FD:
+            if flat_k in r and r[flat_k] is not None:
+                m[pipe_k] = r[flat_k]
+        if "diameter_ratio" in r and r["diameter_ratio"] is not None:
+            m["diameter_center_periphery_ratio"] = r["diameter_ratio"]
+    # Presence / skip flags may live on the result root even when csv_metrics exists.
+    for key in ("mnv_present", "mnv_absent", "annotation_status", "skip_reason"):
+        if key in r and r[key] is not None and key not in m:
+            m[key] = r[key]
     return m
 
 
 def qc_status_for_row(r: Dict[str, Any]) -> str:
     if r.get("error"):
         return "unknown"
+    from src.utils.mnv_absent import is_mnv_absent_result
+
+    if is_mnv_absent_result(r):
+        return str(r.get("qc_status") or r.get("quality_of_analysis") or "N/A")
     return str(r.get("qc_status") or r.get("quality_of_analysis") or "unknown")

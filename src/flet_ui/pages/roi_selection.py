@@ -430,6 +430,78 @@ async def get_roi_view(ctx: AppContext):
         session_discard(ctx.page.session, "vd_analysis_explicit_path")
         ctx.page.go("/mnv")
 
+    async def skip_mnv_absent(e):
+        """Record MNV-absent (negative sample) without running morphometric analysis."""
+        from src.utils.batch_csv_export import mark_analysis_ended, mark_analysis_started
+        from src.utils.mnv_absent import build_mnv_absent_result
+
+        clean_path = str(target_path).strip().strip("'").strip('"')
+        try:
+            if state["base_img"] is not None and state.get("scale"):
+                inv_scale = 1.0 / float(state["scale"])
+                orig_w = int(state["new_w"] * inv_scale)
+                orig_h = int(state["new_h"] * inv_scale)
+            else:
+                orig_h = orig_w = None
+
+            scale_sess = ctx.page.session.get("scale") or 6.0
+            try:
+                scale_mm = float(scale_sess)
+            except (TypeError, ValueError):
+                scale_mm = 6.0
+
+            mark_analysis_started(ctx.page.session)
+            result = build_mnv_absent_result(
+                clean_path,
+                scale_mm=scale_mm,
+                height=orig_h,
+                width=orig_w,
+            )
+            mark_analysis_ended(ctx.page.session)
+
+            session_discard(ctx.page.session, "vd_analysis_explicit_path")
+            session_discard(ctx.page.session, "roi")
+            session_discard(ctx.page.session, "roi_mask_b64")
+            # Keep empty mask on session so metadata export can fall back if needed
+            ctx.page.session.set("roi_mask_b64", result.get("mask_base64"))
+
+            if ctx.page.session.get("is_reanalysis_mode"):
+                re_idx = ctx.page.session.get("reanalysis_index")
+                b_results = ctx.page.session.get("batch_results") or []
+                if re_idx is not None and 0 <= int(re_idx) < len(b_results):
+                    b_results[int(re_idx)] = result
+                    ctx.page.session.set("batch_results", b_results)
+                session_discard(ctx.page.session, "is_reanalysis_mode")
+                session_discard(ctx.page.session, "reanalysis_index")
+                session_discard(ctx.page.session, "batch_csv_auto_saved")
+                await ctx.add_to_console(
+                    "Skipped as MNV absent (empty mask recorded). Previous result overwritten.",
+                    "SUCCESS",
+                )
+                await asyncio.sleep(0.1)
+                ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
+                return
+
+            ctx.page.session.set("last_result", result)
+            ctx.page.session.set("is_vd_result", False)
+            batch_paths = ctx.page.session.get("mnv_batch_paths")
+            if batch_paths and isinstance(batch_paths, list) and len(batch_paths) > 0:
+                ctx.page.session.set("mnv_batch_awaiting_qc", True)
+                session_discard(ctx.page.session, "batch_results")
+                ctx.page.session.set("results_selected_index", 0)
+            session_discard(ctx.page.session, "batch_csv_auto_saved")
+            await ctx.add_to_console(
+                "Skipped — MNV absent: empty mask + mnv_present=false recorded for training/QC.",
+                "SUCCESS",
+            )
+            await asyncio.sleep(0.1)
+            ctx.page.go("/results")
+        except Exception as ex:
+            status_text.value = f"⚠️ Skip failed: {ex}"
+            status_text.color = Colors.RED_400
+            await ctx.add_to_console(f"MNV absent skip failed: {ex}", "ERROR")
+            ctx.page.update()
+
     async def load_image_async():
         await asyncio.sleep(0.1)
         try:
@@ -547,12 +619,28 @@ async def get_roi_view(ctx: AppContext):
                         overflow=ft.TextOverflow.ELLIPSIS,
                     ),
                 ], expand=True, spacing=2),
-                ft.ElevatedButton(
-                    "Confirm & Re-analyze" if is_reanalysis else "Confirm ROI & Proceed", 
-                    icon=Icons.CHECK_CIRCLE,
-                    height=40, bgcolor=Colors.AMBER_400 if is_reanalysis else PRIMARY, 
-                    color=Colors.BLACK, on_click=confirm_roi
-                )
+                ft.Row(
+                    [
+                        ft.OutlinedButton(
+                            "Skip — MNV absent",
+                            icon=Icons.SKIP_NEXT_ROUNDED,
+                            height=40,
+                            tooltip=(
+                                "MNVがはっきり見えない場合。解析せず空マスク＋"
+                                "mnv_present=false を学習用に記録します。"
+                            ),
+                            on_click=skip_mnv_absent,
+                        ),
+                        ft.ElevatedButton(
+                            "Confirm & Re-analyze" if is_reanalysis else "Confirm ROI & Proceed", 
+                            icon=Icons.CHECK_CIRCLE,
+                            height=40, bgcolor=Colors.AMBER_400 if is_reanalysis else PRIMARY, 
+                            color=Colors.BLACK, on_click=confirm_roi
+                        ),
+                    ],
+                    spacing=8,
+                    wrap=True,
+                ),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Divider(height=8, color=Colors.TRANSPARENT),
             ft.Row([
