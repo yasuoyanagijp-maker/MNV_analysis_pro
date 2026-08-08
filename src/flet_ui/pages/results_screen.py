@@ -41,10 +41,12 @@ from src.utils.metadata_export import (
 from src.utils.institution_config import resolve_institution_id
 from src.utils.mnv_absent import is_mnv_absent_result
 from src.utils.second_reader import (
+    READER_ROLE_KEY,
     SR_FIRST_GRADER_CSV_KEY,
     SR_SCAN_ROOT_KEY,
     SR_CSV_PATH_KEY,
     find_first_grader_mnv_csvs,
+    integrated_output_dir,
     is_second_reader,
 )
 from src.utils.dual_grader_merge import RPD_THRESHOLD_PCT, merge_dual_grader_csvs
@@ -76,6 +78,10 @@ async def get_results_view(ctx: AppContext):
     _sr_csv_ready = bool(
         is_sr_session and _sr_csv_saved and Path(str(_sr_csv_saved)).is_file()
     )
+
+    # エキスポート成功後に「ログアウト」ボタンを表示（第1グレーダー→第2リーダー交代動線）
+    EXPORT_LOGOUT_READY_KEY = "export_logout_ready"
+    _logout_ready = bool(ctx.page.session.get(EXPORT_LOGOUT_READY_KEY)) or _sr_csv_ready
 
     # Selection State (Default to Summary if multiple, or the first result)
     # We use a simple list index, -1 means Summary
@@ -234,6 +240,12 @@ async def get_results_view(ctx: AppContext):
                         "第2リーダーCSVを保存しました。「統合解析データ」ボタンが利用できます。",
                         "INFO",
                     )
+
+            # エキスポート完了 → ログアウトして読影者を交代できる
+            if written:
+                ctx.page.session.set(EXPORT_LOGOUT_READY_KEY, True)
+                logout_btn.visible = True
+                logout_btn_detail.visible = True
 
             try:
                 prefer = mnv_bytes or vd_full_bytes or vd_vsl_bytes
@@ -463,7 +475,13 @@ async def get_results_view(ctx: AppContext):
 
             grader1 = "Grader1"
             reader2 = (ctx.page.session.get("username") or "").strip() or "Reader2"
-            out_dir = get_target_output_dir()
+            # 統合結果は第1・第2の結果フォルダと同階層の integrated_output_* に出力
+            scan_root = ctx.page.session.get(SR_SCAN_ROOT_KEY)
+            if scan_root and Path(str(scan_root)).is_dir():
+                out_dir = integrated_output_dir(Path(str(scan_root)))
+            else:
+                # scan root 不明時は第1グレーダーCSVの場所から同階層を導出
+                out_dir = integrated_output_dir(first_csv.parent)
 
             await ctx.add_to_console(
                 f"統合解析データ: {first_csv.name} × {second_csv.name} "
@@ -538,6 +556,59 @@ async def get_results_view(ctx: AppContext):
         visible=_sr_csv_ready,
         on_click=lambda _: ctx.page.run_task(on_create_integrated_data),
     )
+
+    async def on_logout(_=None):
+        """エキスポート後のログアウト: 認証・役割・第2リーダー状態を破棄して /login へ。"""
+        for key in (
+            "username",
+            "user",
+            READER_ROLE_KEY,
+            SR_SCAN_ROOT_KEY,
+            SR_FIRST_GRADER_CSV_KEY,
+            SR_CSV_PATH_KEY,
+            EXPORT_LOGOUT_READY_KEY,
+            "batch_results",
+            "last_result",
+            "results_selected_index",
+            "batch_csv_auto_saved",
+            "output_csv_paths",
+            "output_folder",
+            "original_input_dir",
+            "target_path",
+            "original_target_path",
+            "roi",
+            "roi_mask_b64",
+            "mnv_batch_paths",
+            "mnv_batch_index",
+            "mnv_batch_results",
+            "mnv_batch_awaiting_qc",
+            "analysis_started_at",
+            "analysis_ended_at",
+            "analysis_duration_sec",
+        ):
+            session_discard(ctx.page.session, key)
+        await ctx.add_to_console(
+            "ログアウトしました。第2リーダーは Role を選択して再ログインしてください。",
+            "INFO",
+        )
+        ctx.page.go("/login")
+
+    def _make_logout_btn():
+        return ft.ElevatedButton(
+            "ログアウト",
+            icon=Icons.LOGOUT_ROUNDED,
+            bgcolor=Colors.with_opacity(0.2, Colors.RED_400),
+            color=Colors.RED_300,
+            tooltip=(
+                "エキスポート完了後にログアウトします。"
+                "続けて第2リーダーがログインして二重読影を開始できます。"
+            ),
+            visible=_logout_ready,
+            on_click=lambda _: ctx.page.run_task(on_logout),
+        )
+
+    logout_btn = _make_logout_btn()          # summary view row
+    logout_btn_detail = _make_logout_btn()   # MNV detail view row
 
     async def on_mnv_batch_ok(_=None):
         res = ctx.page.session.get("last_result")
@@ -1074,6 +1145,7 @@ async def get_results_view(ctx: AppContext):
                         on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                     ),
                     integrated_data_btn,
+                    logout_btn,
                 ], spacing=8),
                 ft.Text(f"Overview of {total} processed images", color=TEXT_MUTED),
                 reorder_hint,
@@ -1643,6 +1715,7 @@ async def get_results_view(ctx: AppContext):
                                 on_click=lambda _: ctx.page.run_task(on_reanalyze_mnv, idx),
                             ),
                             integrated_data_btn,
+                            logout_btn_detail,
                         ],
                         spacing=8,
                         wrap=True,
