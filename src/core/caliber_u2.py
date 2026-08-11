@@ -98,6 +98,43 @@ def infer_size_class_from_filename(file_name: str) -> str:
     return "small_3mm"
 
 
+# Resolution gate shared with mnv_pipeline.SMALL_IMAGE_THRESHOLD (Solix vs PlexElite).
+_U2_WIDTH_THRESHOLD = 800
+
+
+def resolve_caliber_u2_size_class(
+    scale_mm: Optional[float],
+    image_width: int,
+) -> str:
+    """
+    Device-locked U2 stratum from FOV + resolution.
+
+    Pipeline PCA ``size_class`` maps *all* ``scale_mm >= 6`` to ``large``, which is
+    correct for Complexity/PCA Caliber refs but wrong for U2: Solix/AngioVue 6×6
+    must use ``small``, PlexElite 6×6 ``large``. Distinguish 6×6 devices by width
+    with the same gate as filter selection (``width < 800`` → small,
+    ``width >= 800`` → large).
+    """
+    try:
+        scale = float(scale_mm) if scale_mm is not None else None
+    except (TypeError, ValueError):
+        scale = None
+    try:
+        width = int(image_width or 0)
+    except (TypeError, ValueError):
+        width = 0
+
+    if scale is not None and abs(scale - 3.0) < 0.01:
+        return "small_3mm"
+    # Non-3mm: align with mnv_pipeline filter selection
+    # (w < 800 → FILTER_PARAMS_SMALL / U2 small; w >= 800 → LARGE / U2 large).
+    # Exact 800px (e.g. Flet ROI crops) must use large so NV CV / dilated-fraction
+    # inputs from FILTER_PARAMS_LARGE are scored against the matching U2 stratum.
+    if width >= _U2_WIDTH_THRESHOLD:
+        return "large"
+    return "small"
+
+
 def _axis_piecewise(raw: float, pw: Dict[str, float]) -> float:
     """Uniformity axis: lower raw → higher score via piecewise on (−raw)."""
     if not np.isfinite(raw):
