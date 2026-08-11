@@ -541,7 +541,7 @@ def generate_pdf_report(data: dict, output_path: str) -> None:
         pdf.cell(
             0,
             8,
-            "MNV present: 0 (absent / skipped — morphometrics not measured)",
+            "MNV present: 0 (absent / skipped - morphometrics not measured)",
             border=0,
             new_x=XPos.LMARGIN,
             new_y=YPos.NEXT,
