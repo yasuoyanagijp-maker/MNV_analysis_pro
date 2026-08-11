@@ -927,6 +927,8 @@ async def get_dashboard_view(ctx: AppContext):
                 first_fov = name_to_fov.get(Path(paths_ordered[0]).name)
             if first_fov is None:
                 first_fov = stem_to_fov.get(Path(paths_ordered[0]).stem)
+            if first_fov is None:
+                first_fov = ctx.page.session.get("mnv_batch_default_fov")
             if first_fov is not None:
                 ctx.page.session.set("scale", float(first_fov))
                 scale_mm.value = format_scale_dropdown_value(float(first_fov))
