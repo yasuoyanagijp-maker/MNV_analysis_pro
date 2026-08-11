@@ -46,6 +46,7 @@ from src.utils.second_reader import (
     SR_SCAN_ROOT_KEY,
     SR_CSV_PATH_KEY,
     find_first_grader_mnv_csvs,
+    format_scale_dropdown_value,
     integrated_output_dir,
     is_second_reader,
 )
@@ -581,7 +582,11 @@ async def get_results_view(ctx: AppContext):
             "mnv_batch_paths",
             "mnv_batch_index",
             "mnv_batch_results",
+            "mnv_batch_names_preview",
             "mnv_batch_awaiting_qc",
+            "mnv_batch_scales",
+            "mnv_batch_scale_stems",
+            "mnv_batch_scale_names",
             "analysis_started_at",
             "analysis_ended_at",
             "analysis_duration_sec",
@@ -643,6 +648,12 @@ async def get_results_view(ctx: AppContext):
                 next_fov = name_map.get(next_path.name) or stem_map.get(next_path.stem)
             if next_fov is not None:
                 ctx.page.session.set("scale", float(next_fov))
+                scale_txt = format_scale_dropdown_value(float(next_fov))
+                try:
+                    if ctx.scale_mm_ref and ctx.scale_mm_ref.current is not None:
+                        ctx.scale_mm_ref.current.value = scale_txt
+                except Exception:
+                    pass
             await ctx.add_to_console(f"MNV batch: accepted. Opening ROI for file {next_i + 1}/{len(paths)}.", "INFO")
             ctx.page.go("/roi")
         else:

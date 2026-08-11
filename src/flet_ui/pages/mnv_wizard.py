@@ -41,9 +41,15 @@ async def get_mnv_view(ctx: AppContext):
     target_path = ctx.page.session.get("target_path")
     scale_sess = ctx.page.session.get("scale") or 6.0
     roi_bbox = ctx.page.session.get("roi")
+    batch_paths = ctx.page.session.get("mnv_batch_paths")
 
     try:
-        scale = float(_ref_control_value(ctx.scale_mm_ref, scale_sess))
+        # Batch queues (esp. second-reader meta FOV) own per-image session scale;
+        # do not let a stale dashboard dropdown override it.
+        if batch_paths:
+            scale = float(scale_sess)
+        else:
+            scale = float(_ref_control_value(ctx.scale_mm_ref, scale_sess))
     except (TypeError, ValueError):
         scale = float(scale_sess)
 
