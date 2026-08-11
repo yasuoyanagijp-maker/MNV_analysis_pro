@@ -118,6 +118,10 @@ async def main(page: ft.Page):
         print("!!! [SECURITY WARNING] DEV_MODE IS ACTIVE. LOGIN BYPASSED. !!!", flush=True)
         page.session.set("username", "DEV_USER")
         page.session.set("user", {"username": "DEV_USER", "is_admin": True})
+        # Optional: test reader role without the login screen (GRADER1 / READER2)
+        _dev_role = (os.environ.get("ARIAKE_READER_ROLE") or "").strip().upper()
+        if _dev_role:
+            page.session.set("reader_role", _dev_role)
         if not page.session.get("institution_id"):
             from src.utils.institution_config import resolve_institution_id, persist_institution_id
             code = resolve_institution_id(page.session, getattr(page, "client_storage", None))

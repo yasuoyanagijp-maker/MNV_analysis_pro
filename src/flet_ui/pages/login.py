@@ -7,6 +7,12 @@ from src.utils.institution_config import (
     persist_institution_id,
     resolve_institution_id,
 )
+from src.utils.second_reader import (
+    READER_ROLE_KEY,
+    READER_ROLE_OPTIONS,
+    ROLE_FIRST_GRADER,
+    ROLE_SECOND_READER,
+)
 
 
 async def get_login_view(ctx: AppContext):
@@ -57,6 +63,22 @@ async def get_login_view(ctx: AppContext):
         hint_text="e.g. MY_HOSPITAL_CODE",
     )
 
+    _role_persisted = str(ctx.page.session.get(READER_ROLE_KEY) or ROLE_FIRST_GRADER)
+    role_dd = ft.Dropdown(
+        label="Role / 読影担当",
+        width=350,
+        border_color=PRIMARY,
+        focused_border_color=PRIMARY_GLOW,
+        value=_role_persisted if _role_persisted in (ROLE_FIRST_GRADER, ROLE_SECOND_READER) else ROLE_FIRST_GRADER,
+        options=[
+            ft.dropdown.Option(code, label) for code, label in READER_ROLE_OPTIONS
+        ],
+        tooltip=(
+            "第2リーダー: 施設エキスポート（export/meta）の親フォルダを自動スキャンして"
+            "二重読影を行い、RPD≤20% ルールで統合CSVを作成できます。"
+        ),
+    )
+
     def _on_institution_change(_=None):
         institution_custom.visible = institution_dd.value == "CUSTOM"
         ctx.page.update()
@@ -98,6 +120,9 @@ async def get_login_view(ctx: AppContext):
             _ = resolve_institution_id(ctx.page.session, getattr(ctx.page, "client_storage", None))
             ctx.page.session.set("username", username_field.value)
             ctx.page.session.set("institution_id", code)
+            ctx.page.session.set(
+                READER_ROLE_KEY, role_dd.value or ROLE_FIRST_GRADER
+            )
             ctx.page.go("/")
         else:
             error_text.value = login_res.get("message", "Login failed.")
@@ -117,6 +142,7 @@ async def get_login_view(ctx: AppContext):
                     password_field,
                     institution_dd,
                     institution_custom,
+                    role_dd,
                     ft.Text(
                         "Institution code tags export folders for multi-site datasets "
                         "(rater_id = Researcher Name).",
