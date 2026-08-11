@@ -114,8 +114,14 @@ def merge_dual_grader_csvs(
     second_csv = Path(second_csv)
     warnings: List[str] = []
 
-    fields_a, rows_a = read_csv(first_csv)
-    fields_b, rows_b = read_csv(second_csv)
+    try:
+        fields_a, rows_a = read_csv(first_csv)
+        fields_b, rows_b = read_csv(second_csv)
+    except ValueError as ex:
+        raise ValueError(f"CSV read failed: {ex}") from ex
+    except SystemExit as ex:
+        # Legacy callers / older tool builds may still raise SystemExit.
+        raise ValueError(f"CSV read failed: {ex}") from ex
 
     # Step 1 — U2 recompute (same fixed pipeline as the reading-center tool)
     fields_a, rows_a = _apply_u2_safe(fields_a, rows_a, warnings, first_label)
@@ -166,18 +172,23 @@ def merge_dual_grader_csvs(
             a, b = to_float(ra.get(col)), to_float(rb.get(col))
             val, status, rpd_s = adopt_pair(a, b, rpd_threshold)
             out[col] = val
-            if col in MAJOR_METRICS and status == "RECHECK" and a is not None and b is not None:
+            if col in MAJOR_METRICS and status in ("RECHECK", "MISSING"):
+                rule = (
+                    "MISSING"
+                    if status == "MISSING"
+                    else f"RPD>{rpd_threshold:g}%"
+                )
                 recheck_rows.append(
                     {
                         "File": out["File"],
                         "Metric": col,
                         "FirstGrader": first_label,
                         "SecondReader": second_label,
-                        "Value_grader1": f"{a:.10g}",
-                        "Value_reader2": f"{b:.10g}",
+                        "Value_grader1": "" if a is None else f"{a:.10g}",
+                        "Value_reader2": "" if b is None else f"{b:.10g}",
                         "RPD_pct": rpd_s,
                         "Adopted": "NA",
-                        "Rule": f"RPD>{rpd_threshold:g}%",
+                        "Rule": rule,
                     }
                 )
         adopted_rows.append(out)

@@ -29,7 +29,9 @@ from src.utils.second_reader import (
     SR_FIRST_GRADER_CSV_KEY,
     SR_SCAN_ROOT_KEY,
     SR_CSV_PATH_KEY,
+    format_scale_dropdown_value,
     is_second_reader,
+    resolve_image_fov_map,
     resolve_second_reader_scan,
     second_reader_output_dir,
 )
@@ -47,6 +49,7 @@ def _prepare_results_session(page, all_results, *, vd_only: bool = False) -> Non
         session_discard(page.session, "mnv_batch_index")
         session_discard(page.session, "mnv_batch_results")
         session_discard(page.session, "mnv_batch_names_preview")
+        session_discard(page.session, "mnv_batch_scales")
         session_discard(page.session, "results_selected_index")
         if all_results:
             page.session.set("results_selected_index", 0)
@@ -905,7 +908,13 @@ async def get_dashboard_view(ctx: AppContext):
             session_discard(ctx.page.session, "batch_results")
             session_discard(ctx.page.session, "results_selected_index")
             ctx.page.session.set("target_path", paths_ordered[0])
-            ctx.page.session.set("scale", float(scale_mm.value))
+            scales = ctx.page.session.get("mnv_batch_scales") or {}
+            first_fov = scales.get(paths_ordered[0])
+            if first_fov is not None:
+                ctx.page.session.set("scale", float(first_fov))
+                scale_mm.value = format_scale_dropdown_value(float(first_fov))
+            else:
+                ctx.page.session.set("scale", float(scale_mm.value))
             session_discard(ctx.page.session, "roi")
             session_discard(ctx.page.session, "roi_mask_b64")
             batch_table.rows.clear()
@@ -968,6 +977,7 @@ async def get_dashboard_view(ctx: AppContext):
             session_discard(ctx.page.session, "mnv_batch_index")
             session_discard(ctx.page.session, "mnv_batch_results")
             session_discard(ctx.page.session, "mnv_batch_names_preview")
+            session_discard(ctx.page.session, "mnv_batch_scales")
             session_discard(ctx.page.session, "last_result")
             session_discard(ctx.page.session, "batch_results")
             session_discard(ctx.page.session, "results_selected_index")
@@ -1044,6 +1054,24 @@ async def get_dashboard_view(ctx: AppContext):
         )
         for w in scan.warnings:
             await ctx.add_to_console(f"第2リーダー スキャン: {w}", "WARN")
+
+        path_to_fov, default_fov, fov_warnings = resolve_image_fov_map(
+            scan.images, scan.meta_files
+        )
+        for w in fov_warnings:
+            await ctx.add_to_console(f"第2リーダー FOV: {w}", "WARN")
+        if default_fov is not None:
+            scale_txt = format_scale_dropdown_value(default_fov)
+            scale_mm.value = scale_txt
+            ctx.page.session.set("scale", float(default_fov))
+            await ctx.add_to_console(
+                f"第2リーダー: export/meta の FOV からスケールを {scale_txt} mm に設定しました。",
+                "INFO",
+            )
+        if path_to_fov:
+            ctx.page.session.set("mnv_batch_scales", path_to_fov)
+        else:
+            session_discard(ctx.page.session, "mnv_batch_scales")
 
         if scan.first_grader_csvs:
             first_csv = scan.first_grader_csvs[0]

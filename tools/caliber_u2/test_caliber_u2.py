@@ -77,6 +77,15 @@ class TestCaliberU2(unittest.TestCase):
             infer_size_class_from_filename("PlexElite_6x6_OD.png"),
             "large",
         )
+        # Sanitized export stems (spaces → _) must match the same stratum.
+        self.assertEqual(
+            infer_size_class_from_filename("Patient_Plex_Elite_6x6.png"),
+            "large",
+        )
+        self.assertEqual(
+            infer_size_class_from_filename("Optovue_Solix_AngioVue_6x6.png"),
+            "small",
+        )
 
     def test_csv_insert_columns(self):
         mod = _load_csv_script()
