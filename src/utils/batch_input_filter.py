@@ -12,6 +12,16 @@ from pathlib import Path
 from typing import List
 
 
+# OCTA slot suffixes (superficial=1, deep=2, CC/FD=4). Require a non-digit before the
+# channel digit so multi-digit case IDs like Patient001.tif / Patient002.tif are kept.
+_OCTA_SLOT_SUFFIX = re.compile(
+    r"(?<![0-9])[124]\.(?:tif|tiff|png|jpg|jpeg)$",
+    re.IGNORECASE,
+)
+# Legacy image1 / image2 / image4 tokens — do not match image10 / image20 / image40.
+_IMAGE_SLOT_TOKEN = re.compile(r"image[124](?![0-9])", re.IGNORECASE)
+
+
 def filter_mnv_files_for_roi_selection(
     image_files: List[Path],
     analysis_type: str = "MNV",
@@ -19,28 +29,21 @@ def filter_mnv_files_for_roi_selection(
     fallback_all_if_empty: bool = True,
 ) -> List[Path]:
     """
-    MNV folder batch: exclude *1 / *2 / *4 extensions and image1/2/4 name patterns.
+    MNV folder batch: exclude OCTA slot filenames (*1/*2/*4, image1/2/4) so the ROI
+    queue keeps en-face MNV frames (typically *3).
+
+    Channel digits must not be part of a larger trailing number (Patient001 stays).
+    ``image10`` is not treated as ``image1``.
     VD: return list unchanged (same as mainstreamer.filter_mnv_files_for_roi_selection).
     """
     if analysis_type != "MNV":
         return list(image_files)
 
     filtered_files: List[Path] = []
-    exclude_patterns = [
-        (r"1\.(tif|tiff|png|jpg|jpeg)$", re.IGNORECASE),
-        (r"2\.(tif|tiff|png|jpg|jpeg)$", re.IGNORECASE),
-        (r"4\.(tif|tiff|png|jpg|jpeg)$", re.IGNORECASE),
-        (r"image[124]", re.IGNORECASE),
-    ]
 
     for file_path in image_files:
         filename = file_path.name
-        should_exclude = False
-        for pattern, flags in exclude_patterns:
-            if re.search(pattern, filename, flags):
-                should_exclude = True
-                break
-        if should_exclude:
+        if _OCTA_SLOT_SUFFIX.search(filename) or _IMAGE_SLOT_TOKEN.search(filename):
             continue
         filtered_files.append(file_path)
 
