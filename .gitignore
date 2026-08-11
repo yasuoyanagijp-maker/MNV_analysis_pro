@@ -22,6 +22,8 @@ output/exports/logs/
 temp_data/
 uploads/
 *.tmp
+flet_ui.log
+*.log
 
 # Test
 tests/

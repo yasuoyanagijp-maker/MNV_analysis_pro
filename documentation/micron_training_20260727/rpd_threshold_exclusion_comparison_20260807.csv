@@ -1,0 +1,5 @@
+﻿RPD_threshold_pct,major_cells_total,major_cells_OK,major_cells_RECHECK,major_cell_exclusion_rate_pct,visits_total,visits_with_any_major_RECHECK,visit_exclusion_rate_pct,cell_exclusion_improvement_vs_RPD10_pct,visit_exclusion_improvement_vs_RPD10_pct
+10.0,184,152,32,17.39,23,14,60.87,0.0,0.0
+15.0,184,169,15,8.15,23,8,34.78,53.13,42.86
+20.0,184,175,9,4.89,23,6,26.09,71.88,57.14
+25.0,184,177,7,3.8,23,6,26.09,78.15,57.14
