@@ -636,6 +636,11 @@ async def get_results_view(ctx: AppContext):
             ctx.page.session.set("target_path", paths[next_i])
             scales = ctx.page.session.get("mnv_batch_scales") or {}
             next_fov = scales.get(paths[next_i])
+            if next_fov is None:
+                name_map = ctx.page.session.get("mnv_batch_scale_names") or {}
+                stem_map = ctx.page.session.get("mnv_batch_scale_stems") or {}
+                next_path = Path(paths[next_i])
+                next_fov = name_map.get(next_path.name) or stem_map.get(next_path.stem)
             if next_fov is not None:
                 ctx.page.session.set("scale", float(next_fov))
             await ctx.add_to_console(f"MNV batch: accepted. Opening ROI for file {next_i + 1}/{len(paths)}.", "INFO")
@@ -652,6 +657,8 @@ async def get_results_view(ctx: AppContext):
             session_discard(ctx.page.session, "mnv_batch_results")
             session_discard(ctx.page.session, "mnv_batch_names_preview")
             session_discard(ctx.page.session, "mnv_batch_scales")
+            session_discard(ctx.page.session, "mnv_batch_scale_stems")
+            session_discard(ctx.page.session, "mnv_batch_scale_names")
             ctx.page.session.set("results_selected_index", -1)
             if vd_hdr is not None:
                 await ctx.add_to_console(
@@ -698,6 +705,8 @@ async def get_results_view(ctx: AppContext):
         session_discard(ctx.page.session, "mnv_batch_results")
         session_discard(ctx.page.session, "mnv_batch_names_preview")
         session_discard(ctx.page.session, "mnv_batch_scales")
+        session_discard(ctx.page.session, "mnv_batch_scale_stems")
+        session_discard(ctx.page.session, "mnv_batch_scale_names")
         ctx.page.session.set("results_selected_index", -1)
         
         await ctx.add_to_console(f"MNV batch stopped early: {len(acc)} file(s) saved.", "SUCCESS")

@@ -355,6 +355,34 @@ def format_scale_dropdown_value(fov_mm: float) -> str:
     return f"{float(fov_mm):g}"
 
 
+def bind_fov_to_batch_paths(
+    paths: Sequence[str],
+    stem_to_fov: Dict[str, float],
+    name_to_fov: Optional[Dict[str, float]] = None,
+) -> Dict[str, float]:
+    """
+    Remap FOV onto staged/queued batch paths.
+
+    Staging copies keep the source basename, so prefer ``name`` then ``stem``.
+    """
+    name_to_fov = name_to_fov or {}
+    out: Dict[str, float] = {}
+    for raw in paths:
+        p = Path(raw)
+        fov = name_to_fov.get(p.name)
+        if fov is None:
+            fov = stem_to_fov.get(p.stem)
+        if fov is None:
+            continue
+        fov_f = float(fov)
+        out[str(raw)] = fov_f
+        try:
+            out[str(p.resolve())] = fov_f
+        except OSError:
+            pass
+    return out
+
+
 def second_reader_output_dir(scan_root: Path) -> Path:
     """
     Output folder for the second reader's own CSV.
