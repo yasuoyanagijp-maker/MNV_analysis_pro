@@ -77,7 +77,7 @@ cd /path/to/MNV_analysis_pro
 - 手順書: [`PROCEDURE_JA.md`](PROCEDURE_JA.md)
 - 設定例: [`config_example.yaml`](config_example.yaml)
 - トレーニング根拠: `documentation/micron_training_20260727/RPD20_根拠メモ_20260807.md`
-- Cursor rule: `.cursor/rules/reading-center-rpd.mdc`
+- Cursor rule: [`AGENT.mdc`](AGENT.mdc)
 
 ## 将来（仕様固定後）
 

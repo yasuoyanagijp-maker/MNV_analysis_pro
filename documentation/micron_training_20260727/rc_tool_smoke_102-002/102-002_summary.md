@@ -1,4 +1,4 @@
-# Dual-read adoption summary (2026-08-07)
+# Dual-read adoption summary (2026-08-11)
 
 - Site reader: **Inoue**
 - 2nd reader: **Inoda_ARIAKE**
