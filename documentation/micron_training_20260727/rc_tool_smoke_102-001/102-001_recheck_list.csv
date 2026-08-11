@@ -1,7 +1,7 @@
 ﻿Case,Visit,MatchKey,Metric,SiteReader,SecondReader,Value_site,Value_reader2,RPD_pct,Adopted,Rule
 102-001,Baseline,102-001|Baseline,MNV Area (mm2),Inoda,Inoue,1.707780762,2.19416748,24.9305,NA,RPD>20%
 102-001,Baseline,102-001|Baseline,Vsl Area (mm2),Inoda,Inoue,0.8334008789,1.075957031,25.4071,NA,RPD>20%
-102-001,Week1,102-001|Week1,MNV Area (mm2),Inoda,Inoue,2.379836426,1.859677734,24.5386,NA,RPD>20%
-102-001,Week1,102-001|Week1,Vsl Area (mm2),Inoda,Inoue,1.236972656,0.9322119141,28.0991,NA,RPD>20%
+102-001,Week01,102-001|Week01,MNV Area (mm2),Inoda,Inoue,2.379836426,1.859677734,24.5386,NA,RPD>20%
+102-001,Week01,102-001|Week01,Vsl Area (mm2),Inoda,Inoue,1.236972656,0.9322119141,28.0991,NA,RPD>20%
 102-001,Week12,102-001|Week12,MNV Area (mm2),Inoda,Inoue,1.74300293,1.296057129,29.4134,NA,RPD>20%
 102-001,Week32,102-001|Week32,Caliber Uniformity Score (U2),Inoda,Inoue,54.1298,34.6866,43.7829,NA,RPD>20%
