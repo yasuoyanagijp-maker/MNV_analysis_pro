@@ -587,6 +587,8 @@ async def get_results_view(ctx: AppContext):
             "mnv_batch_scales",
             "mnv_batch_scale_stems",
             "mnv_batch_scale_names",
+            "mnv_batch_default_fov",
+            "mnv_select_all_images",
             "analysis_started_at",
             "analysis_ended_at",
             "analysis_duration_sec",
@@ -646,6 +648,9 @@ async def get_results_view(ctx: AppContext):
                 stem_map = ctx.page.session.get("mnv_batch_scale_stems") or {}
                 next_path = Path(paths[next_i])
                 next_fov = name_map.get(next_path.name) or stem_map.get(next_path.stem)
+            if next_fov is None:
+                # Unmatched meta → majority/default FOV, never inherit prior image.
+                next_fov = ctx.page.session.get("mnv_batch_default_fov")
             if next_fov is not None:
                 ctx.page.session.set("scale", float(next_fov))
                 scale_txt = format_scale_dropdown_value(float(next_fov))
@@ -670,6 +675,7 @@ async def get_results_view(ctx: AppContext):
             session_discard(ctx.page.session, "mnv_batch_scales")
             session_discard(ctx.page.session, "mnv_batch_scale_stems")
             session_discard(ctx.page.session, "mnv_batch_scale_names")
+            session_discard(ctx.page.session, "mnv_batch_default_fov")
             ctx.page.session.set("results_selected_index", -1)
             if vd_hdr is not None:
                 await ctx.add_to_console(
@@ -718,6 +724,7 @@ async def get_results_view(ctx: AppContext):
         session_discard(ctx.page.session, "mnv_batch_scales")
         session_discard(ctx.page.session, "mnv_batch_scale_stems")
         session_discard(ctx.page.session, "mnv_batch_scale_names")
+        session_discard(ctx.page.session, "mnv_batch_default_fov")
         ctx.page.session.set("results_selected_index", -1)
         
         await ctx.add_to_console(f"MNV batch stopped early: {len(acc)} file(s) saved.", "SUCCESS")

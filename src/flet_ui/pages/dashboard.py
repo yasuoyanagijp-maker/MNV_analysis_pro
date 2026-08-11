@@ -54,6 +54,7 @@ def _prepare_results_session(page, all_results, *, vd_only: bool = False) -> Non
         session_discard(page.session, "mnv_batch_scales")
         session_discard(page.session, "mnv_batch_scale_stems")
         session_discard(page.session, "mnv_batch_scale_names")
+        session_discard(page.session, "mnv_batch_default_fov")
         session_discard(page.session, "results_selected_index")
         if all_results:
             page.session.set("results_selected_index", 0)
@@ -996,6 +997,7 @@ async def get_dashboard_view(ctx: AppContext):
             session_discard(ctx.page.session, "mnv_batch_scales")
             session_discard(ctx.page.session, "mnv_batch_scale_stems")
             session_discard(ctx.page.session, "mnv_batch_scale_names")
+            session_discard(ctx.page.session, "mnv_batch_default_fov")
             session_discard(ctx.page.session, "last_result")
             session_discard(ctx.page.session, "batch_results")
             session_discard(ctx.page.session, "results_selected_index")
@@ -1082,10 +1084,13 @@ async def get_dashboard_view(ctx: AppContext):
             scale_txt = format_scale_dropdown_value(default_fov)
             scale_mm.value = scale_txt
             ctx.page.session.set("scale", float(default_fov))
+            ctx.page.session.set("mnv_batch_default_fov", float(default_fov))
             await ctx.add_to_console(
                 f"第2リーダー: export/meta の FOV からスケールを {scale_txt} mm に設定しました。",
                 "INFO",
             )
+        else:
+            session_discard(ctx.page.session, "mnv_batch_default_fov")
         # Keep stem/name maps so FOV survives OneDrive-safe staging (new paths).
         stem_to_fov = load_meta_fov_by_stem(scan.meta_files)
         name_to_fov = {
