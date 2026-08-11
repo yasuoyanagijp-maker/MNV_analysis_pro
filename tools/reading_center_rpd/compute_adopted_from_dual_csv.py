@@ -84,7 +84,8 @@ def read_csv(path: Path) -> Tuple[List[str], List[Dict[str, str]]]:
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         if not reader.fieldnames:
-            raise SystemExit(f"No header: {path}")
+            # ValueError (not SystemExit): safe for UI / library callers.
+            raise ValueError(f"No header: {path}")
         return list(reader.fieldnames), [dict(r) for r in reader]
 
 
@@ -144,14 +145,11 @@ def normalize_visit(raw: str) -> str:
         return "Baseline"
     m = re.fullmatch(r"(?i)w(?:eek)?(\d+)", s)
     if m:
-        return f"Week{int(m.group(1)):02d}" if False else f"Week{int(m.group(1))}"
-    # keep Week12 style without zero-pad to match current ARIAKE files
-    m = re.fullmatch(r"(?i)week(\d+)", s)
-    if m:
-        return f"Week{int(m.group(1))}"
+        # Zero-pad so Week01/Week04/Week08 sort and match batch File stems.
+        return f"Week{int(m.group(1)):02d}"
     m = re.fullmatch(r"(?i)m(?:onth)?(\d+)", s)
     if m:
-        return f"M{int(m.group(1))}"
+        return f"M{int(m.group(1)):02d}"
     return s
 
 
@@ -337,29 +335,37 @@ def build_outputs(
             a, b = to_float(ra.get(col)), to_float(rb.get(col))
             val, status, rpd_s = adopt_pair(a, b, threshold)
             out[col] = val
-            if col in MAJOR_METRICS and a is not None and b is not None:
+            if col not in MAJOR_METRICS:
+                continue
+            if a is not None and b is not None:
                 r = rpd_pct(a, b)
                 if r is not None:
                     rpd_store[col].append(r)
                 pair_xy[col][0].append(a)
                 pair_xy[col][1].append(b)
-                if status == "RECHECK":
-                    visit_major_recheck = True
-                    recheck_rows.append(
-                        {
-                            "Case": key.case,
-                            "Visit": key.visit,
-                            "MatchKey": key.label,
-                            "Metric": col,
-                            "SiteReader": site_label,
-                            "SecondReader": reader2_label,
-                            "Value_site": "" if a is None else f"{a:.10g}",
-                            "Value_reader2": "" if b is None else f"{b:.10g}",
-                            "RPD_pct": rpd_s,
-                            "Adopted": "NA",
-                            "Rule": f"RPD>{threshold:g}%",
-                        }
-                    )
+            # Discordance OR missingness on a major metric → remeasure.
+            if status in ("RECHECK", "MISSING"):
+                visit_major_recheck = True
+                rule = (
+                    "MISSING"
+                    if status == "MISSING"
+                    else f"RPD>{threshold:g}%"
+                )
+                recheck_rows.append(
+                    {
+                        "Case": key.case,
+                        "Visit": key.visit,
+                        "MatchKey": key.label,
+                        "Metric": col,
+                        "SiteReader": site_label,
+                        "SecondReader": reader2_label,
+                        "Value_site": "" if a is None else f"{a:.10g}",
+                        "Value_reader2": "" if b is None else f"{b:.10g}",
+                        "RPD_pct": rpd_s,
+                        "Adopted": "NA",
+                        "Rule": rule,
+                    }
+                )
         out["_Case"] = key.case
         out["_Visit"] = key.visit
         out["_Visit_needs_recheck"] = "YES" if visit_major_recheck else "NO"
@@ -527,8 +533,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not args.reader2_csv.is_file():
         raise SystemExit(f"Not found: {args.reader2_csv}")
 
-    fields_a, rows_a = read_csv(args.site_csv)
-    fields_b, rows_b = read_csv(args.reader2_csv)
+    try:
+        fields_a, rows_a = read_csv(args.site_csv)
+        fields_b, rows_b = read_csv(args.reader2_csv)
+    except ValueError as ex:
+        raise SystemExit(str(ex)) from ex
 
     print("Step1: U2 recompute (mandatory)", file=sys.stderr)
     fields_a, rows_a = apply_u2(fields_a, rows_a, args.size_class)
