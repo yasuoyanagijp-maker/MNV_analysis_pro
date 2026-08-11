@@ -17,10 +17,12 @@ Workflow context
 
 from __future__ import annotations
 
+import json
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 ROLE_FIRST_GRADER = "GRADER1"
 ROLE_SECOND_READER = "READER2"
@@ -257,6 +259,100 @@ def resolve_second_reader_scan(selected_path: Path) -> SecondReaderScan:
         first_grader_csvs=find_first_grader_mnv_csvs(scan_root),
         warnings=warnings,
     )
+
+
+def _meta_fov_mm(meta: Dict[str, Any]) -> Optional[float]:
+    for key in ("fov_mm", "scale_mm", "fov"):
+        raw = meta.get(key)
+        if raw is None or raw == "":
+            continue
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if v > 0:
+            return v
+    stratum = str(meta.get("stratum") or "").strip().lower()
+    if stratum in {"small_3mm", "3mm", "3x3"}:
+        return 3.0
+    if stratum in {"small", "large", "6mm", "6x6"}:
+        return 6.0
+    return None
+
+
+def load_meta_fov_by_stem(meta_files: Sequence[Path]) -> Dict[str, float]:
+    """Map meta stem / lesion_id → fov_mm from export/meta JSON files."""
+    out: Dict[str, float] = {}
+    for path in meta_files:
+        try:
+            meta = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if not isinstance(meta, dict):
+            continue
+        fov = _meta_fov_mm(meta)
+        if fov is None:
+            continue
+        stems = {
+            Path(path).stem,
+            str(meta.get("lesion_id") or "").strip(),
+        }
+        for stem in stems:
+            if stem:
+                out[stem] = float(fov)
+    return out
+
+
+def resolve_image_fov_map(
+    images: Sequence[Path],
+    meta_files: Sequence[Path],
+) -> Tuple[Dict[str, float], Optional[float], List[str]]:
+    """
+    Build absolute-image-path → fov_mm from paired export/meta JSON.
+
+    Returns ``(path_to_fov, default_fov, warnings)``. ``default_fov`` is the
+    majority FOV among matched images (or None when nothing can be resolved).
+    """
+    warnings: List[str] = []
+    by_stem = load_meta_fov_by_stem(meta_files)
+    path_to_fov: Dict[str, float] = {}
+    for img in images:
+        fov = by_stem.get(img.stem)
+        if fov is None:
+            continue
+        try:
+            path_to_fov[str(Path(img).resolve())] = float(fov)
+        except OSError:
+            path_to_fov[str(img)] = float(fov)
+
+    if not path_to_fov:
+        if meta_files:
+            warnings.append(
+                "export/meta に有効な fov_mm / stratum が無く、解析スケールを自動設定できません。"
+            )
+        return {}, None, warnings
+
+    counts = Counter(round(v, 6) for v in path_to_fov.values())
+    default_fov = float(counts.most_common(1)[0][0])
+    unmatched = len(images) - len(path_to_fov)
+    if unmatched > 0:
+        warnings.append(
+            f"FOV メタ未対応の画像が {unmatched} 件あります（ダッシュボード既定スケールを使用）。"
+        )
+    if len(counts) > 1:
+        warnings.append(
+            f"メタの FOV が混在しています（多数派 {default_fov:g} mm を既定にします）。"
+            " 画像ごとにセッション scale を切替えます。"
+        )
+    return path_to_fov, default_fov, warnings
+
+
+def format_scale_dropdown_value(fov_mm: float) -> str:
+    """Match dashboard Image Scale options (``1.0`` … ``12.0``)."""
+    rounded = float(round(float(fov_mm)))
+    if abs(float(fov_mm) - rounded) < 0.05 and 1 <= int(rounded) <= 12:
+        return str(rounded)
+    return f"{float(fov_mm):g}"
 
 
 def second_reader_output_dir(scan_root: Path) -> Path:

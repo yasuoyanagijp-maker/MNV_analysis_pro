@@ -83,17 +83,24 @@ def piecewise_scale(
 
 
 def infer_size_class_from_filename(file_name: str) -> str:
-    """Heuristic size_class from File name (CSV / ICC). Prefer explicit FOV tokens."""
+    """Heuristic size_class from File name (CSV / ICC). Prefer explicit FOV tokens.
+
+    Sanitized export stems (spaces → ``_``) are normalized so ``Plex_Elite``
+    matches the same stratum as ``Plex Elite``.
+    """
     n = str(file_name).lower()
-    if "3x3" in n or "3×3" in n or "3 x 3" in n:
+    # sanitize_path_component turns spaces into underscores; treat like spaces.
+    n_norm = re.sub(r"[_\-]+", " ", n)
+    n_compact = n_norm.replace(" ", "")
+    if "3x3" in n_norm or "3×3" in n_norm or "3 x 3" in n_norm:
         return "small_3mm"
-    if "angiovue" in n or "optovue" in n or "solix" in n:
+    if "angiovue" in n_compact or "optovue" in n_compact or "solix" in n_compact:
         return "small"
-    if "plexelite" in n or "plex elite" in n or re.search(r"\bplex\b", n):
+    if "plexelite" in n_compact or re.search(r"\bplex\b", n_norm):
         return "large"
-    if "cirrus" in n or "angioplex" in n:
-        return "small_3mm" if ("3x3" in n or "3×3" in n) else "large"
-    if "6x6" in n or "6×6" in n:
+    if "cirrus" in n_compact or "angioplex" in n_compact:
+        return "small_3mm" if ("3x3" in n_norm or "3×3" in n_norm) else "large"
+    if "6x6" in n_norm or "6×6" in n_norm:
         return "large"
     return "small_3mm"
 
