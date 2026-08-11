@@ -6,7 +6,7 @@
 
 - `tools/reading_center_rpd/`（CLI）
 - 手順: `tools/reading_center_rpd/PROCEDURE_JA.md`
-- Cursor rule: `.cursor/rules/reading-center-rpd.mdc`
+- Cursor rule: `tools/reading_center_rpd/AGENT.mdc`
 
 スモーク出力例:
 - `rc_tool_smoke_102-001/`
