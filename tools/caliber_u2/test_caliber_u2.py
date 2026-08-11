@@ -82,10 +82,13 @@ class TestCaliberU2(unittest.TestCase):
     def test_resolve_u2_size_class_device_locked(self):
         # CIRRUS 3×3
         self.assertEqual(resolve_caliber_u2_size_class(3.0, 320), "small_3mm")
-        # Solix / AngioVue 6×6 (typical ≤800 px) must NOT inherit pipeline's
+        # Solix / AngioVue 6×6 (typical <800 px) must NOT inherit pipeline's
         # scale>=6 → large mapping used for PCA Complexity refs.
         self.assertEqual(resolve_caliber_u2_size_class(6.0, 640), "small")
         self.assertEqual(resolve_caliber_u2_size_class(6.0, 400), "small")
+        self.assertEqual(resolve_caliber_u2_size_class(6.0, 799), "small")
+        # Boundary must match FILTER_PARAMS_LARGE (w >= 800), including ROI 800×800.
+        self.assertEqual(resolve_caliber_u2_size_class(6.0, 800), "large")
         # PlexElite 6×6 (high-res)
         self.assertEqual(resolve_caliber_u2_size_class(6.0, 1024), "large")
         # Same median inputs score differently under Solix vs PlexElite strata

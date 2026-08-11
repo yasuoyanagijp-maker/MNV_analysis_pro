@@ -111,7 +111,9 @@ def resolve_caliber_u2_size_class(
 
     Pipeline PCA ``size_class`` maps *all* ``scale_mm >= 6`` to ``large``, which is
     correct for Complexity/PCA Caliber refs but wrong for U2: Solix/AngioVue 6×6
-    must use ``small``, PlexElite 6×6 ``large``. Distinguish 6×6 devices by width.
+    must use ``small``, PlexElite 6×6 ``large``. Distinguish 6×6 devices by width
+    with the same gate as filter selection (``width < 800`` → small,
+    ``width >= 800`` → large).
     """
     try:
         scale = float(scale_mm) if scale_mm is not None else None
@@ -124,8 +126,11 @@ def resolve_caliber_u2_size_class(
 
     if scale is not None and abs(scale - 3.0) < 0.01:
         return "small_3mm"
-    # Non-3mm: Solix/AngioVue typically ≤800 px; PlexElite / high-res >800 px.
-    if width > _U2_WIDTH_THRESHOLD:
+    # Non-3mm: align with mnv_pipeline filter selection
+    # (w < 800 → FILTER_PARAMS_SMALL / U2 small; w >= 800 → LARGE / U2 large).
+    # Exact 800px (e.g. Flet ROI crops) must use large so NV CV / dilated-fraction
+    # inputs from FILTER_PARAMS_LARGE are scored against the matching U2 stratum.
+    if width >= _U2_WIDTH_THRESHOLD:
         return "large"
     return "small"
 
