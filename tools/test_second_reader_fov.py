@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from src.utils.second_reader import (
+    bind_fov_to_batch_paths,
     format_scale_dropdown_value,
     resolve_image_fov_map,
 )
@@ -37,6 +38,16 @@ class TestSecondReaderFov(unittest.TestCase):
             self.assertEqual(warnings, [])
             self.assertEqual(format_scale_dropdown_value(6.0), "6.0")
             self.assertEqual(format_scale_dropdown_value(3.0), "3.0")
+            # Staging uses a different absolute path but the same basename.
+            staged = str((root / "staging" / img.name).resolve())
+            (root / "staging").mkdir()
+            (root / "staging" / img.name).write_bytes(b"y")
+            rebound = bind_fov_to_batch_paths(
+                [staged],
+                {"Plex_Elite_case": 6.0},
+                {img.name: 6.0},
+            )
+            self.assertEqual(rebound[staged], 6.0)
 
     def test_stratum_fallback_3mm(self):
         with tempfile.TemporaryDirectory() as td:

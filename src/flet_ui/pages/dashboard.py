@@ -29,8 +29,10 @@ from src.utils.second_reader import (
     SR_FIRST_GRADER_CSV_KEY,
     SR_SCAN_ROOT_KEY,
     SR_CSV_PATH_KEY,
+    bind_fov_to_batch_paths,
     format_scale_dropdown_value,
     is_second_reader,
+    load_meta_fov_by_stem,
     resolve_image_fov_map,
     resolve_second_reader_scan,
     second_reader_output_dir,
@@ -50,6 +52,8 @@ def _prepare_results_session(page, all_results, *, vd_only: bool = False) -> Non
         session_discard(page.session, "mnv_batch_results")
         session_discard(page.session, "mnv_batch_names_preview")
         session_discard(page.session, "mnv_batch_scales")
+        session_discard(page.session, "mnv_batch_scale_stems")
+        session_discard(page.session, "mnv_batch_scale_names")
         session_discard(page.session, "results_selected_index")
         if all_results:
             page.session.set("results_selected_index", 0)
@@ -899,6 +903,14 @@ async def get_dashboard_view(ctx: AppContext):
                 )
             paths_ordered = [str(f.resolve()) for f in files]
             preview_names = [Path(p).name for p in paths_ordered]
+            # Rebind FOV onto staged paths (export abs paths no longer match).
+            stem_to_fov = ctx.page.session.get("mnv_batch_scale_stems") or {}
+            name_to_fov = ctx.page.session.get("mnv_batch_scale_names") or {}
+            if stem_to_fov or name_to_fov:
+                ctx.page.session.set(
+                    "mnv_batch_scales",
+                    bind_fov_to_batch_paths(paths_ordered, stem_to_fov, name_to_fov),
+                )
             ctx.page.session.set("mnv_batch_paths", paths_ordered)
             ctx.page.session.set("mnv_batch_index", 0)
             ctx.page.session.set("mnv_batch_results", [])
@@ -910,6 +922,10 @@ async def get_dashboard_view(ctx: AppContext):
             ctx.page.session.set("target_path", paths_ordered[0])
             scales = ctx.page.session.get("mnv_batch_scales") or {}
             first_fov = scales.get(paths_ordered[0])
+            if first_fov is None:
+                first_fov = name_to_fov.get(Path(paths_ordered[0]).name)
+            if first_fov is None:
+                first_fov = stem_to_fov.get(Path(paths_ordered[0]).stem)
             if first_fov is not None:
                 ctx.page.session.set("scale", float(first_fov))
                 scale_mm.value = format_scale_dropdown_value(float(first_fov))
@@ -978,6 +994,8 @@ async def get_dashboard_view(ctx: AppContext):
             session_discard(ctx.page.session, "mnv_batch_results")
             session_discard(ctx.page.session, "mnv_batch_names_preview")
             session_discard(ctx.page.session, "mnv_batch_scales")
+            session_discard(ctx.page.session, "mnv_batch_scale_stems")
+            session_discard(ctx.page.session, "mnv_batch_scale_names")
             session_discard(ctx.page.session, "last_result")
             session_discard(ctx.page.session, "batch_results")
             session_discard(ctx.page.session, "results_selected_index")
@@ -1068,6 +1086,19 @@ async def get_dashboard_view(ctx: AppContext):
                 f"第2リーダー: export/meta の FOV からスケールを {scale_txt} mm に設定しました。",
                 "INFO",
             )
+        # Keep stem/name maps so FOV survives OneDrive-safe staging (new paths).
+        stem_to_fov = load_meta_fov_by_stem(scan.meta_files)
+        name_to_fov = {
+            img.name: float(stem_to_fov[img.stem])
+            for img in scan.images
+            if img.stem in stem_to_fov
+        }
+        if stem_to_fov:
+            ctx.page.session.set("mnv_batch_scale_stems", stem_to_fov)
+            ctx.page.session.set("mnv_batch_scale_names", name_to_fov)
+        else:
+            session_discard(ctx.page.session, "mnv_batch_scale_stems")
+            session_discard(ctx.page.session, "mnv_batch_scale_names")
         if path_to_fov:
             ctx.page.session.set("mnv_batch_scales", path_to_fov)
         else:
