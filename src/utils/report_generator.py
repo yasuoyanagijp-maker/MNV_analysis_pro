@@ -498,10 +498,13 @@ def generate_pdf_report(data: dict, output_path: str) -> None:
         generate_vd_pdf_report(data, output_path)
         return
 
+    from src.utils.mnv_absent import is_mnv_absent_result
+
     pdf = AnalysisReport()
     pdf.alias_nb_pages()
     pdf.add_page()
     pm = metrics_from_session_result_row(data)
+    absent = is_mnv_absent_result(data)
 
     pdf.set_font("Helvetica", "", 12)
 
@@ -534,15 +537,31 @@ def generate_pdf_report(data: dict, output_path: str) -> None:
         new_x=XPos.LMARGIN,
         new_y=YPos.NEXT,
     )
+    if absent:
+        pdf.cell(
+            0,
+            8,
+            "MNV present: 0 (absent / skipped — morphometrics not measured)",
+            border=0,
+            new_x=XPos.LMARGIN,
+            new_y=YPos.NEXT,
+        )
     pdf.ln(6)
 
     # --- Basic Metrics & Topology ---
     pdf.set_font("Helvetica", "B", 14)
     pdf.cell(0, 10, "Basic Metrics & Topology", border=0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    _metrics_table_row(pdf, "Area (mm2)", _round_fmt(data.get("mnv_area_mm2", 0)))
-    _metrics_table_row(pdf, "Subtype", _subtype_display(data, pm))
-    _metrics_table_row(pdf, "Complexity", _round_fmt(data.get("complexity_score", 0)))
-    _metrics_table_row(pdf, "Vsl Density", _avdi_display(data))
+    if absent:
+        # Do not coerce missing metrics to 0.00 — that fabricates measured zeros.
+        _metrics_table_row(pdf, "Area (mm2)", _dash())
+        _metrics_table_row(pdf, "Subtype", _dash())
+        _metrics_table_row(pdf, "Complexity", _dash())
+        _metrics_table_row(pdf, "Vsl Density", _dash())
+    else:
+        _metrics_table_row(pdf, "Area (mm2)", _round_fmt(data.get("mnv_area_mm2", 0)))
+        _metrics_table_row(pdf, "Subtype", _subtype_display(data, pm))
+        _metrics_table_row(pdf, "Complexity", _round_fmt(data.get("complexity_score", 0)))
+        _metrics_table_row(pdf, "Vsl Density", _avdi_display(data))
     pdf.ln(8)
 
     # --- Advanced Morphometry ---
@@ -555,10 +574,16 @@ def generate_pdf_report(data: dict, output_path: str) -> None:
         new_x=XPos.LMARGIN,
         new_y=YPos.NEXT,
     )
-    _metrics_table_row(pdf, "End Density", _float_metric(pm, "endpoint_density"))
-    _metrics_table_row(pdf, "Branch Density", _float_metric(pm, "branch_density"))
-    _metrics_table_row(pdf, "Caliber Uniformity", _round_fmt(data.get("stability_score", 0)))
-    _metrics_table_row(pdf, "Maturity Index", _round_fmt(data.get("maturity_index", 0)))
+    if absent:
+        _metrics_table_row(pdf, "End Density", _dash())
+        _metrics_table_row(pdf, "Branch Density", _dash())
+        _metrics_table_row(pdf, "Caliber Uniformity", _dash())
+        _metrics_table_row(pdf, "Maturity Index", _dash())
+    else:
+        _metrics_table_row(pdf, "End Density", _float_metric(pm, "endpoint_density"))
+        _metrics_table_row(pdf, "Branch Density", _float_metric(pm, "branch_density"))
+        _metrics_table_row(pdf, "Caliber Uniformity", _round_fmt(data.get("stability_score", 0)))
+        _metrics_table_row(pdf, "Maturity Index", _round_fmt(data.get("maturity_index", 0)))
     pdf.ln(8)
 
     # --- Flow Deficit ---
@@ -571,9 +596,14 @@ def generate_pdf_report(data: dict, output_path: str) -> None:
         new_x=XPos.LMARGIN,
         new_y=YPos.NEXT,
     )
-    _metrics_table_row(pdf, "FD R1 (Central)", f"{_round_fmt(data.get('fd_percent_r1', 0))} %")
-    _metrics_table_row(pdf, "FD R2 (Inner)", f"{_round_fmt(data.get('fd_percent_r2', 0))} %")
-    _metrics_table_row(pdf, "FD R3 (Outer)", f"{_round_fmt(data.get('fd_percent_r3', 0))} %")
+    if absent:
+        _metrics_table_row(pdf, "FD R1 (Central)", _dash())
+        _metrics_table_row(pdf, "FD R2 (Inner)", _dash())
+        _metrics_table_row(pdf, "FD R3 (Outer)", _dash())
+    else:
+        _metrics_table_row(pdf, "FD R1 (Central)", f"{_round_fmt(data.get('fd_percent_r1', 0))} %")
+        _metrics_table_row(pdf, "FD R2 (Inner)", f"{_round_fmt(data.get('fd_percent_r2', 0))} %")
+        _metrics_table_row(pdf, "FD R3 (Outer)", f"{_round_fmt(data.get('fd_percent_r3', 0))} %")
     pdf.ln(10)
 
     # --- Visualizations ---

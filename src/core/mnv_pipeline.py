@@ -30,6 +30,7 @@ from core.pattern_classifier import (
 from core.caliber_u2 import (
     calculate_caliber_u2_score,
     calculate_maturity_index,
+    resolve_caliber_u2_size_class,
 )
 from core.pattern_metrics import (
     apply_trunk_scale_correction,
@@ -1327,15 +1328,28 @@ class MNVPipeline:
         spatial_results["stability_score_pca"] = stability_score_pca
 
         # Default Caliber Uniformity = Standardized (device-/stratum-locked) score.
+        # Do NOT reuse pipeline PCA size_class here: scale_mm>=6 always yields
+        # "large" for Complexity refs, but U2 "small" = Solix/AngioVue 6×6.
         cv_diameter = float(skeleton_results.get("cv_diameter", float("nan")))
         high_skew_pct = float(
             skeleton_results.get("high_skew_percentage", float("nan"))
         )
+        try:
+            image_width_px = int(center_mask.shape[1])
+        except Exception:
+            image_width_px = 0
+        u2_size_class = resolve_caliber_u2_size_class(self.scale_mm, image_width_px)
         caliber_u2, caliber_u2_details = calculate_caliber_u2_score(
             cv_diameter,
             high_skew_pct,
-            size_class=size_class,
+            size_class=u2_size_class,
         )
+        caliber_u2_details = {
+            **caliber_u2_details,
+            "pipeline_size_class": size_class,
+            "u2_size_class": u2_size_class,
+            "image_width_px": image_width_px,
+        }
         if np.isfinite(caliber_u2):
             stability_score = float(caliber_u2)
         else:
@@ -1364,6 +1378,8 @@ class MNVPipeline:
         )
 
         _t_classify = time.perf_counter()
+        # Morphology subtype gates use Complexity (+ trunk); pass U2 caliber only
+        # so maturity_index in the returned dict matches the default CSV column.
         classification = classify_morphology_final(
             complexity_score=complexity_score,
             stability_score=stability_score,
@@ -1394,9 +1410,11 @@ class MNVPipeline:
         )
 
         loop_total = loops_center + loops_periphery
+        # Pathophysiology JSON percentiles are PCA-calibrated (stability_ref_*).
+        # Feeding U2 caliber/maturity silently mislabels Active/Transitional/MQ.
         pathophysiology = classify_pathophysiology_final(
-            maturity_index=maturity_index,
-            stability_score=stability_score,
+            maturity_index=maturity_index_pca,
+            stability_score=stability_score_pca,
             segment_count=float(skeleton_results.get("segment_count", 0)),
             junction_density=junction_density,
             endpoint_density=endpoint_density,

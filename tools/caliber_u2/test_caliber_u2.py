@@ -21,6 +21,7 @@ from src.core.caliber_u2 import (  # noqa: E402
     infer_size_class_from_filename,
     load_caliber_u2_device_ref,
     piecewise_scale,
+    resolve_caliber_u2_size_class,
 )
 
 
@@ -77,6 +78,33 @@ class TestCaliberU2(unittest.TestCase):
             infer_size_class_from_filename("PlexElite_6x6_OD.png"),
             "large",
         )
+
+    def test_resolve_u2_size_class_device_locked(self):
+        # CIRRUS 3×3
+        self.assertEqual(resolve_caliber_u2_size_class(3.0, 320), "small_3mm")
+        # Solix / AngioVue 6×6 (typical ≤800 px) must NOT inherit pipeline's
+        # scale>=6 → large mapping used for PCA Complexity refs.
+        self.assertEqual(resolve_caliber_u2_size_class(6.0, 640), "small")
+        self.assertEqual(resolve_caliber_u2_size_class(6.0, 400), "small")
+        # PlexElite 6×6 (high-res)
+        self.assertEqual(resolve_caliber_u2_size_class(6.0, 1024), "large")
+        # Same median inputs score differently under Solix vs PlexElite strata
+        ref = load_caliber_u2_device_ref()
+        st_small = ref["strata"]["small"]
+        score_solix, _ = calculate_caliber_u2_score(
+            st_small["nv_cv"]["median"],
+            st_small["dilated_pct"]["median"],
+            size_class="small",
+            ref=ref,
+        )
+        score_plex, _ = calculate_caliber_u2_score(
+            st_small["nv_cv"]["median"],
+            st_small["dilated_pct"]["median"],
+            size_class="large",
+            ref=ref,
+        )
+        self.assertAlmostEqual(score_solix, 50.0, places=3)
+        self.assertLess(score_plex, 40.0)
 
     def test_csv_insert_columns(self):
         mod = _load_csv_script()
@@ -157,9 +185,13 @@ class TestCaliberU2AppWiring(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("calculate_caliber_u2_score", pipeline_src)
+        self.assertIn("resolve_caliber_u2_size_class", pipeline_src)
         self.assertIn("stability_score_pca", pipeline_src)
         self.assertIn("maturity_index_pca", pipeline_src)
         self.assertIn("from core.caliber_u2 import", pipeline_src)
+        # Pathophysiology gates must stay on PCA-calibrated scores.
+        self.assertIn("maturity_index=maturity_index_pca", pipeline_src)
+        self.assertIn("stability_score=stability_score_pca", pipeline_src)
 
 
 if __name__ == "__main__":
