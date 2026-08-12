@@ -2,24 +2,39 @@
 Flet UI helpers for GakuNin RDM 同期 / 取得.
 
 ローカル保存とは分離: ユーザーが明示的に押したときだけクラウドとやり取りする。
-第1グレーダー: エクスポート先をアップロード。
-第2リーダー（施設内・中央読影 Team YY）: 第1読影データをダウンロードしてから読影開始。
+
+アクセス制御（OCTA-MIC）
+------------------------
+- 一般施設の第2リーダー: 自施設の第1読影フォルダのみ選択可能
+- Team YY（中央読影）: 全施設の第1読影フォルダを横断選択可能
+- 第1同期先: ``{base}/{institution_id}/``
+- 第2同期先: ``{base}/second_reading/{institution_id}/``
 """
 
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import flet as ft
 from flet import Colors, Icons
 
 from src.flet_ui.components.shared import GLASS_BG, PRIMARY, TEXT_MUTED
 from src.utils import grdm_client as grdm
-from src.utils.app_paths import get_base_data_dir
+from src.utils.app_paths import get_base_data_dir, sanitize_path_component
+from src.utils.grdm_access import (
+    TEAM_YY_INSTITUTION_ID,
+    filter_institution_datasets,
+    first_grader_remote_segments,
+    is_team_yy,
+    second_reader_remote_segments,
+)
 from src.utils.grdm_config import persist_grdm_destination, resolve_grdm_destination
 from src.utils.grdm_secure_storage import GRDM_TOKEN_STORAGE_KEY, SecureStorage
+from src.utils.institution_config import resolve_institution_id
+from src.utils.second_reader import is_second_reader
 
 
 def _show_snack(page: ft.Page, message: str, *, error: bool = False) -> None:
@@ -119,12 +134,16 @@ async def _with_loading(page: ft.Page, message: str, work: Callable[[], Any]) ->
         page.update()
 
 
-async def ensure_grdm_token(page: ft.Page, *, write_scope_hint: bool = True) -> Optional[str]:
-    """Load PAT from secure storage, or prompt + verify + persist on first use.
+async def clear_stored_grdm_token() -> None:
+    storage = SecureStorage()
+    try:
+        await storage.remove(GRDM_TOKEN_STORAGE_KEY)
+    except Exception:
+        pass
 
-    Keyring read failures are treated as "no token" so the dialog still appears
-    (needed on Linux without libsecret / locked Secret Service).
-    """
+
+async def ensure_grdm_token(page: ft.Page, *, write_scope_hint: bool = True) -> Optional[str]:
+    """Load PAT from secure storage, revalidate, or prompt + persist on first use."""
     storage = SecureStorage()
     token: Optional[str] = None
     try:
@@ -134,7 +153,23 @@ async def ensure_grdm_token(page: ft.Page, *, write_scope_hint: bool = True) -> 
 
     if token:
         grdm.set_active_token(token)
-        return token
+
+        def _check():
+            return grdm.check_connection()
+
+        try:
+            ok = await _with_loading(page, "保存済みトークンを確認中…", _check)
+        except Exception:
+            ok = False
+        if ok:
+            return token
+        await clear_stored_grdm_token()
+        _show_snack(
+            page,
+            "保存済みトークンが無効です。再入力してください。",
+            error=True,
+        )
+        token = None
 
     scope_hint = (
         "osf.full_write 推奨（アップロード）"
@@ -154,11 +189,11 @@ async def ensure_grdm_token(page: ft.Page, *, write_scope_hint: bool = True) -> 
 
     grdm.set_active_token(token)
 
-    def _check():
+    def _check_new():
         return grdm.check_connection()
 
     try:
-        ok = await _with_loading(page, "GakuNin RDM へ接続確認中…", _check)
+        ok = await _with_loading(page, "GakuNin RDM へ接続確認中…", _check_new)
     except Exception as ex:
         _show_snack(page, f"接続失敗: {ex}", error=True)
         return None
@@ -203,8 +238,94 @@ async def ensure_grdm_destination(page: ft.Page) -> Optional[tuple]:
     return project_id, folder_id
 
 
+def _viewer_institution(page: ft.Page) -> str:
+    return resolve_institution_id(
+        page.session, getattr(page, "client_storage", None)
+    )
+
+
+def isolated_download_dir(project_id: str, institution_id: str) -> Path:
+    """Per-pull isolated folder to avoid mixing institutions / stale files."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_proj = sanitize_path_component(project_id) or "project"
+    safe_inst = sanitize_path_component(institution_id) or "UNKNOWN"
+    d = get_base_data_dir() / "grdm_downloads" / safe_proj / f"{safe_inst}_{ts}"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+async def _prompt_institution_dataset(
+    page: ft.Page, datasets: List[Dict[str, str]], *, central: bool
+) -> Optional[Dict[str, str]]:
+    """Let the user pick one institution folder (ACL already applied)."""
+    if not datasets:
+        return None
+    if len(datasets) == 1 and not central:
+        return datasets[0]
+
+    result: dict = {"value": None}
+    done = asyncio.Event()
+    options = [
+        ft.dropdown.Option(d["name"], f"{d['name']}")
+        for d in datasets
+    ]
+    dd = ft.Dropdown(
+        label="第1読影データ（施設）",
+        width=420,
+        border_color=PRIMARY,
+        options=options,
+        value=datasets[0]["name"],
+    )
+    hint = (
+        "Team YY: 全参加施設から選択できます。"
+        if central
+        else "自施設のデータのみ表示されています。"
+    )
+
+    async def _ok(_=None):
+        name = dd.value
+        result["value"] = next((d for d in datasets if d["name"] == name), None)
+        page.close(dlg)
+        done.set()
+
+    async def _cancel(_=None):
+        result["value"] = None
+        page.close(dlg)
+        done.set()
+
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("GakuNin RDM — 第1読影データの選択", color=Colors.WHITE),
+        content=ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text(hint, size=12, color=TEXT_MUTED),
+                    dd,
+                ],
+                tight=True,
+                spacing=12,
+            ),
+            width=460,
+        ),
+        actions=[
+            ft.TextButton("キャンセル", on_click=lambda _: page.run_task(_cancel)),
+            ft.ElevatedButton(
+                "取得する",
+                bgcolor=PRIMARY,
+                color=Colors.BLACK,
+                on_click=lambda _: page.run_task(_ok),
+            ),
+        ],
+        bgcolor=GLASS_BG,
+    )
+    page.open(dlg)
+    page.update()
+    await done.wait()
+    return result["value"]
+
+
 async def run_grdm_sync(page: ft.Page, local_folder: str) -> None:
-    """Upload local export folder (recursive) to GakuNin RDM."""
+    """Upload local export folder (recursive) to role-/institution-scoped GRDM path."""
     folder = Path(local_folder) if local_folder else None
     if folder is None or not folder.is_dir():
         _show_snack(
@@ -221,15 +342,49 @@ async def run_grdm_sync(page: ft.Page, local_folder: str) -> None:
     dest = await ensure_grdm_destination(page)
     if not dest:
         return
-    project_id, folder_id = dest
+    project_id, base_folder_id = dest
+
+    inst = _viewer_institution(page)
+    sr = is_second_reader(page.session)
+    # Team YY grading a facility: prefer institution of the scanned first-grader data
+    if sr:
+        graded = (page.session.get("grdm_graded_institution_id") or "").strip()
+        if graded:
+            inst = graded
+        elif is_team_yy(page.session, getattr(page, "client_storage", None)):
+            # Fall back to prompting which facility folder to upload into
+            prompted = await _prompt_text(
+                page,
+                title="第2リーダー結果のアップロード先施設",
+                label="institution_id",
+                hint="読影した施設コード（例: ARIAKE_OHANACHAYA）",
+                initial=inst if inst != TEAM_YY_INSTITUTION_ID else "",
+            )
+            if not prompted:
+                _show_snack(page, "アップロード先施設が未指定です", error=True)
+                return
+            inst = prompted
+
+    try:
+        segments = (
+            second_reader_remote_segments(inst)
+            if sr
+            else first_grader_remote_segments(inst)
+        )
+    except ValueError as ex:
+        _show_snack(page, str(ex), error=True)
+        return
 
     def _upload():
-        return grdm.sync_local_to_grdm(str(folder), project_id, folder_id or "")
+        target_id = grdm.ensure_remote_path(
+            project_id, segments, base_folder_id=base_folder_id or ""
+        )
+        return grdm.sync_local_to_grdm(str(folder), project_id, target_id)
 
     try:
         count = await _with_loading(
             page,
-            f"GakuNin RDM へ同期中…\n{folder}",
+            f"GakuNin RDM へ同期中…\n{'/'.join(segments)}\n{folder}",
             _upload,
         )
     except Exception as ex:
@@ -243,27 +398,19 @@ async def run_grdm_sync(page: ft.Page, local_folder: str) -> None:
             error=True,
         )
     else:
-        _show_snack(page, f"GakuNin RDMへの同期が完了しました（新規 {count}件）")
-
-
-def default_grdm_download_dir() -> Path:
-    d = get_base_data_dir() / "grdm_downloads"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+        scope = "第2リーダー結果" if sr else "第1読影データ"
+        _show_snack(
+            page,
+            f"GakuNin RDMへの同期が完了しました（{scope} / {inst} / 新規 {count}件）",
+        )
 
 
 async def run_grdm_download(
     page: ft.Page,
-    local_folder: Optional[str] = None,
     *,
     on_complete: Optional[Callable[[str], Any]] = None,
 ) -> Optional[str]:
-    """Download configured GRDM folder to local disk (for second readers).
-
-    Returns the local path on success, else None.
-    If ``on_complete`` is set (e.g. start second-reader scan), it is awaited/called
-    with the download directory path.
-    """
+    """ACL-aware download of one institution's first-grader dataset for second readers."""
     token = await ensure_grdm_token(page, write_scope_hint=False)
     if not token:
         return None
@@ -271,33 +418,76 @@ async def run_grdm_download(
     dest = await ensure_grdm_destination(page)
     if not dest:
         return None
-    project_id, folder_id = dest
+    project_id, base_folder_id = dest
 
-    target = Path(local_folder) if local_folder else default_grdm_download_dir()
-    target.mkdir(parents=True, exist_ok=True)
+    cs = getattr(page, "client_storage", None)
+    viewer_inst = _viewer_institution(page)
+    central = is_team_yy(page.session, cs, institution_id=viewer_inst)
+
+    def _list():
+        return grdm.list_institution_folders(project_id, base_folder_id or "")
+
+    try:
+        all_datasets = await _with_loading(
+            page, "利用可能な第1読影データを照会中…", _list
+        )
+    except Exception as ex:
+        _show_snack(page, f"一覧取得に失敗しました: {ex}", error=True)
+        return None
+
+    allowed = filter_institution_datasets(
+        all_datasets,
+        viewer_institution_id=viewer_inst,
+        central=central,
+    )
+    if not allowed:
+        if central:
+            msg = "第1読影データ（施設フォルダ）が見つかりません。第1グレーダーの同期を確認してください。"
+        else:
+            msg = (
+                f"自施設（{viewer_inst}）の第1読影データが GakuNin 上にありません。"
+                " 他施設のデータにはアクセスできません。"
+            )
+        _show_snack(page, msg, error=True)
+        return None
+
+    chosen = await _prompt_institution_dataset(page, allowed, central=central)
+    if not chosen:
+        _show_snack(page, "データ選択がキャンセルされました", error=True)
+        return None
+
+    inst_name = chosen["name"]
+    remote_id = chosen["id"]
+    target = isolated_download_dir(project_id, inst_name)
 
     def _download():
-        return grdm.sync_grdm_to_local(str(target), project_id, folder_id or "")
+        return grdm.sync_grdm_to_local(str(target), project_id, remote_id)
 
     try:
         count = await _with_loading(
             page,
-            f"GakuNin RDM から取得中…\n→ {target}",
+            f"GakuNin RDM から取得中…\n{inst_name}\n→ {target}",
             _download,
         )
     except Exception as ex:
         _show_snack(page, f"取得に失敗しました: {ex}", error=True)
         return None
 
+    # Remember which facility was pulled (for Team YY second-reader re-upload path)
+    try:
+        page.session.set("grdm_graded_institution_id", inst_name)
+    except Exception:
+        pass
+
     if count == 0:
         _show_snack(
             page,
-            "ダウンロード対象がありません（project_id / folder_id を確認してください）",
+            f"{inst_name}: ダウンロード対象ファイルがありません",
             error=True,
         )
         return str(target)
 
-    _show_snack(page, f"GakuNin RDMから {count}件を取得しました\n{target}")
+    _show_snack(page, f"{inst_name}: {count}件を取得しました\n{target}")
 
     if on_complete is not None:
         result = on_complete(str(target))
@@ -317,8 +507,10 @@ def make_grdm_sync_button(page: ft.Page, get_local_folder: Callable[[], Path]) -
         icon=Icons.CLOUD_UPLOAD_ROUNDED,
         bgcolor=Colors.with_opacity(0.25, Colors.TEAL_ACCENT_400),
         color=Colors.TEAL_ACCENT_100,
-        tooltip="ローカル保存済みのエクスポート先フォルダ（サブフォルダ含む）を"
-        " GakuNin RDM へアップロードします（PATはOSネイティブの安全な領域に保存）",
+        tooltip=(
+            "ローカル保存済みフォルダを施設スコープでアップロード。"
+            " 第1→{institution}/、第2→second_reading/{institution}/"
+        ),
         on_click=lambda _: page.run_task(_on_click),
     )
 
@@ -327,9 +519,9 @@ def make_grdm_download_button(
     page: ft.Page,
     *,
     on_complete: Optional[Callable[[str], Any]] = None,
-    label: str = "GakuNin RDMから第1読影データを取得",
+    label: str = "GakuNin RDMから第1読影データを取得して読影開始",
 ) -> ft.ElevatedButton:
-    """Second-reader / central reading: pull first-grader exports from GRDM."""
+    """Second-reader / central reading: pull first-grader exports with ACL."""
 
     async def _on_click(_=None):
         await run_grdm_download(page, on_complete=on_complete)
@@ -339,8 +531,10 @@ def make_grdm_download_button(
         icon=Icons.CLOUD_DOWNLOAD_ROUNDED,
         bgcolor=Colors.with_opacity(0.3, Colors.TEAL_ACCENT_400),
         color=Colors.BLACK,
-        tooltip="設定の project_id / folder_id から第1グレーダー成果物を取得します。"
-        " 中央読影（Team YY）・施設内第2リーダーの双方が同じ PAT 設定で利用できます。",
+        tooltip=(
+            "一般施設は自施設のみ、Team YY は全施設から第1読影データを選択できます。"
+            " PAT は OS ネイティブの安全な領域に保存します。"
+        ),
         on_click=lambda _: page.run_task(_on_click),
-        width=400,
+        width=420,
     )

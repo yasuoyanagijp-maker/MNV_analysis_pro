@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -81,18 +81,81 @@ def list_projects() -> list:
 
 
 def list_files(project_id: str, folder_id: str = "") -> list:
-    """プロジェクト直下、または指定フォルダ内のファイル/フォルダ一覧を取得
-    folder_id省略時はルート(osfstorage直下)を返す
+    """プロジェクト直下、または指定フォルダ内のファイル/フォルダ一覧を取得（全ページ）。
+
+    folder_id省略時はルート(osfstorage直下)を返す。
+    OSF/GakuNin RDM の JSON:API ページネーション（links.next）を辿る。
 
     戻り値の各要素の ["id"] は ``normalize_storage_id()`` してから
     download_file / upload先 folder_id として使うこと。
     """
     fid = normalize_storage_id(folder_id)
     suffix = f"{fid}/" if fid else ""
-    url = f"{API_BASE}/nodes/{project_id}/files/osfstorage/{suffix}"
-    resp = requests.get(url, headers=HEADERS)
-    resp.raise_for_status()
-    return resp.json()["data"]
+    url: Optional[str] = f"{API_BASE}/nodes/{project_id}/files/osfstorage/{suffix}"
+    params: Optional[Dict[str, Any]] = {"page[size]": 100}
+    items: List[dict] = []
+    while url:
+        resp = requests.get(url, headers=HEADERS, params=params)
+        resp.raise_for_status()
+        payload = resp.json()
+        chunk = payload.get("data") or []
+        if isinstance(chunk, list):
+            items.extend(chunk)
+        next_url = (payload.get("links") or {}).get("next")
+        url = next_url if next_url else None
+        params = None  # next URL already encodes page cursor
+    return items
+
+
+def ensure_remote_path(
+    project_id: str, segments: Sequence[str], base_folder_id: str = ""
+) -> str:
+    """Create nested folders under base_folder_id; return the deepest folder id."""
+    current = normalize_storage_id(base_folder_id)
+    for name in segments:
+        name = str(name or "").strip()
+        if not name:
+            continue
+        existing = _remote_child_folders(project_id, current)
+        if name in existing:
+            current = existing[name]
+            continue
+        created = create_folder(project_id, name, parent_folder_id=current)
+        nid = _extract_node_id(created)
+        if not nid and isinstance(created, dict):
+            nid = normalize_storage_id(str(created.get("id") or ""))
+        if not nid:
+            existing = _remote_child_folders(project_id, current)
+            nid = existing.get(name, "")
+        if not nid:
+            raise RuntimeError(f"リモートフォルダを作成できませんでした: {name}")
+        current = nid
+    return current
+
+
+def list_institution_folders(
+    project_id: str, base_folder_id: str = ""
+) -> List[Dict[str, str]]:
+    """List candidate first-grader institution folders under the GRDM base.
+
+    If a ``measurements`` child exists, prefer listing inside it (legacy layout).
+    Skips reserved names such as ``second_reading``.
+    """
+    from src.utils.grdm_access import looks_like_institution_folder
+
+    base = normalize_storage_id(base_folder_id)
+    children = _remote_child_folders(project_id, base)
+    list_root = base
+    if "measurements" in children:
+        list_root = children["measurements"]
+        children = _remote_child_folders(project_id, list_root)
+
+    out: List[Dict[str, str]] = []
+    for name, fid in sorted(children.items()):
+        if not looks_like_institution_folder(name):
+            continue
+        out.append({"name": name, "id": fid, "parent_id": list_root})
+    return out
 
 
 def create_folder(project_id: str, folder_name: str, parent_folder_id: str = "") -> dict:

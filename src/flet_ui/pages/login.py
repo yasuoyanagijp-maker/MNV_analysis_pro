@@ -74,8 +74,9 @@ async def get_login_view(ctx: AppContext):
             ft.dropdown.Option(code, label) for code, label in READER_ROLE_OPTIONS
         ],
         tooltip=(
-            "第2リーダー: 施設エキスポート（export/meta）の親フォルダを自動スキャンして"
-            "二重読影を行い、RPD≤20% ルールで統合CSVを作成できます。"
+            "第2リーダー: 施設エキスポート（export/meta）の親フォルダ、"
+            "または GakuNin RDM から第1読影データを取得して二重読影。"
+            " RPD≤20% で平均採用。中央読影は施設コード Team YY。"
         ),
     )
 

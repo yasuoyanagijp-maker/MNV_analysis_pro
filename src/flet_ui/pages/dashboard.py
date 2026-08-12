@@ -1580,9 +1580,8 @@ async def get_dashboard_view(ctx: AppContext):
                 ),
                 ft.Text(
                     "論文化に向けた2名体制: 施設内2名、または施設1名＋中央読影（Team YY）。"
-                    " RPD≥20% は除外、未満は平均を採用します。"
-                    " 第1グレーダー成果物はローカルフォルダ、または GakuNin RDM から取得できます"
-                    "（第2リーダーも同一プロジェクトへの PAT アクセスが必要です）。",
+                    " RPD ≤ 20% は平均値を採用、RPD > 20% は除外（再計測）します。"
+                    " GakuNin 取得は一般施設=自施設のみ、Team YY=全施設から選択可能です。",
                     size=11,
                     color=TEXT_MUTED,
                 ),
@@ -1592,7 +1591,7 @@ async def get_dashboard_view(ctx: AppContext):
                     bgcolor=Colors.AMBER_400,
                     color=Colors.BLACK,
                     on_click=lambda _: ctx.page.run_task(handle_second_reader_start),
-                    width=400,
+                    width=420,
                 ),
                 make_grdm_download_button(
                     ctx.page,
@@ -1600,8 +1599,9 @@ async def get_dashboard_view(ctx: AppContext):
                     label="GakuNin RDMから第1読影データを取得して読影開始",
                 ),
                 ft.Text(
-                    "GakuNin 取得先は Advanced Settings の project_id / folder_id"
-                    "（第1グレーダーが同期した場所）。PAT は初回入力後に OS 安全領域へ保存。",
+                    "ログイン施設が Team YY のとき全施設フォルダを表示。"
+                    " それ以外は自施設フォルダのみ（他施設は選択不可）。"
+                    " 第2結果の同期先は second_reading/{institution}/ に分離されます。",
                     size=10,
                     color=TEXT_MUTED,
                 ),
@@ -1749,9 +1749,11 @@ async def get_dashboard_view(ctx: AppContext):
                                     vertical_alignment=ft.CrossAxisAlignment.END,
                                 ),
                                 ft.Text(
-                                    "GakuNin RDM 同期先: project_id / folder_id "
-                                    "(env: GRDM_PROJECT_ID / GRDM_FOLDER_ID)."
-                                    " PAT は「GakuNin RDMへ同期」初回時に安全領域へ保存"
+                                    "GakuNin RDM 同期先ベース: project_id / folder_id "
+                                    "(env: GRDM_PROJECT_ID / GRDM_FOLDER_ID)。"
+                                    " 実パスは第1→{folder}/{institution}/、"
+                                    "第2→{folder}/second_reading/{institution}/。"
+                                    " Team YY は全施設データを選択可。PAT は OS 安全領域へ保存"
                                     "（client_storage には保存しません）。",
                                     size=11, color=TEXT_MUTED,
                                 ),

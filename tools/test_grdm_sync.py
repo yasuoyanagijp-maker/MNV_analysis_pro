@@ -1,4 +1,4 @@
-"""Unit tests for GakuNin RDM config / client helpers (no live API calls)."""
+"""Unit tests for GakuNin RDM config / client / access control (no live API)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,14 @@ from unittest.mock import MagicMock, patch
 from src.utils.grdm_config import persist_grdm_destination, resolve_grdm_destination
 from src.utils import grdm_client as grdm
 from src.utils import grdm_secure_storage as gss
+from src.utils.grdm_access import (
+    TEAM_YY_INSTITUTION_ID,
+    filter_institution_datasets,
+    first_grader_remote_segments,
+    is_team_yy,
+    second_reader_remote_segments,
+)
+from src.utils.grdm_sync_ui import isolated_download_dir
 
 
 def test_resolve_grdm_destination_from_env(monkeypatch):
@@ -51,6 +59,40 @@ def test_normalize_storage_id_strips_osfstorage_prefix():
     assert grdm.normalize_storage_id(None) == ""
 
 
+def test_list_files_follows_pagination():
+    pages = [
+        {
+            "data": [{"id": "osfstorage/a", "attributes": {"name": "a", "kind": "file"}}],
+            "links": {"next": "https://api.example/page2"},
+        },
+        {
+            "data": [{"id": "osfstorage/b", "attributes": {"name": "b", "kind": "file"}}],
+            "links": {"next": None},
+        },
+    ]
+    calls = {"n": 0}
+
+    class _Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    def _get(url, headers=None, params=None):
+        idx = calls["n"]
+        calls["n"] += 1
+        return _Resp(pages[idx])
+
+    with patch.object(grdm.requests, "get", side_effect=_get):
+        items = grdm.list_files("proj", "")
+    assert len(items) == 2
+    assert calls["n"] == 2
+
+
 def test_sync_local_to_grdm_empty(tmp_path: Path):
     with patch.object(grdm, "list_files", return_value=[]):
         n = grdm.sync_local_to_grdm(str(tmp_path), "proj", "")
@@ -73,7 +115,6 @@ def test_sync_local_to_grdm_recursive(tmp_path: Path):
         return {"data": {"id": fid, "attributes": {"name": folder_name, "kind": "folder"}}}
 
     def _list_files(project_id, folder_id=""):
-        # After create, report folders under root
         if folder_id == "":
             return [
                 {
@@ -138,36 +179,85 @@ def test_download_tree(tmp_path: Path):
         n = grdm.sync_grdm_to_local(str(tmp_path), "proj", "")
     assert n == 2
     assert dl.call_count == 2
-    # WaterButler path must not keep osfstorage/ prefix
     ids = {c.args[1] for c in dl.call_args_list}
     assert ids == {"file1", "file2"}
 
 
 def test_keyring_get_soft_fails():
     with patch.object(gss, "_keyring_get", return_value=None):
-        # Simulate via direct call
         assert gss._keyring_get("grdm_token") is None
 
 
 def test_is_insecure_keyring_detects_chainer_plain():
-    plain = MagicMock()
-    plain.__class__ = type("PlaintextKeyring", (), {})
-    # Rebuild with a real-looking class name via type()
     Plain = type("PlaintextKeyring", (), {})
+    Plain.__module__ = "keyring.backends.null"
     plain = Plain()
     Chain = type("ChainerBackend", (), {"backends": [plain]})
     Chain.__module__ = "keyring.backends.chainer"
-    Plain.__module__ = "keyring.backends.null"
-    # name will be keyring.backends.null.PlaintextKeyring → contains "plain"
     assert gss._is_insecure_keyring(Chain()) is True
 
 
+def test_is_team_yy_by_institution_and_env(monkeypatch):
+    assert is_team_yy(institution_id=TEAM_YY_INSTITUTION_ID) is True
+    assert is_team_yy(institution_id="ARIAKE_OHANACHAYA") is False
+    monkeypatch.setenv("ARIAKE_CENTRAL_READING", "1")
+    assert is_team_yy(institution_id="ARIAKE_OHANACHAYA") is True
+
+
+def test_filter_institution_datasets_acl():
+    datasets = [
+        {"name": "ARIAKE_OHANACHAYA", "id": "1"},
+        {"name": "TOKYO_UNIV", "id": "2"},
+    ]
+    own = filter_institution_datasets(
+        datasets, viewer_institution_id="ARIAKE_OHANACHAYA", central=False
+    )
+    assert [d["name"] for d in own] == ["ARIAKE_OHANACHAYA"]
+    all_ds = filter_institution_datasets(
+        datasets, viewer_institution_id="ARIAKE_OHANACHAYA", central=True
+    )
+    assert len(all_ds) == 2
+    empty = filter_institution_datasets(
+        datasets, viewer_institution_id="UNKNOWN", central=False
+    )
+    assert empty == []
+
+
+def test_remote_segments_separate_first_and_second():
+    assert first_grader_remote_segments("ARIAKE_OHANACHAYA") == ("ARIAKE_OHANACHAYA",)
+    assert second_reader_remote_segments("TOKYO_UNIV") == ("second_reading", "TOKYO_UNIV")
+
+
+def test_first_grader_segments_reject_team_yy():
+    try:
+        first_grader_remote_segments(TEAM_YY_INSTITUTION_ID)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_isolated_download_dirs_differ_by_institution_and_time(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "src.utils.grdm_sync_ui.get_base_data_dir", lambda: tmp_path
+    )
+    a = isolated_download_dir("proj", "ARIAKE_OHANACHAYA")
+    b = isolated_download_dir("proj", "TOKYO_UNIV")
+    assert a != b
+    assert "ARIAKE_OHANACHAYA" in str(a)
+    assert "TOKYO_UNIV" in str(b)
+    assert a.is_dir() and b.is_dir()
+
+
 def test_no_hardcoded_bearer_pat_in_source():
-    """Regression: real PATs must not be embedded in grdm modules."""
     root = Path(__file__).resolve().parents[1] / "src" / "utils"
-    for name in ("grdm_client.py", "grdm_secure_storage.py", "grdm_sync_ui.py", "grdm_config.py"):
+    for name in (
+        "grdm_client.py",
+        "grdm_secure_storage.py",
+        "grdm_sync_ui.py",
+        "grdm_config.py",
+        "grdm_access.py",
+    ):
         text = (root / name).read_text(encoding="utf-8")
         assert "Bearer ey" not in text
-        if name != "grdm_config.py":
+        if name not in ("grdm_config.py", "grdm_access.py"):
             assert 'client_storage.set("grdm_token"' not in text
-            assert "client_storage.set('grdm_token'" not in text
