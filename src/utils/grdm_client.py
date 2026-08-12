@@ -5,6 +5,7 @@ GakuNin RDMはOSF(Open Science Framework)をベースに構築されているた
 API仕様の詳細は https://developer.osf.io/ も参照のこと。
 
 想定用途: OCTA-MIC(YCU正式研究プロジェクト)でのデータ授受専用。
+第1グレーダーのエクスポート同期、および第2リーダー（中央読影含む）の取得に使う。
 
 --- Fletアプリでの認証情報の扱いについて ---
 このモジュール自体は認証情報の永続化を行わない(フレームワーク非依存に保つため)。
@@ -35,7 +36,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -59,6 +60,19 @@ def set_active_token(token: str) -> None:
     HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
 
+def normalize_storage_id(raw: Optional[str]) -> str:
+    """JSON API の id (例: ``osfstorage/<guid>``) を WaterButler パス用に正規化する。
+
+    WaterButler URL は既に ``/providers/osfstorage/`` を含むため、
+    先頭の ``osfstorage/`` プレフィックスを除去する。
+    """
+    s = (raw or "").strip().strip("/")
+    lower = s.lower()
+    if lower.startswith("osfstorage/"):
+        s = s[len("osfstorage/") :]
+    return s.strip("/")
+
+
 def list_projects() -> list:
     """アクセス可能なプロジェクト(node)一覧を取得"""
     resp = requests.get(f"{API_BASE}/nodes/", headers=HEADERS)
@@ -69,9 +83,12 @@ def list_projects() -> list:
 def list_files(project_id: str, folder_id: str = "") -> list:
     """プロジェクト直下、または指定フォルダ内のファイル/フォルダ一覧を取得
     folder_id省略時はルート(osfstorage直下)を返す
-    戻り値の各要素の ["id"] を download_file / upload先folder_idとして使う
+
+    戻り値の各要素の ["id"] は ``normalize_storage_id()`` してから
+    download_file / upload先 folder_id として使うこと。
     """
-    suffix = f"{folder_id}/" if folder_id else ""
+    fid = normalize_storage_id(folder_id)
+    suffix = f"{fid}/" if fid else ""
     url = f"{API_BASE}/nodes/{project_id}/files/osfstorage/{suffix}"
     resp = requests.get(url, headers=HEADERS)
     resp.raise_for_status()
@@ -79,16 +96,35 @@ def list_files(project_id: str, folder_id: str = "") -> list:
 
 
 def create_folder(project_id: str, folder_name: str, parent_folder_id: str = "") -> dict:
-    """フォルダを作成。parent_folder_id省略時はルート直下に作成"""
-    suffix = f"{parent_folder_id}/" if parent_folder_id else ""
+    """フォルダを作成。parent_folder_id省略時はルート直下に作成。
+
+    既に同名フォルダがある場合(HTTP 409)は list_files から既存を返す。
+    """
+    parent = normalize_storage_id(parent_folder_id)
+    suffix = f"{parent}/" if parent else ""
     url = f"{FILES_BASE}/{project_id}/providers/osfstorage/{suffix}"
     resp = requests.put(
         url,
         headers=HEADERS,
         params={"kind": "folder", "name": folder_name},
     )
+    if resp.status_code == 409:
+        for item in list_files(project_id, parent):
+            attrs = item.get("attributes") or {}
+            if attrs.get("kind") == "folder" and attrs.get("name") == folder_name:
+                return item
+        resp.raise_for_status()
     resp.raise_for_status()
     return resp.json()
+
+
+def _extract_node_id(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    data = payload.get("data") if "data" in payload else payload
+    if isinstance(data, dict):
+        return normalize_storage_id(str(data.get("id") or ""))
+    return ""
 
 
 def upload_file(
@@ -96,11 +132,18 @@ def upload_file(
     local_path: str,
     folder_id: str = "",
     remote_name: Optional[str] = None,
+    *,
+    skip_if_exists: bool = True,
 ) -> dict:
-    """ファイルをアップロード。folder_id省略時はルート直下に置く"""
+    """ファイルをアップロード。folder_id省略時はルート直下に置く。
+
+    skip_if_exists=True（既定）のとき、HTTP 409（同名ファイル既存）は
+    ``{"skipped": True, "reason": "already_exists"}`` を返して継続可能にする。
+    """
     local_path = Path(local_path)
     remote_name = remote_name or local_path.name
-    suffix = f"{folder_id}/" if folder_id else ""
+    parent = normalize_storage_id(folder_id)
+    suffix = f"{parent}/" if parent else ""
     url = f"{FILES_BASE}/{project_id}/providers/osfstorage/{suffix}"
     with open(local_path, "rb") as f:
         resp = requests.put(
@@ -109,16 +152,21 @@ def upload_file(
             params={"kind": "file", "name": remote_name},
             data=f,
         )
+    if resp.status_code == 409 and skip_if_exists:
+        return {"skipped": True, "reason": "already_exists", "name": remote_name}
     resp.raise_for_status()
     return resp.json()
 
 
 def download_file(project_id: str, file_id: str, local_path: str) -> None:
     """list_filesで取得したidを指定してファイルをダウンロード"""
-    url = f"{FILES_BASE}/{project_id}/providers/osfstorage/{file_id}"
+    fid = normalize_storage_id(file_id)
+    url = f"{FILES_BASE}/{project_id}/providers/osfstorage/{fid}"
     resp = requests.get(url, headers=HEADERS)
     resp.raise_for_status()
-    Path(local_path).write_bytes(resp.content)
+    dest = Path(local_path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(resp.content)
 
 
 def setup_institution_structure(project_id: str) -> None:
@@ -130,29 +178,119 @@ def setup_institution_structure(project_id: str) -> None:
         print(f"作成完了: {name}")
 
 
+def _remote_child_folders(project_id: str, folder_id: str) -> Dict[str, str]:
+    """name -> normalized storage id for folders under folder_id."""
+    out: Dict[str, str] = {}
+    for item in list_files(project_id, folder_id):
+        attrs = item.get("attributes") or {}
+        if attrs.get("kind") == "folder" and attrs.get("name"):
+            out[str(attrs["name"])] = normalize_storage_id(str(item.get("id") or ""))
+    return out
+
+
 def sync_local_to_grdm(local_folder: str, project_id: str, folder_id: str = "") -> int:
-    """ローカルフォルダの中身をGakuNin RDMへまとめてアップロードする。
-    「クラウドへ同期」ボタンから呼ぶことを想定。
-    既にアップロード済みかどうかの厳密な差分チェックはしていないため、
-    運用では送信済みファイルを別ディレクトリへ移動する等の工夫を推奨。
+    """ローカルフォルダの中身（サブフォルダ含む）をGakuNin RDMへアップロードする。
+
+    ``export/`` 配下の MedSAM / PDF なども再帰的に送る。
+    同名ファイルが既にある場合はスキップして続行する。
 
     Returns
     -------
     int
-        アップロードしたファイル件数
+        新規アップロードしたファイル件数（スキップは含まない）
     """
     local_folder = Path(local_folder)
     if not local_folder.is_dir():
         raise FileNotFoundError(f"同期先フォルダが見つかりません: {local_folder}")
-    files: List[Path] = [f for f in local_folder.iterdir() if f.is_file()]
-    if not files:
+
+    uploaded, _skipped = _sync_local_tree(local_folder, project_id, normalize_storage_id(folder_id))
+    print(f"{uploaded}件のファイルを同期しました（スキップ除く）")
+    return uploaded
+
+
+def _sync_local_tree(
+    local_folder: Path, project_id: str, folder_id: str
+) -> Tuple[int, int]:
+    uploaded = 0
+    skipped = 0
+
+    files = sorted(f for f in local_folder.iterdir() if f.is_file())
+    dirs = sorted(d for d in local_folder.iterdir() if d.is_dir())
+    if not files and not dirs:
         print("同期対象のファイルはありません")
-        return 0
+        return 0, 0
+
+    remote_folders = _remote_child_folders(project_id, folder_id) if dirs else {}
+
     for f in files:
         print(f"アップロード中: {f.name}")
-        upload_file(project_id, str(f), folder_id=folder_id)
-    print(f"{len(files)}件のファイルを同期しました")
-    return len(files)
+        result = upload_file(project_id, str(f), folder_id=folder_id)
+        if result.get("skipped"):
+            skipped += 1
+            print(f"  スキップ（既存）: {f.name}")
+        else:
+            uploaded += 1
+
+    for d in dirs:
+        remote_id = remote_folders.get(d.name)
+        if not remote_id:
+            created = create_folder(project_id, d.name, parent_folder_id=folder_id)
+            remote_id = _extract_node_id(created) or normalize_storage_id(
+                str((created.get("id") if isinstance(created, dict) else "") or "")
+            )
+            if not remote_id and isinstance(created, dict):
+                # create_folder may return a list_files item directly on 409
+                remote_id = normalize_storage_id(str(created.get("id") or ""))
+            if not remote_id:
+                # refresh listing
+                remote_folders = _remote_child_folders(project_id, folder_id)
+                remote_id = remote_folders.get(d.name, "")
+            if not remote_id:
+                raise RuntimeError(f"リモートフォルダを作成できませんでした: {d.name}")
+            remote_folders[d.name] = remote_id
+        u, s = _sync_local_tree(d, project_id, remote_id)
+        uploaded += u
+        skipped += s
+
+    return uploaded, skipped
+
+
+def sync_grdm_to_local(local_folder: str, project_id: str, folder_id: str = "") -> int:
+    """GakuNin RDM 上のフォルダ内容をローカルへ再帰ダウンロードする。
+
+    第2リーダーが第1グレーダーの export 束を取得する用途を想定。
+
+    Returns
+    -------
+    int
+        ダウンロードしたファイル件数
+    """
+    dest_root = Path(local_folder)
+    dest_root.mkdir(parents=True, exist_ok=True)
+    count = _download_tree(dest_root, project_id, normalize_storage_id(folder_id))
+    print(f"{count}件のファイルをダウンロードしました")
+    return count
+
+
+def _download_tree(local_folder: Path, project_id: str, folder_id: str) -> int:
+    count = 0
+    for item in list_files(project_id, folder_id):
+        attrs = item.get("attributes") or {}
+        name = attrs.get("name")
+        kind = attrs.get("kind")
+        item_id = normalize_storage_id(str(item.get("id") or ""))
+        if not name or not item_id:
+            continue
+        if kind == "folder":
+            sub = local_folder / str(name)
+            sub.mkdir(parents=True, exist_ok=True)
+            count += _download_tree(sub, project_id, item_id)
+        else:
+            target = local_folder / str(name)
+            print(f"ダウンロード中: {target}")
+            download_file(project_id, item_id, str(target))
+            count += 1
+    return count
 
 
 def check_connection() -> bool:

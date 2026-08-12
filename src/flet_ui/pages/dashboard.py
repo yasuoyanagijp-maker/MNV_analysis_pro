@@ -25,6 +25,8 @@ from src.utils.grdm_config import (
     load_persisted_grdm_destination,
     persist_grdm_destination,
 )
+from src.utils.grdm_sync_ui import make_grdm_download_button
+
 from src.utils.vd_folder_preflight import (
     scan_vd_folder_pairs,
     vd_pair_suffixes_configured,
@@ -1568,7 +1570,7 @@ async def get_dashboard_view(ctx: AppContext):
                     [
                         ft.Icon(Icons.PEOPLE_ALT_ROUNDED, size=28, color=Colors.AMBER_400),
                         ft.Text(
-                            "第2リーダー（二重読影）モード",
+                            "第2リーダー（二重読影）モード — ARIAKE-OCTA-Pro / OCTA-MIC",
                             size=15,
                             weight=FontWeight.BOLD,
                             color=Colors.WHITE,
@@ -1577,20 +1579,31 @@ async def get_dashboard_view(ctx: AppContext):
                     spacing=10,
                 ),
                 ft.Text(
-                    "第1グレーダーの出力フォルダ（メタデータ export の親フォルダ）を選択すると、"
-                    "エキスポート済み画像を自動スキャンして順次読影します。"
-                    "読影完了後に Save CSV を押すと「統合解析データ」ボタンが表示され、"
-                    "第1グレーダーCSVと RPD≤20% ルールで統合できます。",
+                    "論文化に向けた2名体制: 施設内2名、または施設1名＋中央読影（Team YY）。"
+                    " RPD≥20% は除外、未満は平均を採用します。"
+                    " 第1グレーダー成果物はローカルフォルダ、または GakuNin RDM から取得できます"
+                    "（第2リーダーも同一プロジェクトへの PAT アクセスが必要です）。",
                     size=11,
                     color=TEXT_MUTED,
                 ),
                 ft.ElevatedButton(
-                    "第2リーダー読影を開始（自動スキャン）",
+                    "第2リーダー読影を開始（ローカル自動スキャン）",
                     icon=Icons.TRAVEL_EXPLORE_ROUNDED,
                     bgcolor=Colors.AMBER_400,
                     color=Colors.BLACK,
                     on_click=lambda _: ctx.page.run_task(handle_second_reader_start),
-                    width=340,
+                    width=400,
+                ),
+                make_grdm_download_button(
+                    ctx.page,
+                    on_complete=load_second_reader_batch,
+                    label="GakuNin RDMから第1読影データを取得して読影開始",
+                ),
+                ft.Text(
+                    "GakuNin 取得先は Advanced Settings の project_id / folder_id"
+                    "（第1グレーダーが同期した場所）。PAT は初回入力後に OS 安全領域へ保存。",
+                    size=10,
+                    color=TEXT_MUTED,
                 ),
             ],
             spacing=10,
