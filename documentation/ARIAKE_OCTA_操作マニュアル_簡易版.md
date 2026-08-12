@@ -70,7 +70,7 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 | 施設の状況 | 操作の流れ（要約） |
 |------------|-------------------|
 | **読影者 2 名（施設内）** | 第1: Save CSV → Export Metadata → ログアウト → 第2: Role「第2リーダー」→ **ローカル自動スキャン** → ROI（**Confirm ROI & Proceed**）→ 解析（**Confirm & Start Analysis**）→ Save CSV → **統合解析データ**（RPD≤20% で平均、超過は NA） |
-| **読影者 1 名のみ** | 第1: 同上のあと結果の **`output_folder` を GakuNin RDMへ同期** → 中央は Institution **`TEAM_YY`**（※`YOKOHAMA_CITY_UNIV` ではない）で取得して第2読影 → **統合解析データ**（ローカル `integrated_output_*`）→ 必要なら **第2の `output_folder` だけ**を `second_reading/{施設}/` へ同期（採用 CSV は自動では上がらない） |
+| **読影者 1 名のみ** | 第1: Save CSV → Export Metadata → 結果画面のまま **`output_folder` を GakuNin RDMへ同期**（この時点ではログアウトしない）→ 中央は Institution **`TEAM_YY`**（※`YOKOHAMA_CITY_UNIV` ではない）で取得して第2読影 → **統合解析データ**（ローカル `integrated_output_*`）→ 必要なら **第2の `output_folder` だけ**を `second_reading/{施設}/` へ同期（採用 CSV は自動では上がらない）→ 作業後にログアウト |
 
 - 一般施設の GakuNin 取得は **自施設のみ**。横断選択は **`TEAM_YY` のみ**。  
 - アプリの統合は `File`/`ID` stem 突合。CLI（Case+Visit）とは別経路。  
@@ -98,6 +98,7 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 
 | 日付 | 内容 |
 |------|------|
+| 2026-08-12 | 1名ルート: 同期前にログアウトしない旨を明記（「同上」の誤解を解消）。 |
 | 2026-08-12 | Bugbot 指摘反映: 同期は `output_folder` のみ・integrated 非対象、`TEAM_YY` 明示、ROI 正式ボタン名。 |
 | 2026-08-12 | **§4A** 二重読影・GakuNin 早見を追加。結果画面ボタンと USER_MANUAL 詳細節へのリンクを更新。 |
 | 2026-08-07 | 結果画面の Complexity／Uniformity（PCA）・Save CSV／Export Metadata・Uniformity=25.0 の注意、関連ドキュメントへのリンクを追加。 |
