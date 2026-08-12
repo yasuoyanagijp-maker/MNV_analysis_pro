@@ -34,7 +34,9 @@ PATの取得方法(各施設の担当者向け案内):
 
 from __future__ import annotations
 
+import contextvars
 import os
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -46,18 +48,61 @@ load_dotenv()
 API_BASE = "https://api.rdm.nii.ac.jp/v2"
 FILES_BASE = "https://files.rdm.nii.ac.jp/v1/resources"
 
+# Module-level TOKEN remains for CLI / dotenv and unit tests that inspect it.
+# Concurrent Flet web sessions must use contextvars / thread-local via set_active_token.
 TOKEN = os.environ.get("GRDM_TOKEN")
 DEFAULT_PROJECT_ID = os.environ.get("GRDM_PROJECT_ID")
 HEADERS = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
 
+_ctx_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "grdm_pat", default=None
+)
+_thread_local = threading.local()
+
 
 def set_active_token(token: str) -> None:
-    """Fletアプリ側でsecure storageから取り出したトークンをセットする。
-    アプリ起動時・設定画面での保存直後に呼ぶ。
+    """Bind PAT for the current asyncio task and OS thread.
+
+    Prefer this over reading the process-global TOKEN when multiple Flet web
+    sessions share one process. Call again inside ``run_in_executor`` workers
+    so the worker thread sees the same token.
     """
     global TOKEN, HEADERS
-    TOKEN = token
-    HEADERS = {"Authorization": f"Bearer {TOKEN}"}
+    tok = (token or "").strip() or None
+    _ctx_token.set(tok)
+    _thread_local.token = tok
+    TOKEN = tok
+    HEADERS = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
+
+
+def clear_active_token() -> None:
+    """Clear task/thread binding (does not erase OS secure storage)."""
+    global TOKEN, HEADERS
+    _ctx_token.set(None)
+    _thread_local.token = None
+    # Keep env bootstrap available for CLI; do not wipe dotenv TOKEN if present
+    env_tok = (os.environ.get("GRDM_TOKEN") or "").strip() or None
+    TOKEN = env_tok
+    HEADERS = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
+
+
+def active_token() -> Optional[str]:
+    """Resolve PAT: contextvar → thread-local → module TOKEN (env/CLI)."""
+    try:
+        tok = _ctx_token.get()
+    except LookupError:
+        tok = None
+    if tok:
+        return tok
+    tok = getattr(_thread_local, "token", None)
+    if tok:
+        return tok
+    return TOKEN
+
+
+def _auth_headers() -> Dict[str, str]:
+    tok = active_token()
+    return {"Authorization": f"Bearer {tok}"} if tok else {}
 
 
 def normalize_storage_id(raw: Optional[str]) -> str:
@@ -75,7 +120,7 @@ def normalize_storage_id(raw: Optional[str]) -> str:
 
 def list_projects() -> list:
     """アクセス可能なプロジェクト(node)一覧を取得"""
-    resp = requests.get(f"{API_BASE}/nodes/", headers=HEADERS)
+    resp = requests.get(f"{API_BASE}/nodes/", headers=_auth_headers())
     resp.raise_for_status()
     return resp.json()["data"]
 
@@ -95,7 +140,7 @@ def list_files(project_id: str, folder_id: str = "") -> list:
     params: Optional[Dict[str, Any]] = {"page[size]": 100}
     items: List[dict] = []
     while url:
-        resp = requests.get(url, headers=HEADERS, params=params)
+        resp = requests.get(url, headers=_auth_headers(), params=params)
         resp.raise_for_status()
         payload = resp.json()
         chunk = payload.get("data") or []
@@ -174,7 +219,7 @@ def create_folder(project_id: str, folder_name: str, parent_folder_id: str = "")
     url = f"{FILES_BASE}/{project_id}/providers/osfstorage/{suffix}"
     resp = requests.put(
         url,
-        headers=HEADERS,
+        headers=_auth_headers(),
         params={"kind": "folder", "name": folder_name},
     )
     if resp.status_code == 409:
@@ -217,7 +262,7 @@ def upload_file(
     with open(local_path, "rb") as f:
         resp = requests.put(
             url,
-            headers=HEADERS,
+            headers=_auth_headers(),
             params={"kind": "file", "name": remote_name},
             data=f,
         )
@@ -231,7 +276,7 @@ def download_file(project_id: str, file_id: str, local_path: str) -> None:
     """list_filesで取得したidを指定してファイルをダウンロード"""
     fid = normalize_storage_id(file_id)
     url = f"{FILES_BASE}/{project_id}/providers/osfstorage/{fid}"
-    resp = requests.get(url, headers=HEADERS)
+    resp = requests.get(url, headers=_auth_headers())
     resp.raise_for_status()
     dest = Path(local_path)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -375,7 +420,7 @@ def check_connection() -> bool:
 
 if __name__ == "__main__":
     # ローカル開発時の動作確認(.env読み込み前提)
-    if not TOKEN:
+    if not active_token():
         print(".envにGRDM_TOKENが設定されていません")
     else:
         for p in list_projects():

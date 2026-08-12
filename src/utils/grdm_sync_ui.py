@@ -156,6 +156,7 @@ async def ensure_grdm_token(page: ft.Page, *, write_scope_hint: bool = True) -> 
         grdm.set_active_token(token)
 
         def _check():
+            grdm.set_active_token(token)
             return grdm.check_connection()
 
         try:
@@ -191,6 +192,7 @@ async def ensure_grdm_token(page: ft.Page, *, write_scope_hint: bool = True) -> 
     grdm.set_active_token(token)
 
     def _check_new():
+        grdm.set_active_token(token)
         return grdm.check_connection()
 
     try:
@@ -393,6 +395,7 @@ async def run_grdm_sync(page: ft.Page, local_folder: str) -> None:
         return
 
     def _upload():
+        grdm.set_active_token(token)
         target_id = grdm.ensure_remote_path(
             project_id, segments, base_folder_id=base_folder_id or ""
         )
@@ -442,6 +445,7 @@ async def run_grdm_download(
     central = is_team_yy(page.session, cs, institution_id=viewer_inst)
 
     def _list():
+        grdm.set_active_token(token)
         return grdm.list_institution_folders(project_id, base_folder_id or "")
 
     try:
@@ -478,6 +482,7 @@ async def run_grdm_download(
     target = isolated_download_dir(project_id, inst_name)
 
     def _download():
+        grdm.set_active_token(token)
         return grdm.sync_grdm_to_local(str(target), project_id, remote_id)
 
     try:
@@ -490,26 +495,35 @@ async def run_grdm_download(
         _show_snack(page, f"取得に失敗しました: {ex}", error=True)
         return None
 
-    # Remember which facility was pulled (for Team YY second-reader re-upload path)
-    try:
-        page.session.set("grdm_graded_institution_id", inst_name)
-    except Exception:
-        pass
-
-    if count == 0:
+    if not count:
         _show_snack(
             page,
             f"{inst_name}: ダウンロード対象ファイルがありません",
             error=True,
         )
-        return str(target)
+        return None
 
     _show_snack(page, f"{inst_name}: {count}件を取得しました\n{target}")
 
     if on_complete is not None:
         result = on_complete(str(target))
         if asyncio.iscoroutine(result):
-            await result
+            result = await result
+        # Soft-fail loaders return False; never bind graded institution unless load OK
+        if result is False:
+            _show_snack(
+                page,
+                f"{inst_name}: 取得はできましたが第2リーダー用スキャンに失敗しました。"
+                " 施設IDは更新していません。",
+                error=True,
+            )
+            return None
+
+    # Bind only after non-empty download (+ successful on_complete when provided)
+    try:
+        page.session.set("grdm_graded_institution_id", inst_name)
+    except Exception:
+        pass
     return str(target)
 
 

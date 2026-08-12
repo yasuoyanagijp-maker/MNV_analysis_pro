@@ -49,6 +49,28 @@ def test_set_active_token_updates_headers():
     grdm.set_active_token("test-token-value")
     assert grdm.TOKEN == "test-token-value"
     assert grdm.HEADERS.get("Authorization") == "Bearer test-token-value"
+    assert grdm.active_token() == "test-token-value"
+    assert grdm._auth_headers() == {"Authorization": "Bearer test-token-value"}
+
+
+def test_active_token_is_context_local():
+    """Concurrent-style: context-bound token must not leak across contexts."""
+    import contextvars
+
+    grdm.set_active_token("token-A")
+    assert grdm.active_token() == "token-A"
+
+    ctx = contextvars.copy_context()
+
+    def _in_other():
+        grdm.set_active_token("token-B")
+        return grdm.active_token()
+
+    other = ctx.run(_in_other)
+    assert other == "token-B"
+    # Re-bind for this context after child mutated thread-local
+    grdm.set_active_token("token-A")
+    assert grdm.active_token() == "token-A"
 
 
 def test_normalize_storage_id_strips_osfstorage_prefix():

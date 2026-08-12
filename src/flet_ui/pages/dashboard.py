@@ -1098,19 +1098,21 @@ async def get_dashboard_view(ctx: AppContext):
         await ctx.add_to_console(f"Found {len(files)} images. Auto-starting analysis...", "INFO")
         await run_batch_analysis(None)
 
-    async def load_second_reader_batch(fspath):
+    async def load_second_reader_batch(fspath) -> bool:
         """
         第2リーダー: メタデータフォルダの親フォルダを自動スキャンし、
         エキスポート済み画像を通常の MNV 読影キューへ投入する。
+
+        Returns True when the batch was queued successfully.
         """
         if not fspath:
-            return
+            return False
         raw = str(fspath).strip().strip("'").strip('"')
         try:
             scan = resolve_second_reader_scan(Path(raw))
         except ValueError as ex:
             await ctx.add_to_console(f"第2リーダー スキャン失敗: {ex}", "ERROR")
-            return
+            return False
 
         await ctx.add_to_console(
             f"第2リーダー スキャン: {scan.export_dir} — 画像 {len(scan.images)} 件 / "
@@ -1203,7 +1205,12 @@ async def get_dashboard_view(ctx: AppContext):
         mnv_select_all_switch.value = True
         ctx.page.update()
 
-        await _load_batch_from_directory_core(str(scan.images_dir))
+        try:
+            await _load_batch_from_directory_core(str(scan.images_dir))
+        except Exception as ex:
+            await ctx.add_to_console(f"第2リーダー キュー投入失敗: {ex}", "ERROR")
+            return False
+        return True
 
     async def load_batch_from_directory(fspath):
         if is_second_reader(ctx.page.session):
