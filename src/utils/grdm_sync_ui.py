@@ -34,6 +34,7 @@ from src.utils.grdm_access import (
 )
 from src.utils.grdm_config import persist_grdm_destination, resolve_grdm_destination
 from src.utils.grdm_secure_storage import GRDM_TOKEN_STORAGE_KEY, SecureStorage
+from src.utils.institution_config import resolve_institution_id
 from src.utils.second_reader import is_second_reader
 
 
@@ -245,6 +246,13 @@ def _viewer_institution(page: ft.Page) -> str:
     )
 
 
+def _sync_institution_for_first_grader(page: ft.Page) -> str:
+    """Match metadata export: site-lock env ARIAKE_INSTITUTION_ID wins when set."""
+    return resolve_institution_id(
+        page.session, getattr(page, "client_storage", None)
+    )
+
+
 def isolated_download_dir(project_id: str, institution_id: str) -> Path:
     """Per-pull isolated folder to avoid mixing institutions / stale files."""
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -345,26 +353,34 @@ async def run_grdm_sync(page: ft.Page, local_folder: str) -> None:
         return
     project_id, base_folder_id = dest
 
-    inst = _viewer_institution(page)
     sr = is_second_reader(page.session)
-    # Team YY grading a facility: prefer institution of the scanned first-grader data
     if sr:
+        # Prefer institution of the scanned / downloaded first-grader data
         graded = (page.session.get("grdm_graded_institution_id") or "").strip()
-        if graded:
+        from src.utils.grdm_access import looks_like_institution_folder
+
+        if graded and looks_like_institution_folder(graded):
             inst = graded
         elif is_team_yy(page.session, getattr(page, "client_storage", None)):
-            # Fall back to prompting which facility folder to upload into
             prompted = await _prompt_text(
                 page,
                 title="第2リーダー結果のアップロード先施設",
                 label="institution_id",
                 hint="読影した施設コード（例: ARIAKE_OHANACHAYA）",
-                initial=inst if inst != TEAM_YY_INSTITUTION_ID else "",
+                initial="",
             )
             if not prompted:
                 _show_snack(page, "アップロード先施設が未指定です", error=True)
                 return
             inst = prompted
+        else:
+            # Facility second reader: use site-lock / login institution
+            inst = _sync_institution_for_first_grader(page)
+            if not inst or inst in ("UNKNOWN", TEAM_YY_INSTITUTION_ID):
+                inst = _viewer_institution(page)
+    else:
+        # First grader: same resolution as metadata export (env site-lock wins)
+        inst = _sync_institution_for_first_grader(page)
 
     try:
         segments = (

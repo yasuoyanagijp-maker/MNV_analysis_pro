@@ -405,7 +405,7 @@ def second_reader_output_dir(
         raw = str(institution_id).strip().replace("\u3000", "_").replace(" ", "_")
         raw = re.sub(r"[^\w\-]+", "_", raw, flags=re.UNICODE)
         inst = re.sub(r"_+", "_", raw).strip("_").upper()
-    if inst and inst not in {"UNKNOWN", "IMAGES", "META", "MASKS", "EXPORT"}:
+    if inst and inst not in {"UNKNOWN", "IMAGES", "META", "MASKS", "EXPORT", "PDFS"}:
         return parent / f"{_SECOND_READER_DIR_PREFIX}_{inst}_{stamp}"
     return parent / f"{_SECOND_READER_DIR_PREFIX}_{stamp}"
 
@@ -424,6 +424,6 @@ def integrated_output_dir(
         raw = str(institution_id).strip().replace("\u3000", "_").replace(" ", "_")
         raw = re.sub(r"[^\w\-]+", "_", raw, flags=re.UNICODE)
         inst = re.sub(r"_+", "_", raw).strip("_").upper()
-    if inst and inst not in {"UNKNOWN", "IMAGES", "META", "MASKS", "EXPORT"}:
+    if inst and inst not in {"UNKNOWN", "IMAGES", "META", "MASKS", "EXPORT", "PDFS"}:
         return parent / f"{_INTEGRATED_DIR_PREFIX}_{inst}_{stamp}"
     return parent / f"{_INTEGRATED_DIR_PREFIX}_{stamp}"

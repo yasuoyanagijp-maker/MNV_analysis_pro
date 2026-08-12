@@ -251,6 +251,26 @@ def test_second_reader_output_dir_isolates_institution(tmp_path: Path):
     assert "TOKYO_UNIV" in b.name
 
 
+def test_looks_like_institution_folder_rejects_layout_and_timestamps():
+    from src.utils.grdm_access import (
+        infer_institution_from_path,
+        looks_like_institution_folder,
+    )
+
+    assert looks_like_institution_folder("ARIAKE_OHANACHAYA") is True
+    assert looks_like_institution_folder("TOKYO_UNIV") is True
+    assert looks_like_institution_folder("images") is False
+    assert looks_like_institution_folder("export") is False
+    assert looks_like_institution_folder("meta") is False
+    assert looks_like_institution_folder("TEAM_YY") is False
+    assert looks_like_institution_folder("ARIAKE_OHANACHAYA_20260812_153045") is False
+    assert looks_like_institution_folder("second_reader_output_2026_08_12") is False
+
+    p = Path("/tmp/x/export/images/ARIAKE_OHANACHAYA/lesion.png")
+    assert infer_institution_from_path(p) == "ARIAKE_OHANACHAYA"
+    assert infer_institution_from_path(Path("/tmp/x/export/images")) == ""
+
+
 def test_filter_institution_datasets_acl():
     datasets = [
         {"name": "ARIAKE_OHANACHAYA", "id": "1"},

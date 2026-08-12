@@ -1166,18 +1166,28 @@ async def get_dashboard_view(ctx: AppContext):
                 "第1グレーダーCSVが見つかりません。統合時に再検索します。", "WARN"
             )
 
-        # Institution from export/images/{INSTITUTION}/… — always refresh so a
-        # prior GakuNin pull does not leave a stale graded-institution id.
-        from src.utils.grdm_access import looks_like_institution_folder
+        # Institution from export/images/{INSTITUTION}/… — refresh when we can
+        # infer a real facility code; otherwise keep a prior GakuNin-pull value.
+        from src.utils.grdm_access import (
+            infer_institution_from_path,
+            looks_like_institution_folder,
+        )
 
         graded_inst = ""
         img_parent = getattr(scan, "images_dir", None)
-        if img_parent is not None and looks_like_institution_folder(img_parent.name):
-            graded_inst = img_parent.name
-        if graded_inst:
+        if img_parent is not None:
+            graded_inst = infer_institution_from_path(img_parent)
+        if not graded_inst and getattr(scan, "export_dir", None) is not None:
+            graded_inst = infer_institution_from_path(scan.export_dir)
+        if graded_inst and looks_like_institution_folder(graded_inst):
             ctx.page.session.set("grdm_graded_institution_id", graded_inst)
         else:
-            session_discard(ctx.page.session, "grdm_graded_institution_id")
+            existing = (ctx.page.session.get("grdm_graded_institution_id") or "").strip()
+            if existing and looks_like_institution_folder(existing):
+                graded_inst = existing
+            else:
+                session_discard(ctx.page.session, "grdm_graded_institution_id")
+                graded_inst = ""
 
         # Second-reader outputs go next to (not inside) the first grader's files;
         # include institution in the folder name so Team YY same-day pulls do not mix.

@@ -35,7 +35,28 @@ _RESERVED_TOP_LEVEL = frozenset(
     }
 )
 
+# MedSAM / export レイアウト名 — 施設コードではない
+_LAYOUT_FOLDER_NAMES = frozenset(
+    {
+        "images",
+        "masks",
+        "meta",
+        "export",
+        "pdfs",
+        "mnv_rgb",
+        "vd_visualization",
+        "logs",
+        "uploads",
+        "output",
+        "grdm_downloads",
+    }
+)
+
 _INST_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,64}$")
+# Isolated download / output stamps: INST_YYYYMMDD_HHMMSS or …_YYYY_MM_DD
+_TIMESTAMP_SUFFIX_RE = re.compile(
+    r"_(?:20\d{2}(?:_?\d{2}){2,}(?:_?\d{2}){0,3})$"
+)
 
 
 def login_institution_id(session: Any = None, client_storage: Any = None) -> str:
@@ -99,14 +120,50 @@ def is_team_yy(
 
 
 def looks_like_institution_folder(name: str) -> bool:
+    """True only for stable facility codes (e.g. ARIAKE_OHANACHAYA), not layout dirs."""
     n = (name or "").strip()
-    if not n or n.lower() in {x.lower() for x in _RESERVED_TOP_LEVEL}:
+    if not n:
         return False
-    # Prefer UPPER_SNAKE institution codes; also allow mixed if normalized matches
-    if _INST_NAME_RE.match(n):
-        return True
-    norm = normalize_institution_id(n)
-    return bool(norm) and norm != "UNKNOWN" and norm == n.upper().replace("-", "_")
+    lower = n.lower()
+    if lower in {x.lower() for x in _RESERVED_TOP_LEVEL}:
+        return False
+    if lower in _LAYOUT_FOLDER_NAMES:
+        return False
+    # Reject timestamped download/output folder names
+    if _TIMESTAMP_SUFFIX_RE.search(n):
+        return False
+    if not _INST_NAME_RE.match(n):
+        return False
+    # Central-reading login code is not a first-grader facility folder
+    if n == TEAM_YY_INSTITUTION_ID:
+        return False
+    return True
+
+
+def infer_institution_from_path(path: Any) -> str:
+    """Best-effort institution code from export/images/{INST}/… or a folder name."""
+    try:
+        p = path if hasattr(path, "parts") else None
+        if p is None:
+            return ""
+        parts = [str(x) for x in p.parts]
+    except Exception:
+        return ""
+    # Prefer …/export/images/{INSTITUTION}/…
+    for i, part in enumerate(parts[:-1]):
+        if part.lower() == "images" and i + 1 < len(parts):
+            cand = parts[i + 1]
+            if looks_like_institution_folder(cand):
+                return cand
+        if part.lower() == "export" and i + 2 < len(parts) and parts[i + 1].lower() == "images":
+            cand = parts[i + 2]
+            if looks_like_institution_folder(cand):
+                return cand
+    # Fallback: any path component that looks like an institution code
+    for part in reversed(parts):
+        if looks_like_institution_folder(part):
+            return part
+    return ""
 
 
 def filter_institution_datasets(
