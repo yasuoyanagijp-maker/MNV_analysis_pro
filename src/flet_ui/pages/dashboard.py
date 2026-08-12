@@ -867,11 +867,13 @@ async def get_dashboard_view(ctx: AppContext):
         await asyncio.sleep(0.35)
         ctx.page.go("/roi")
 
-    async def _load_batch_from_directory_core(fspath):
-        if not fspath:
-            return
+    async def _load_batch_from_directory_core(fspath) -> bool:
+        """Build batch queue from a server-side directory path. Used by desktop FilePicker and web explorer.
 
-        """Build batch queue from a server-side directory path. Used by desktop FilePicker and web explorer."""
+        Returns True when a batch queue was started successfully.
+        """
+        if not fspath:
+            return False
         p = Path(fspath)
         # Forgiving UX: if the user clicked an image then Confirm, use its parent folder
         # (common “normalize selection to container” pattern for batch tools).
@@ -884,7 +886,7 @@ async def get_dashboard_view(ctx: AppContext):
             p = parent
         if not p.is_dir():
             await ctx.add_to_console(f"Not a directory: {fspath}", "ERROR")
-            return
+            return False
 
         # Save resolved input directory for output path determination later
         ctx.page.session.set("original_input_dir", str(p.resolve()))
@@ -898,7 +900,7 @@ async def get_dashboard_view(ctx: AppContext):
 
         if not files:
             await ctx.add_to_console("No supported images found in directory.", "ERROR")
-            return
+            return False
 
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         staging_root = get_upload_dir() / "batch_staging" / stamp
@@ -919,7 +921,7 @@ async def get_dashboard_view(ctx: AppContext):
         files = staged_files
         if not files:
             await ctx.add_to_console("Staging failed for all files. Batch queue not created.", "ERROR")
-            return
+            return False
 
         batch_table.rows.clear()
         batch_plan = analysis_type.value
@@ -934,7 +936,7 @@ async def get_dashboard_view(ctx: AppContext):
                     "MNV folder filter removed all files (*1/*2/*4 and image1/2/4 patterns). Nothing to analyze.",
                     "ERROR",
                 )
-                return
+                return False
             if sel_mode == "auto" and len(files) < raw_count:
                 await ctx.add_to_console(
                     f"MNV auto-select: {raw_count} → {len(files)} file(s) (suffix rules).",
@@ -1006,7 +1008,7 @@ async def get_dashboard_view(ctx: AppContext):
             )
             await asyncio.sleep(0.35)
             ctx.page.go("/roi")
-            return
+            return True
         elif batch_plan == "INTEGRATED":
             root_dir = files[0].parent
             total_mb = sum(f.stat().st_size for f in files) / (1024 * 1024)
@@ -1032,7 +1034,7 @@ async def get_dashboard_view(ctx: AppContext):
             batch_container.visible = True
             ctx.page.update()
             await run_integrated_folder_analysis(str(root_dir.resolve()), files)
-            return
+            return True
         elif batch_plan == "VD_SINGLE":
             session_discard(ctx.page.session, "mnv_batch_awaiting_qc")
             session_discard(ctx.page.session, "mnv_batch_paths")
@@ -1061,7 +1063,7 @@ async def get_dashboard_view(ctx: AppContext):
                     "VD batch aborted: pair mode enabled but no valid SCP+DCP pairs found.",
                     "ERROR",
                 )
-                return
+                return False
             if use_pairs:
                 type_label = "VD (SCP/DCP pairs)"
                 summary = (
@@ -1091,12 +1093,13 @@ async def get_dashboard_view(ctx: AppContext):
             )
         else:
             await ctx.add_to_console(f"Unknown analysis type: {batch_plan}", "ERROR")
-            return
+            return False
 
         batch_container.visible = True
         ctx.page.update()
         await ctx.add_to_console(f"Found {len(files)} images. Auto-starting analysis...", "INFO")
         await run_batch_analysis(None)
+        return True
 
     async def load_second_reader_batch(fspath) -> bool:
         """
@@ -1168,8 +1171,8 @@ async def get_dashboard_view(ctx: AppContext):
                 "第1グレーダーCSVが見つかりません。統合時に再検索します。", "WARN"
             )
 
-        # Institution from export/images/{INSTITUTION}/… — refresh when we can
-        # infer a real facility code; otherwise keep a prior GakuNin-pull value.
+        # Institution from export/images/{INSTITUTION}/… — infer now, but only
+        # commit grdm_graded_institution_id after the queue starts successfully.
         from src.utils.grdm_access import (
             infer_institution_from_path,
             looks_like_institution_folder,
@@ -1181,14 +1184,11 @@ async def get_dashboard_view(ctx: AppContext):
             graded_inst = infer_institution_from_path(img_parent)
         if not graded_inst and getattr(scan, "export_dir", None) is not None:
             graded_inst = infer_institution_from_path(scan.export_dir)
-        if graded_inst and looks_like_institution_folder(graded_inst):
-            ctx.page.session.set("grdm_graded_institution_id", graded_inst)
-        else:
+        if not (graded_inst and looks_like_institution_folder(graded_inst)):
             existing = (ctx.page.session.get("grdm_graded_institution_id") or "").strip()
             if existing and looks_like_institution_folder(existing):
                 graded_inst = existing
             else:
-                session_discard(ctx.page.session, "grdm_graded_institution_id")
                 graded_inst = ""
 
         # Second-reader outputs go next to (not inside) the first grader's files;
@@ -1206,10 +1206,22 @@ async def get_dashboard_view(ctx: AppContext):
         ctx.page.update()
 
         try:
-            await _load_batch_from_directory_core(str(scan.images_dir))
+            ok = await _load_batch_from_directory_core(str(scan.images_dir))
         except Exception as ex:
             await ctx.add_to_console(f"第2リーダー キュー投入失敗: {ex}", "ERROR")
             return False
+        if not ok:
+            await ctx.add_to_console(
+                "第2リーダー: 画像キューの作成に失敗したため施設IDは更新していません。",
+                "ERROR",
+            )
+            return False
+
+        # Commit graded institution only after a real MNV/ROI queue was created
+        if graded_inst and looks_like_institution_folder(graded_inst):
+            ctx.page.session.set("grdm_graded_institution_id", graded_inst)
+        else:
+            session_discard(ctx.page.session, "grdm_graded_institution_id")
         return True
 
     async def load_batch_from_directory(fspath):
