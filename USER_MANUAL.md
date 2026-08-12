@@ -186,8 +186,8 @@ Web モードでは、フォルダ／画像の指定に **手動パス入力**�
 
 - クラウド側は研究で指定された **GakuNin RDM** プロジェクトを用います。Personal Access Token（PAT）はアプリが **OS ネイティブの安全な領域**（Keychain / Credential Manager / libsecret 等）に保存し、ソースコードやコミット対象の `.env` には置きません。  
 - **一般施設アカウント**: GakuNin 上では **自施設フォルダの第1読影データのみ**選択・取得できます。他施設データは一覧に出ません。  
-- **Team YY（中央読影）**: 参加施設の第1読影フォルダを**横断選択**できます。第2結果のアップロード先は施設コードごとに `second_reading/{institution_id}/` へ分離されます。  
-- 第1同期先と第2同期先はパスが異なります（第1の再取得と第2結果が混ざらないようにするため）。
+- **Team YY（`TEAM_YY`）**: 参加施設の第1読影フォルダを**横断選択**できます。第2結果のアップロード先は施設コードごとに `second_reading/{institution_id}/` へ分離されます。`YOKOHAMA_CITY_UNIV` では横断できません。  
+- 第1同期先と第2同期先はパスが異なります（第1の再取得と第2結果が混ざらないようにするため）。**「GakuNin RDMへ同期」は `output_folder` のみ**で、同階層の `integrated_output_*` は対象外です。
 
 ```text
 GakuNin RDM（プロジェクト配下）/
