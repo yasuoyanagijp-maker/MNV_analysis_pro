@@ -56,3 +56,8 @@ scratch/
 backend.log
 aria_launcher.log
 logs/
+
+# Secrets / local env (never commit PAT or .env)
+.env
+.env.*
+!.env.example

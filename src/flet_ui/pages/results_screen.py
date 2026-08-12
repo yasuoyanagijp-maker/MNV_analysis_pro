@@ -59,6 +59,7 @@ from src.utils.mnv_results_chart import (
     series_for_metric,
     smart_y_bounds,
 )
+from src.utils.grdm_sync_ui import make_grdm_sync_button
 
 async def get_results_view(ctx: AppContext):
     # --- DATA INITIALIZATION ---
@@ -180,6 +181,8 @@ async def get_results_view(ctx: AppContext):
             return input_dir / folder_name
             
         return get_exports_dir()
+
+    grdm_sync_btn = make_grdm_sync_button(ctx.page, get_target_output_dir)
 
     if (
         batch_results
@@ -1177,6 +1180,7 @@ async def get_results_view(ctx: AppContext):
                         tooltip="MedSAM images/masks/meta + bulk PDFs under export/pdfs/{institution_id}/",
                         on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                     ),
+                    grdm_sync_btn,
                     integrated_data_btn,
                     logout_btn,
                 ], spacing=8),
@@ -1253,6 +1257,7 @@ async def get_results_view(ctx: AppContext):
                                 tooltip="MedSAM images/masks/meta + bulk PDFs under export/pdfs/{institution_id}/",
                                 on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                             ),
+                            make_grdm_sync_button(ctx.page, get_target_output_dir),
                             ft.ElevatedButton(
                                 "Save PDF Report",
                                 icon=Icons.PICTURE_AS_PDF_ROUNDED,
@@ -1739,6 +1744,7 @@ async def get_results_view(ctx: AppContext):
                                 tooltip="MedSAM images/masks/meta + bulk PDFs under export/pdfs/{institution_id}/",
                                 on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                             ),
+                            make_grdm_sync_button(ctx.page, get_target_output_dir),
                             ft.ElevatedButton(
                                 "ROI再指定・再解析",
                                 icon=Icons.CROP_FREE,

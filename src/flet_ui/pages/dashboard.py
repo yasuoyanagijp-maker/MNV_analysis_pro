@@ -21,6 +21,10 @@ from src.utils.institution_config import (
     load_persisted_institution_id,
     persist_institution_id,
 )
+from src.utils.grdm_config import (
+    load_persisted_grdm_destination,
+    persist_grdm_destination,
+)
 from src.utils.vd_folder_preflight import (
     scan_vd_folder_pairs,
     vd_pair_suffixes_configured,
@@ -265,6 +269,43 @@ async def get_dashboard_view(ctx: AppContext):
     institution_dd.on_change = _on_institution_dd_change
     institution_custom.on_blur = lambda _: _sync_institution_session()
     institution_custom.on_submit = lambda _: _sync_institution_session()
+
+    _grdm_project, _grdm_folder = load_persisted_grdm_destination(
+        ctx.page.session, getattr(ctx.page, "client_storage", None)
+    )
+    grdm_project_input = ft.TextField(
+        label="GakuNin RDM project_id",
+        width=280,
+        border_color=PRIMARY,
+        text_size=12,
+        height=40,
+        value=_grdm_project,
+        hint_text="OSF/GakuNin RDM node id",
+        tooltip="アップロード先プロジェクトID（ハードコード不可・設定で変更）",
+    )
+    grdm_folder_input = ft.TextField(
+        label="GakuNin RDM folder_id (optional)",
+        width=280,
+        border_color=PRIMARY,
+        text_size=12,
+        height=40,
+        value=_grdm_folder,
+        hint_text="空欄=プロジェクト直下",
+        tooltip="osfstorage 内のフォルダID。空ならルート直下へアップロード",
+    )
+
+    def _sync_grdm_destination(_=None):
+        persist_grdm_destination(
+            grdm_project_input.value or "",
+            grdm_folder_input.value or "",
+            ctx.page.session,
+            getattr(ctx.page, "client_storage", None),
+        )
+
+    grdm_project_input.on_blur = lambda _: _sync_grdm_destination()
+    grdm_project_input.on_submit = lambda _: _sync_grdm_destination()
+    grdm_folder_input.on_blur = lambda _: _sync_grdm_destination()
+    grdm_folder_input.on_submit = lambda _: _sync_grdm_destination()
 
     async def _on_output_picker_result(e: ft.FilePickerResultEvent):
         if e.path:
@@ -1687,6 +1728,18 @@ async def get_dashboard_view(ctx: AppContext):
                                 ft.Text(
                                     "Institution code → export/images|masks|meta/{institution_id}/ "
                                     "(Login name = rater_id). Override with env ARIAKE_INSTITUTION_ID.",
+                                    size=11, color=TEXT_MUTED,
+                                ),
+                                ft.Row(
+                                    [grdm_project_input, grdm_folder_input],
+                                    spacing=16,
+                                    vertical_alignment=ft.CrossAxisAlignment.END,
+                                ),
+                                ft.Text(
+                                    "GakuNin RDM 同期先: project_id / folder_id "
+                                    "(env: GRDM_PROJECT_ID / GRDM_FOLDER_ID)."
+                                    " PAT は「GakuNin RDMへ同期」初回時に安全領域へ保存"
+                                    "（client_storage には保存しません）。",
                                     size=11, color=TEXT_MUTED,
                                 ),
                                 ft.Row(
