@@ -414,14 +414,14 @@ async def run_grdm_sync(page: ft.Page, local_folder: str) -> None:
     if count == 0:
         _show_snack(
             page,
-            "新規同期ファイルはありません（空フォルダ、または全て既存でスキップ）",
+            "同期対象のファイルはありません（空フォルダ）",
             error=True,
         )
     else:
         scope = "第2リーダー結果" if sr else "第1読影データ"
         _show_snack(
             page,
-            f"GakuNin RDMへの同期が完了しました（{scope} / {inst} / 新規 {count}件）",
+            f"GakuNin RDMへの同期が完了しました（{scope} / {inst} / {count}件）",
         )
 
 

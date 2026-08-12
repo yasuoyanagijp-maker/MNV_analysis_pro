@@ -38,7 +38,12 @@ from src.utils.metadata_export import (
     export_batch_metadata_bundles,
     export_batch_pdf_reports,
 )
-from src.utils.grdm_access import resolve_export_institution_id
+from src.utils.grdm_access import (
+    GRDM_GRADED_INSTITUTION_KEY,
+    GRDM_PENDING_INSTITUTION_KEY,
+    clear_grdm_session_institutions,
+    resolve_export_institution_id,
+)
 from src.utils.mnv_absent import is_mnv_absent_result
 from src.utils.second_reader import (
     READER_ROLE_KEY,
@@ -573,6 +578,8 @@ async def get_results_view(ctx: AppContext):
             SR_FIRST_GRADER_CSV_KEY,
             SR_CSV_PATH_KEY,
             EXPORT_LOGOUT_READY_KEY,
+            GRDM_GRADED_INSTITUTION_KEY,
+            GRDM_PENDING_INSTITUTION_KEY,
             "batch_results",
             "last_result",
             "results_selected_index",
@@ -599,6 +606,12 @@ async def get_results_view(ctx: AppContext):
             "analysis_duration_sec",
         ):
             session_discard(ctx.page.session, key)
+        # Also drop any client_storage copy so the next login cannot inherit
+        # another grader's facility after handoff.
+        clear_grdm_session_institutions(
+            None,
+            getattr(ctx.page, "client_storage", None),
+        )
         await ctx.add_to_console(
             "ログアウトしました。第2リーダーは Role を選択して再ログインしてください。",
             "INFO",

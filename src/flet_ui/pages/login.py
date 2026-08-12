@@ -13,6 +13,7 @@ from src.utils.second_reader import (
     ROLE_FIRST_GRADER,
     ROLE_SECOND_READER,
 )
+from src.utils.grdm_access import clear_grdm_session_institutions
 
 
 async def get_login_view(ctx: AppContext):
@@ -107,6 +108,12 @@ async def get_login_view(ctx: AppContext):
         login_res = await ctx.client.login(username_field.value, password_field.value)
 
         if login_res.get("success"):
+            # Drop prior second-reader facility context before binding a new login
+            # (covers soft navigate to /login without going through results logout).
+            clear_grdm_session_institutions(
+                ctx.page.session,
+                getattr(ctx.page, "client_storage", None),
+            )
             raw_inst = (
                 (institution_custom.value or "").strip()
                 if institution_dd.value == "CUSTOM"

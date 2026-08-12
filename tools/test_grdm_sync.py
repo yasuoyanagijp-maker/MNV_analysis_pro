@@ -243,6 +243,42 @@ def test_resolve_export_institution_prefers_graded(monkeypatch):
     assert resolve_export_institution_id(session) == "ARIAKE_OHANACHAYA"
 
 
+def test_resolve_export_institution_prefers_pending_over_graded(monkeypatch):
+    from src.utils.grdm_access import resolve_export_institution_id
+
+    session = MagicMock()
+    store = {
+        "institution_id": "TEAM_YY",
+        "grdm_graded_institution_id": "ARIAKE_OHANACHAYA",
+        "grdm_pending_institution_id": "TOKYO_UNIV",
+    }
+    session.get.side_effect = lambda k: store.get(k)
+    monkeypatch.setenv("ARIAKE_INSTITUTION_ID", "TEAM_YY")
+    assert resolve_export_institution_id(session) == "TOKYO_UNIV"
+
+
+def test_clear_grdm_session_institutions():
+    from src.utils.grdm_access import (
+        GRDM_GRADED_INSTITUTION_KEY,
+        GRDM_PENDING_INSTITUTION_KEY,
+        clear_grdm_session_institutions,
+    )
+
+    session = MagicMock()
+    session.contains_key.side_effect = lambda k: k in (
+        GRDM_GRADED_INSTITUTION_KEY,
+        GRDM_PENDING_INSTITUTION_KEY,
+    )
+    client = MagicMock()
+    client.contains_key.side_effect = lambda k: k == GRDM_GRADED_INSTITUTION_KEY
+
+    clear_grdm_session_institutions(session, client)
+
+    session.remove.assert_any_call(GRDM_GRADED_INSTITUTION_KEY)
+    session.remove.assert_any_call(GRDM_PENDING_INSTITUTION_KEY)
+    client.remove.assert_called_once_with(GRDM_GRADED_INSTITUTION_KEY)
+
+
 def test_pending_institution_preferred_over_stale_graded():
     from src.utils.grdm_access import looks_like_institution_folder
 

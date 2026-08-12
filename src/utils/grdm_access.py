@@ -20,6 +20,9 @@ from src.utils.institution_config import normalize_institution_id
 
 # Login / Advanced Settings で選べる中央読影コード
 TEAM_YY_INSTITUTION_ID = "TEAM_YY"
+# Session keys for the facility currently being second-read (GakuNin / local scan)
+GRDM_GRADED_INSTITUTION_KEY = "grdm_graded_institution_id"
+GRDM_PENDING_INSTITUTION_KEY = "grdm_pending_institution_id"
 _CENTRAL_ENV = "ARIAKE_CENTRAL_READING"
 _INST_STORAGE_KEY = "institution_id"
 
@@ -166,20 +169,48 @@ def infer_institution_from_path(path: Any) -> str:
     return ""
 
 
+def clear_grdm_session_institutions(
+    session: Any = None,
+    client_storage: Any = None,
+) -> None:
+    """Drop graded/pending facility keys (call on logout / fresh login).
+
+    Prevents a later grader from inheriting another session's facility context
+    after handoff (logout → re-login) or a soft navigate to /login.
+    """
+    for store in (session, client_storage):
+        if store is None:
+            continue
+        for key in (GRDM_GRADED_INSTITUTION_KEY, GRDM_PENDING_INSTITUTION_KEY):
+            try:
+                if hasattr(store, "contains_key") and hasattr(store, "remove"):
+                    if store.contains_key(key):
+                        store.remove(key)
+                elif hasattr(store, "remove"):
+                    store.remove(key)
+                else:
+                    store.set(key, None)
+            except Exception:
+                try:
+                    store.set(key, "")
+                except Exception:
+                    pass
+
+
 def resolve_export_institution_id(
     session: Any = None,
     client_storage: Any = None,
 ) -> str:
     """Institution for MedSAM/PDF export paths.
 
-    Prefer the facility currently being second-read (``grdm_graded_institution_id``
-    or pending GRDM pull), so Team YY does not write ``export/.../TEAM_YY/``.
-    Falls back to ``resolve_institution_id`` (site-lock / login).
+    Prefer an in-flight GRDM pull (pending) over a committed graded id, then
+    fall back to ``resolve_institution_id`` (site-lock / login). Keeps Team YY
+    from writing ``export/.../TEAM_YY/`` and avoids stale graded facilities.
     """
     from src.utils.institution_config import resolve_institution_id
 
     if session is not None:
-        for key in ("grdm_graded_institution_id", "grdm_pending_institution_id"):
+        for key in (GRDM_PENDING_INSTITUTION_KEY, GRDM_GRADED_INSTITUTION_KEY):
             try:
                 raw = session.get(key)
             except Exception:
