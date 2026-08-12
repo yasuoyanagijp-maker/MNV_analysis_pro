@@ -153,6 +153,38 @@ ROI・ウィザード上の **Confirm & Start Analysis** 等で解析を開始�
 
 `Quality of analysis` 列を用いて、**Fail 行の扱い**（除外・再解析後の置換）を統計計画に含めてください。
 
+### 3.6 二重読影・採用値（RPD 20%）と GakuNin RDM
+
+多施設研究では、単施設の 1 回測定だけでなく **独立した 2 名の読影**で定量を揃え、そのうえで治療前後の形態変化や関連因子を検討します。
+
+**採用ルール（RPD 閾値はアプリ統合・CLI 共通の考え方）**
+
+- 両読者の有限値について \(\mathrm{RPD}=|A-B|/\mathrm{mean}(|A|,|B|)\times 100\)  
+- **RPD ≤ 20%** → 算術平均を採用  
+- **RPD > 20%** または欠損 → **NA（再計測）**
+
+**突合キーは経路で異なる**
+
+- アプリ **統合解析データ**: `File` / `ID` の stem（`dual_grader_merge`）  
+- CLI `tools/reading_center_rpd/`: Case + Visit（手順書参照）  
+  → 同じ CSV でも採用集合が一致するとは限らない。
+
+**運用の分岐**
+
+| 状況 | アプリ上の流れ |
+|------|----------------|
+| 施設内に読影者 2 名 | 第1 Save CSV + Export Metadata → ログアウト → 第2リーダーでローカル自動スキャン → Save CSV → 統合解析データ |
+| 施設内 1 名のみ | 第1 が結果 **`output_folder` を GakuNin 同期** → Institution **`TEAM_YY`** で取得して第2読影 → 統合（ローカル）。第2の `output_folder` は `second_reading/{institution}/` へ同期可。**`integrated_output_*` は同期ボタンの対象外** |
+
+**アクセス制御（アプリ実装）**
+
+- 一般施設: GakuNin 上の **自施設第1読影フォルダのみ**選択可  
+- **Team YY（`TEAM_YY`）のみ**横断選択可。`YOKOHAMA_CITY_UNIV` は施設プリセットで中央 ACL ではない  
+- 第1同期先のフォルダ名は `resolve_institution_id`（env `ARIAKE_INSTITUTION_ID` 優先可）  
+- PAT は OS ネイティブ安全領域へ保存（リポジトリの `.env` への平文コミットは非推奨）
+
+ボタン単位の操作手順・フォルダ配置・トラブルシュートは **[USER_MANUAL.md](../USER_MANUAL.md) §6A・§10.2〜§10.4** を正とします。CLI 手順は [tools/reading_center_rpd/PROCEDURE_JA.md](../tools/reading_center_rpd/PROCEDURE_JA.md)。
+
 ---
 
 ## 4. データフォルダ構造
@@ -467,6 +499,8 @@ Trunk 正規化は Complexity と同じく **`complexity_ref` の `trunk_scale_c
 
 | 日付 | 内容 |
 |------|------|
+| 2026-08-12 | §3.6 を精緻化: アプリ/CLI 突合差、同期対象、`TEAM_YY`≠横浜市大プリセット、env の同期への影響。 |
+| 2026-08-12 | **§3.6** 新設: 二重読影（RPD20）・施設内2名／GakuNin×中央読影・ACL の要約。操作の正本は USER_MANUAL §6A・§10.2〜§10.4。 |
 | 2026-08-07 | **§6.3** 新設: Network Complexity / Caliber Uniformity の現行定義（層別 PCA・入力特徴量・EVR／0.7·(−PC1)+0.2·PC2+0.1·Trunk・size_class・Trunk 正規化・Maturity・Uniformity=25.0 警告）。冒頭差分表・§3.2・文書情報を更新。操作マニュアル側の施設コード／Export Metadata と整合。 |
 | 2026-08-07 | 付録 B.5／C／D を「現行 PCA」＋「マクロ版（歴史）」に再編するよう指示（詳細は付録の変更履歴）。 |
 | （既往） | マクロ版 V2 構成を Flet＋FastAPI 実装に合わせて移植（起動差分、VD サフィックス、MNV バッチ QC、aVDI／aMNV、細動脈化 CSV 等）。 |

@@ -56,9 +56,25 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 4. 完了後、**結果画面**に進み、**一覧またはサイドバーで症例ごと（各解析ごと）**の数値・画像・グラフを確認します。  
    - **Complexity**（Network Complexity）と **Uniformity**（Caliber Uniformity）は層別 **PCA** に基づく 0–100 スコアです。定義・パラメータは詳細マニュアル **§6.3** を参照。  
    - **Save CSV** / **Export Metadata & Data**（生画像・ROI マスク・meta.json）で結果を保存できます。  
+   - 二重読影や GakuNin RDM 同期が必要な場合は、結果画面の **ログアウト** / **GakuNin RDMへ同期** / **統合解析データ** を使います（詳細は USER_MANUAL **§6A・§10.2〜§10.4**）。  
 5. 内容に問題がある場合は、**ROI のやり直し（Redo ROI 等）**や、結果画面の **再解析（Re-analyze）** から同じ画像でやり直し、結果を上書きできることがあります。Uniformity が **25.0** と出た場合は再解析を検討してください。
 
 バッチ解析のときは、フォルダ内の複数枚を順に処理し、**最後にまとめて結果画面**で各症例を切り替えながら確認する流れになります。バッチ途中では **OK — next image**／**Redo ROI**／**Stop Here** で品質を確認しながら進みます。
+
+---
+
+## 4A. 二重読影の早見（詳細は USER_MANUAL）
+
+研究では **観察時点の定量**と、その後の **治療前後変化・関連因子の探索** を分けて進めます。読影は原則 **2 名独立**です。
+
+| 施設の状況 | 操作の流れ（要約） |
+|------------|-------------------|
+| **読影者 2 名（施設内）** | 第1: Save CSV → Export Metadata → ログアウト → 第2: Role「第2リーダー」→ **ローカル自動スキャン** → ROI（**Confirm ROI & Proceed**）→ 解析（**Confirm & Start Analysis**）→ Save CSV → **統合解析データ**（RPD≤20% で平均、超過は NA） |
+| **読影者 1 名のみ** | 第1: Save CSV → Export Metadata → 結果画面のまま **`output_folder` を GakuNin RDMへ同期**（この時点ではログアウトしない）→ 中央は Institution **`TEAM_YY`**（※`YOKOHAMA_CITY_UNIV` ではない）で取得して第2読影 → **統合解析データ**（ローカル `integrated_output_*`）→ 必要なら **第2の `output_folder` だけ**を `second_reading/{施設}/` へ同期（採用 CSV は自動では上がらない）→ 作業後にログアウト |
+
+- 一般施設の GakuNin 取得は **自施設のみ**。横断選択は **`TEAM_YY` のみ**。  
+- アプリの統合は `File`/`ID` stem 突合。CLI（Case+Visit）とは別経路。  
+- ボタン名やフォルダ配置の手順書: [USER_MANUAL.md](../USER_MANUAL.md) §6A・§10.2〜§10.4  
 
 ---
 
@@ -72,8 +88,9 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 
 | 内容 | リンク |
 |------|--------|
-| 起動・ログイン・結果画面 | [USER_MANUAL.md](https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/USER_MANUAL.md) |
+| 起動・ログイン・二重読影・GakuNin | [USER_MANUAL.md](../USER_MANUAL.md)（§6A・§10.2〜§10.4） |
 | Complexity / Caliber Uniformity（パラメータ含む） | [詳細マニュアル §6.3](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md#63-network-complexity--caliber-uniformity現行-flet-版--正) |
+| RPD20 採用（CLI） | [tools/reading_center_rpd/PROCEDURE_JA.md](../tools/reading_center_rpd/PROCEDURE_JA.md) |
 
 ---
 
@@ -81,6 +98,9 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 
 | 日付 | 内容 |
 |------|------|
+| 2026-08-12 | 1名ルート: 同期前にログアウトしない旨を明記（「同上」の誤解を解消）。 |
+| 2026-08-12 | Bugbot 指摘反映: 同期は `output_folder` のみ・integrated 非対象、`TEAM_YY` 明示、ROI 正式ボタン名。 |
+| 2026-08-12 | **§4A** 二重読影・GakuNin 早見を追加。結果画面ボタンと USER_MANUAL 詳細節へのリンクを更新。 |
 | 2026-08-07 | 結果画面の Complexity／Uniformity（PCA）・Save CSV／Export Metadata・Uniformity=25.0 の注意、関連ドキュメントへのリンクを追加。 |
 | （既往） | Confirm Selection、画像形式、MNV ROI 手順の要点を記載。 |
 
