@@ -204,6 +204,53 @@ def test_is_team_yy_by_institution_and_env(monkeypatch):
     assert is_team_yy(institution_id="ARIAKE_OHANACHAYA") is True
 
 
+def test_login_institution_not_overridden_by_site_env(monkeypatch):
+    from src.utils.grdm_access import login_institution_id
+
+    monkeypatch.setenv("ARIAKE_INSTITUTION_ID", "ARIAKE_OHANACHAYA")
+    session = MagicMock()
+    session.get.side_effect = lambda k: (
+        TEAM_YY_INSTITUTION_ID if k == "institution_id" else None
+    )
+    assert login_institution_id(session) == TEAM_YY_INSTITUTION_ID
+    assert is_team_yy(session) is True
+
+
+def test_list_institution_folders_merges_base_and_measurements():
+    def _remote_children(project_id, folder_id=""):
+        if folder_id == "":
+            return {
+                "ARIAKE_OHANACHAYA": "id-base-aria",
+                "measurements": "id-meas",
+                "second_reading": "id-sr",
+            }
+        if folder_id == "id-meas":
+            return {
+                "ARIAKE_OHANACHAYA": "id-meas-aria",  # duplicate — prefer base
+                "TOKYO_UNIV": "id-meas-tokyo",
+            }
+        return {}
+
+    with patch.object(grdm, "_remote_child_folders", side_effect=_remote_children):
+        folders = grdm.list_institution_folders("proj", "")
+    by_name = {f["name"]: f["id"] for f in folders}
+    assert by_name["ARIAKE_OHANACHAYA"] == "id-base-aria"
+    assert by_name["TOKYO_UNIV"] == "id-meas-tokyo"
+    assert "second_reading" not in by_name
+
+
+def test_second_reader_output_dir_isolates_institution(tmp_path: Path):
+    from src.utils.second_reader import second_reader_output_dir
+
+    scan = tmp_path / "grdm_downloads" / "proj" / "ARIAKE_OHANACHAYA_20260101"
+    scan.mkdir(parents=True)
+    a = second_reader_output_dir(scan, "ARIAKE_OHANACHAYA")
+    b = second_reader_output_dir(scan, "TOKYO_UNIV")
+    assert a != b
+    assert "ARIAKE_OHANACHAYA" in a.name
+    assert "TOKYO_UNIV" in b.name
+
+
 def test_filter_institution_datasets_acl():
     datasets = [
         {"name": "ARIAKE_OHANACHAYA", "id": "1"},

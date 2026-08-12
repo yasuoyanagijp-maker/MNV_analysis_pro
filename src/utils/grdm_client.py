@@ -138,24 +138,30 @@ def list_institution_folders(
 ) -> List[Dict[str, str]]:
     """List candidate first-grader institution folders under the GRDM base.
 
-    If a ``measurements`` child exists, prefer listing inside it (legacy layout).
-    Skips reserved names such as ``second_reading``.
+    New layout writes ``{base}/{institution_id}/``. Legacy layouts may also
+    nest under ``measurements/``. Collect from **both** locations; when the
+    same institution name exists in both, prefer the base-level folder.
     """
     from src.utils.grdm_access import looks_like_institution_folder
 
     base = normalize_storage_id(base_folder_id)
     children = _remote_child_folders(project_id, base)
-    list_root = base
-    if "measurements" in children:
-        list_root = children["measurements"]
-        children = _remote_child_folders(project_id, list_root)
+    by_name: Dict[str, Dict[str, str]] = {}
 
-    out: List[Dict[str, str]] = []
-    for name, fid in sorted(children.items()):
-        if not looks_like_institution_folder(name):
-            continue
-        out.append({"name": name, "id": fid, "parent_id": list_root})
-    return out
+    for name, fid in children.items():
+        if looks_like_institution_folder(name):
+            by_name[name] = {"name": name, "id": fid, "parent_id": base}
+
+    if "measurements" in children:
+        meas_id = children["measurements"]
+        for name, fid in _remote_child_folders(project_id, meas_id).items():
+            if not looks_like_institution_folder(name):
+                continue
+            # Prefer base-level (new sync layout) when both exist
+            if name not in by_name:
+                by_name[name] = {"name": name, "id": fid, "parent_id": meas_id}
+
+    return [by_name[k] for k in sorted(by_name.keys())]
 
 
 def create_folder(project_id: str, folder_name: str, parent_folder_id: str = "") -> dict:

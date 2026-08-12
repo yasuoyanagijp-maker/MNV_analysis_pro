@@ -480,12 +480,13 @@ async def get_results_view(ctx: AppContext):
             grader1 = "Grader1"
             reader2 = (ctx.page.session.get("username") or "").strip() or "Reader2"
             # 統合結果は第1・第2の結果フォルダと同階層の integrated_output_* に出力
+            graded_inst = (ctx.page.session.get("grdm_graded_institution_id") or "").strip() or None
             scan_root = ctx.page.session.get(SR_SCAN_ROOT_KEY)
             if scan_root and Path(str(scan_root)).is_dir():
-                out_dir = integrated_output_dir(Path(str(scan_root)))
+                out_dir = integrated_output_dir(Path(str(scan_root)), graded_inst)
             else:
                 # scan root 不明時は第1グレーダーCSVの場所から同階層を導出
-                out_dir = integrated_output_dir(first_csv.parent)
+                out_dir = integrated_output_dir(first_csv.parent, graded_inst)
 
             await ctx.add_to_console(
                 f"統合解析データ: {first_csv.name} × {second_csv.name} "

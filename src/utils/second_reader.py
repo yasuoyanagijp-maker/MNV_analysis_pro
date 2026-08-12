@@ -18,6 +18,7 @@ Workflow context
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -383,24 +384,46 @@ def bind_fov_to_batch_paths(
     return out
 
 
-def second_reader_output_dir(scan_root: Path) -> Path:
+def second_reader_output_dir(
+    scan_root: Path, institution_id: Optional[str] = None
+) -> Path:
     """
     Output folder for the second reader's own CSV.
 
     Created as a SIBLING of the first grader's output folder (scan_root), e.g.::
 
         parent/
-        ├── output_folder_2026_08_08/        ← first grader (scan_root)
-        └── second_reader_output_2026_08_08/ ← this folder
+        ├── output_folder_2026_08_08/                      ← first grader
+        └── second_reader_output_ARIAKE_OHANACHAYA_2026_08_08/
+
+    ``institution_id`` isolates Team YY same-day pulls across facilities.
     """
     stamp = datetime.now().strftime("%Y_%m_%d")
-    return Path(scan_root).resolve().parent / f"{_SECOND_READER_DIR_PREFIX}_{stamp}"
+    parent = Path(scan_root).resolve().parent
+    inst = ""
+    if institution_id:
+        raw = str(institution_id).strip().replace("\u3000", "_").replace(" ", "_")
+        raw = re.sub(r"[^\w\-]+", "_", raw, flags=re.UNICODE)
+        inst = re.sub(r"_+", "_", raw).strip("_").upper()
+    if inst and inst not in {"UNKNOWN", "IMAGES", "META", "MASKS", "EXPORT"}:
+        return parent / f"{_SECOND_READER_DIR_PREFIX}_{inst}_{stamp}"
+    return parent / f"{_SECOND_READER_DIR_PREFIX}_{stamp}"
 
 
-def integrated_output_dir(scan_root: Path) -> Path:
+def integrated_output_dir(
+    scan_root: Path, institution_id: Optional[str] = None
+) -> Path:
     """
     Output folder for the merged (統合解析データ) results — a sibling of both the
     first grader's and the second reader's output folders.
     """
     stamp = datetime.now().strftime("%Y_%m_%d")
-    return Path(scan_root).resolve().parent / f"{_INTEGRATED_DIR_PREFIX}_{stamp}"
+    parent = Path(scan_root).resolve().parent
+    inst = ""
+    if institution_id:
+        raw = str(institution_id).strip().replace("\u3000", "_").replace(" ", "_")
+        raw = re.sub(r"[^\w\-]+", "_", raw, flags=re.UNICODE)
+        inst = re.sub(r"_+", "_", raw).strip("_").upper()
+    if inst and inst not in {"UNKNOWN", "IMAGES", "META", "MASKS", "EXPORT"}:
+        return parent / f"{_INTEGRATED_DIR_PREFIX}_{inst}_{stamp}"
+    return parent / f"{_INTEGRATED_DIR_PREFIX}_{stamp}"

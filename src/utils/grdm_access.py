@@ -16,11 +16,12 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from src.utils.institution_config import normalize_institution_id, resolve_institution_id
+from src.utils.institution_config import normalize_institution_id
 
 # Login / Advanced Settings で選べる中央読影コード
 TEAM_YY_INSTITUTION_ID = "TEAM_YY"
 _CENTRAL_ENV = "ARIAKE_CENTRAL_READING"
+_INST_STORAGE_KEY = "institution_id"
 
 # データルート直下で「施設フォルダ」とみなさない予約名
 _RESERVED_TOP_LEVEL = frozenset(
@@ -37,6 +38,36 @@ _RESERVED_TOP_LEVEL = frozenset(
 _INST_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,64}$")
 
 
+def login_institution_id(session: Any = None, client_storage: Any = None) -> str:
+    """Institution chosen at login / UI — for ACL and GRDM scoping.
+
+    Unlike ``resolve_institution_id``, this does **not** let
+    ``ARIAKE_INSTITUTION_ID`` override a Team YY (or other) login selection.
+    Env is only a fallback when session/client_storage are empty (site-locked
+    installs that never show the institution picker).
+    """
+    if session is not None:
+        try:
+            sess_val = session.get(_INST_STORAGE_KEY)
+        except Exception:
+            sess_val = None
+        if sess_val:
+            return normalize_institution_id(str(sess_val))
+
+    if client_storage is not None:
+        try:
+            stored = client_storage.get(_INST_STORAGE_KEY)
+        except Exception:
+            stored = None
+        if stored:
+            return normalize_institution_id(str(stored))
+
+    env = (os.environ.get("ARIAKE_INSTITUTION_ID") or "").strip()
+    if env:
+        return normalize_institution_id(env)
+    return "UNKNOWN"
+
+
 def is_team_yy(
     session: Any = None,
     client_storage: Any = None,
@@ -51,7 +82,7 @@ def is_team_yy(
     code = normalize_institution_id(
         institution_id
         if institution_id is not None
-        else resolve_institution_id(session, client_storage)
+        else login_institution_id(session, client_storage)
     )
     if code == TEAM_YY_INSTITUTION_ID:
         return True

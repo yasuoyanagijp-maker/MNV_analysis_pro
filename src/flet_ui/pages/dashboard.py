@@ -1166,8 +1166,22 @@ async def get_dashboard_view(ctx: AppContext):
                 "第1グレーダーCSVが見つかりません。統合時に再検索します。", "WARN"
             )
 
-        # Second-reader outputs go next to (not inside) the first grader's files
-        out_dir = second_reader_output_dir(scan.scan_root)
+        # Institution from export/images/{INSTITUTION}/… — always refresh so a
+        # prior GakuNin pull does not leave a stale graded-institution id.
+        from src.utils.grdm_access import looks_like_institution_folder
+
+        graded_inst = ""
+        img_parent = getattr(scan, "images_dir", None)
+        if img_parent is not None and looks_like_institution_folder(img_parent.name):
+            graded_inst = img_parent.name
+        if graded_inst:
+            ctx.page.session.set("grdm_graded_institution_id", graded_inst)
+        else:
+            session_discard(ctx.page.session, "grdm_graded_institution_id")
+
+        # Second-reader outputs go next to (not inside) the first grader's files;
+        # include institution in the folder name so Team YY same-day pulls do not mix.
+        out_dir = second_reader_output_dir(scan.scan_root, graded_inst or None)
         ctx.page.session.set(SR_SCAN_ROOT_KEY, str(scan.scan_root))
         ctx.page.session.set("output_folder", str(out_dir))
         output_path_input.value = str(out_dir)

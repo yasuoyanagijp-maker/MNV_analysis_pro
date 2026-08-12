@@ -29,11 +29,11 @@ from src.utils.grdm_access import (
     filter_institution_datasets,
     first_grader_remote_segments,
     is_team_yy,
+    login_institution_id,
     second_reader_remote_segments,
 )
 from src.utils.grdm_config import persist_grdm_destination, resolve_grdm_destination
 from src.utils.grdm_secure_storage import GRDM_TOKEN_STORAGE_KEY, SecureStorage
-from src.utils.institution_config import resolve_institution_id
 from src.utils.second_reader import is_second_reader
 
 
@@ -239,7 +239,8 @@ async def ensure_grdm_destination(page: ft.Page) -> Optional[tuple]:
 
 
 def _viewer_institution(page: ft.Page) -> str:
-    return resolve_institution_id(
+    """Login/UI institution for ACL (must not be overridden by site-lock env)."""
+    return login_institution_id(
         page.session, getattr(page, "client_storage", None)
     )
 
