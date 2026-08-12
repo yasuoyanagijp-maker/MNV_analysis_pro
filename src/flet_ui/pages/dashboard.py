@@ -21,6 +21,12 @@ from src.utils.institution_config import (
     load_persisted_institution_id,
     persist_institution_id,
 )
+from src.utils.grdm_config import (
+    load_persisted_grdm_destination,
+    persist_grdm_destination,
+)
+from src.utils.grdm_sync_ui import make_grdm_download_button
+
 from src.utils.vd_folder_preflight import (
     scan_vd_folder_pairs,
     vd_pair_suffixes_configured,
@@ -265,6 +271,43 @@ async def get_dashboard_view(ctx: AppContext):
     institution_dd.on_change = _on_institution_dd_change
     institution_custom.on_blur = lambda _: _sync_institution_session()
     institution_custom.on_submit = lambda _: _sync_institution_session()
+
+    _grdm_project, _grdm_folder = load_persisted_grdm_destination(
+        ctx.page.session, getattr(ctx.page, "client_storage", None)
+    )
+    grdm_project_input = ft.TextField(
+        label="GakuNin RDM project_id",
+        width=280,
+        border_color=PRIMARY,
+        text_size=12,
+        height=40,
+        value=_grdm_project,
+        hint_text="OSF/GakuNin RDM node id",
+        tooltip="アップロード先プロジェクトID（ハードコード不可・設定で変更）",
+    )
+    grdm_folder_input = ft.TextField(
+        label="GakuNin RDM folder_id (optional)",
+        width=280,
+        border_color=PRIMARY,
+        text_size=12,
+        height=40,
+        value=_grdm_folder,
+        hint_text="空欄=プロジェクト直下",
+        tooltip="osfstorage 内のフォルダID。空ならルート直下へアップロード",
+    )
+
+    def _sync_grdm_destination(_=None):
+        persist_grdm_destination(
+            grdm_project_input.value or "",
+            grdm_folder_input.value or "",
+            ctx.page.session,
+            getattr(ctx.page, "client_storage", None),
+        )
+
+    grdm_project_input.on_blur = lambda _: _sync_grdm_destination()
+    grdm_project_input.on_submit = lambda _: _sync_grdm_destination()
+    grdm_folder_input.on_blur = lambda _: _sync_grdm_destination()
+    grdm_folder_input.on_submit = lambda _: _sync_grdm_destination()
 
     async def _on_output_picker_result(e: ft.FilePickerResultEvent):
         if e.path:
@@ -824,11 +867,13 @@ async def get_dashboard_view(ctx: AppContext):
         await asyncio.sleep(0.35)
         ctx.page.go("/roi")
 
-    async def _load_batch_from_directory_core(fspath):
-        if not fspath:
-            return
+    async def _load_batch_from_directory_core(fspath) -> bool:
+        """Build batch queue from a server-side directory path. Used by desktop FilePicker and web explorer.
 
-        """Build batch queue from a server-side directory path. Used by desktop FilePicker and web explorer."""
+        Returns True when a batch queue was started successfully.
+        """
+        if not fspath:
+            return False
         p = Path(fspath)
         # Forgiving UX: if the user clicked an image then Confirm, use its parent folder
         # (common “normalize selection to container” pattern for batch tools).
@@ -841,7 +886,7 @@ async def get_dashboard_view(ctx: AppContext):
             p = parent
         if not p.is_dir():
             await ctx.add_to_console(f"Not a directory: {fspath}", "ERROR")
-            return
+            return False
 
         # Save resolved input directory for output path determination later
         ctx.page.session.set("original_input_dir", str(p.resolve()))
@@ -855,7 +900,7 @@ async def get_dashboard_view(ctx: AppContext):
 
         if not files:
             await ctx.add_to_console("No supported images found in directory.", "ERROR")
-            return
+            return False
 
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         staging_root = get_upload_dir() / "batch_staging" / stamp
@@ -876,7 +921,7 @@ async def get_dashboard_view(ctx: AppContext):
         files = staged_files
         if not files:
             await ctx.add_to_console("Staging failed for all files. Batch queue not created.", "ERROR")
-            return
+            return False
 
         batch_table.rows.clear()
         batch_plan = analysis_type.value
@@ -891,7 +936,7 @@ async def get_dashboard_view(ctx: AppContext):
                     "MNV folder filter removed all files (*1/*2/*4 and image1/2/4 patterns). Nothing to analyze.",
                     "ERROR",
                 )
-                return
+                return False
             if sel_mode == "auto" and len(files) < raw_count:
                 await ctx.add_to_console(
                     f"MNV auto-select: {raw_count} → {len(files)} file(s) (suffix rules).",
@@ -963,7 +1008,7 @@ async def get_dashboard_view(ctx: AppContext):
             )
             await asyncio.sleep(0.35)
             ctx.page.go("/roi")
-            return
+            return True
         elif batch_plan == "INTEGRATED":
             root_dir = files[0].parent
             total_mb = sum(f.stat().st_size for f in files) / (1024 * 1024)
@@ -989,7 +1034,7 @@ async def get_dashboard_view(ctx: AppContext):
             batch_container.visible = True
             ctx.page.update()
             await run_integrated_folder_analysis(str(root_dir.resolve()), files)
-            return
+            return True
         elif batch_plan == "VD_SINGLE":
             session_discard(ctx.page.session, "mnv_batch_awaiting_qc")
             session_discard(ctx.page.session, "mnv_batch_paths")
@@ -1018,7 +1063,7 @@ async def get_dashboard_view(ctx: AppContext):
                     "VD batch aborted: pair mode enabled but no valid SCP+DCP pairs found.",
                     "ERROR",
                 )
-                return
+                return False
             if use_pairs:
                 type_label = "VD (SCP/DCP pairs)"
                 summary = (
@@ -1048,26 +1093,29 @@ async def get_dashboard_view(ctx: AppContext):
             )
         else:
             await ctx.add_to_console(f"Unknown analysis type: {batch_plan}", "ERROR")
-            return
+            return False
 
         batch_container.visible = True
         ctx.page.update()
         await ctx.add_to_console(f"Found {len(files)} images. Auto-starting analysis...", "INFO")
         await run_batch_analysis(None)
+        return True
 
-    async def load_second_reader_batch(fspath):
+    async def load_second_reader_batch(fspath) -> bool:
         """
         第2リーダー: メタデータフォルダの親フォルダを自動スキャンし、
         エキスポート済み画像を通常の MNV 読影キューへ投入する。
+
+        Returns True when the batch was queued successfully.
         """
         if not fspath:
-            return
+            return False
         raw = str(fspath).strip().strip("'").strip('"')
         try:
             scan = resolve_second_reader_scan(Path(raw))
         except ValueError as ex:
             await ctx.add_to_console(f"第2リーダー スキャン失敗: {ex}", "ERROR")
-            return
+            return False
 
         await ctx.add_to_console(
             f"第2リーダー スキャン: {scan.export_dir} — 画像 {len(scan.images)} 件 / "
@@ -1123,8 +1171,35 @@ async def get_dashboard_view(ctx: AppContext):
                 "第1グレーダーCSVが見つかりません。統合時に再検索します。", "WARN"
             )
 
-        # Second-reader outputs go next to (not inside) the first grader's files
-        out_dir = second_reader_output_dir(scan.scan_root)
+        # Institution from export/images/{INSTITUTION}/… — infer now, but only
+        # commit grdm_graded_institution_id after the queue starts successfully.
+        from src.utils.grdm_access import (
+            infer_institution_from_path,
+            looks_like_institution_folder,
+        )
+
+        graded_inst = ""
+        img_parent = getattr(scan, "images_dir", None)
+        if img_parent is not None:
+            graded_inst = infer_institution_from_path(img_parent)
+        if not graded_inst and getattr(scan, "export_dir", None) is not None:
+            graded_inst = infer_institution_from_path(scan.export_dir)
+
+        # Prefer an in-flight GRDM pull facility over a stale prior graded id
+        pending = (ctx.page.session.get("grdm_pending_institution_id") or "").strip()
+        if pending and looks_like_institution_folder(pending):
+            graded_inst = pending
+        elif not (graded_inst and looks_like_institution_folder(graded_inst)):
+            # Local folder scan only: fall back to previously committed graded id
+            existing = (ctx.page.session.get("grdm_graded_institution_id") or "").strip()
+            if existing and looks_like_institution_folder(existing):
+                graded_inst = existing
+            else:
+                graded_inst = ""
+
+        # Second-reader outputs go next to (not inside) the first grader's files;
+        # include institution in the folder name so Team YY same-day pulls do not mix.
+        out_dir = second_reader_output_dir(scan.scan_root, graded_inst or None)
         ctx.page.session.set(SR_SCAN_ROOT_KEY, str(scan.scan_root))
         ctx.page.session.set("output_folder", str(out_dir))
         output_path_input.value = str(out_dir)
@@ -1136,7 +1211,24 @@ async def get_dashboard_view(ctx: AppContext):
         mnv_select_all_switch.value = True
         ctx.page.update()
 
-        await _load_batch_from_directory_core(str(scan.images_dir))
+        try:
+            ok = await _load_batch_from_directory_core(str(scan.images_dir))
+        except Exception as ex:
+            await ctx.add_to_console(f"第2リーダー キュー投入失敗: {ex}", "ERROR")
+            return False
+        if not ok:
+            await ctx.add_to_console(
+                "第2リーダー: 画像キューの作成に失敗したため施設IDは更新していません。",
+                "ERROR",
+            )
+            return False
+
+        # Commit graded institution only after a real MNV/ROI queue was created
+        if graded_inst and looks_like_institution_folder(graded_inst):
+            ctx.page.session.set("grdm_graded_institution_id", graded_inst)
+        else:
+            session_discard(ctx.page.session, "grdm_graded_institution_id")
+        return True
 
     async def load_batch_from_directory(fspath):
         if is_second_reader(ctx.page.session):
@@ -1527,7 +1619,7 @@ async def get_dashboard_view(ctx: AppContext):
                     [
                         ft.Icon(Icons.PEOPLE_ALT_ROUNDED, size=28, color=Colors.AMBER_400),
                         ft.Text(
-                            "第2リーダー（二重読影）モード",
+                            "第2リーダー（二重読影）モード — ARIAKE-OCTA-Pro / OCTA-MIC",
                             size=15,
                             weight=FontWeight.BOLD,
                             color=Colors.WHITE,
@@ -1536,20 +1628,31 @@ async def get_dashboard_view(ctx: AppContext):
                     spacing=10,
                 ),
                 ft.Text(
-                    "第1グレーダーの出力フォルダ（メタデータ export の親フォルダ）を選択すると、"
-                    "エキスポート済み画像を自動スキャンして順次読影します。"
-                    "読影完了後に Save CSV を押すと「統合解析データ」ボタンが表示され、"
-                    "第1グレーダーCSVと RPD≤20% ルールで統合できます。",
+                    "論文化に向けた2名体制: 施設内2名、または施設1名＋中央読影（Team YY）。"
+                    " RPD ≤ 20% は平均値を採用、RPD > 20% は除外（再計測）します。"
+                    " GakuNin 取得は一般施設=自施設のみ、Team YY=全施設から選択可能です。",
                     size=11,
                     color=TEXT_MUTED,
                 ),
                 ft.ElevatedButton(
-                    "第2リーダー読影を開始（自動スキャン）",
+                    "第2リーダー読影を開始（ローカル自動スキャン）",
                     icon=Icons.TRAVEL_EXPLORE_ROUNDED,
                     bgcolor=Colors.AMBER_400,
                     color=Colors.BLACK,
                     on_click=lambda _: ctx.page.run_task(handle_second_reader_start),
-                    width=340,
+                    width=420,
+                ),
+                make_grdm_download_button(
+                    ctx.page,
+                    on_complete=load_second_reader_batch,
+                    label="GakuNin RDMから第1読影データを取得して読影開始",
+                ),
+                ft.Text(
+                    "ログイン施設が Team YY のとき全施設フォルダを表示。"
+                    " それ以外は自施設フォルダのみ（他施設は選択不可）。"
+                    " 第2結果の同期先は second_reading/{institution}/ に分離されます。",
+                    size=10,
+                    color=TEXT_MUTED,
                 ),
             ],
             spacing=10,
@@ -1687,6 +1790,20 @@ async def get_dashboard_view(ctx: AppContext):
                                 ft.Text(
                                     "Institution code → export/images|masks|meta/{institution_id}/ "
                                     "(Login name = rater_id). Override with env ARIAKE_INSTITUTION_ID.",
+                                    size=11, color=TEXT_MUTED,
+                                ),
+                                ft.Row(
+                                    [grdm_project_input, grdm_folder_input],
+                                    spacing=16,
+                                    vertical_alignment=ft.CrossAxisAlignment.END,
+                                ),
+                                ft.Text(
+                                    "GakuNin RDM 同期先ベース: project_id / folder_id "
+                                    "(env: GRDM_PROJECT_ID / GRDM_FOLDER_ID)。"
+                                    " 実パスは第1→{folder}/{institution}/、"
+                                    "第2→{folder}/second_reading/{institution}/。"
+                                    " Team YY は全施設データを選択可。PAT は OS 安全領域へ保存"
+                                    "（client_storage には保存しません）。",
                                     size=11, color=TEXT_MUTED,
                                 ),
                                 ft.Row(

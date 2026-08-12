@@ -38,7 +38,12 @@ from src.utils.metadata_export import (
     export_batch_metadata_bundles,
     export_batch_pdf_reports,
 )
-from src.utils.institution_config import resolve_institution_id
+from src.utils.grdm_access import (
+    GRDM_GRADED_INSTITUTION_KEY,
+    GRDM_PENDING_INSTITUTION_KEY,
+    clear_grdm_session_institutions,
+    resolve_export_institution_id,
+)
 from src.utils.mnv_absent import is_mnv_absent_result
 from src.utils.second_reader import (
     READER_ROLE_KEY,
@@ -59,6 +64,7 @@ from src.utils.mnv_results_chart import (
     series_for_metric,
     smart_y_bounds,
 )
+from src.utils.grdm_sync_ui import make_grdm_sync_button
 
 async def get_results_view(ctx: AppContext):
     # --- DATA INITIALIZATION ---
@@ -180,6 +186,8 @@ async def get_results_view(ctx: AppContext):
             return input_dir / folder_name
             
         return get_exports_dir()
+
+    grdm_sync_btn = make_grdm_sync_button(ctx.page, get_target_output_dir)
 
     if (
         batch_results
@@ -306,7 +314,8 @@ async def get_results_view(ctx: AppContext):
                 return
 
             target_dir = get_target_output_dir()
-            institution = resolve_institution_id(
+            # Second-reader / Team YY: prefer the facility being graded
+            institution = resolve_export_institution_id(
                 ctx.page.session,
                 getattr(ctx.page, "client_storage", None),
             )
@@ -477,12 +486,13 @@ async def get_results_view(ctx: AppContext):
             grader1 = "Grader1"
             reader2 = (ctx.page.session.get("username") or "").strip() or "Reader2"
             # 統合結果は第1・第2の結果フォルダと同階層の integrated_output_* に出力
+            graded_inst = (ctx.page.session.get("grdm_graded_institution_id") or "").strip() or None
             scan_root = ctx.page.session.get(SR_SCAN_ROOT_KEY)
             if scan_root and Path(str(scan_root)).is_dir():
-                out_dir = integrated_output_dir(Path(str(scan_root)))
+                out_dir = integrated_output_dir(Path(str(scan_root)), graded_inst)
             else:
                 # scan root 不明時は第1グレーダーCSVの場所から同階層を導出
-                out_dir = integrated_output_dir(first_csv.parent)
+                out_dir = integrated_output_dir(first_csv.parent, graded_inst)
 
             await ctx.add_to_console(
                 f"統合解析データ: {first_csv.name} × {second_csv.name} "
@@ -568,6 +578,8 @@ async def get_results_view(ctx: AppContext):
             SR_FIRST_GRADER_CSV_KEY,
             SR_CSV_PATH_KEY,
             EXPORT_LOGOUT_READY_KEY,
+            GRDM_GRADED_INSTITUTION_KEY,
+            GRDM_PENDING_INSTITUTION_KEY,
             "batch_results",
             "last_result",
             "results_selected_index",
@@ -594,6 +606,12 @@ async def get_results_view(ctx: AppContext):
             "analysis_duration_sec",
         ):
             session_discard(ctx.page.session, key)
+        # Also drop any client_storage copy so the next login cannot inherit
+        # another grader's facility after handoff.
+        clear_grdm_session_institutions(
+            None,
+            getattr(ctx.page, "client_storage", None),
+        )
         await ctx.add_to_console(
             "ログアウトしました。第2リーダーは Role を選択して再ログインしてください。",
             "INFO",
@@ -1177,6 +1195,7 @@ async def get_results_view(ctx: AppContext):
                         tooltip="MedSAM images/masks/meta + bulk PDFs under export/pdfs/{institution_id}/",
                         on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                     ),
+                    grdm_sync_btn,
                     integrated_data_btn,
                     logout_btn,
                 ], spacing=8),
@@ -1253,6 +1272,7 @@ async def get_results_view(ctx: AppContext):
                                 tooltip="MedSAM images/masks/meta + bulk PDFs under export/pdfs/{institution_id}/",
                                 on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                             ),
+                            make_grdm_sync_button(ctx.page, get_target_output_dir),
                             ft.ElevatedButton(
                                 "Save PDF Report",
                                 icon=Icons.PICTURE_AS_PDF_ROUNDED,
@@ -1739,6 +1759,7 @@ async def get_results_view(ctx: AppContext):
                                 tooltip="MedSAM images/masks/meta + bulk PDFs under export/pdfs/{institution_id}/",
                                 on_click=lambda _: ctx.page.run_task(on_export_metadata_data),
                             ),
+                            make_grdm_sync_button(ctx.page, get_target_output_dir),
                             ft.ElevatedButton(
                                 "ROI再指定・再解析",
                                 icon=Icons.CROP_FREE,

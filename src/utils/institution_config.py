@@ -20,6 +20,7 @@ from typing import Any, List, Optional, Sequence, Tuple
 # (code, display label) — codes are path-safe and stable for ML pipelines
 INSTITUTION_PRESETS: List[Tuple[str, str]] = [
     ("ARIAKE_OHANACHAYA", "お花茶屋眼科 (ARIAKE)"),
+    ("TEAM_YY", "Team YY（中央読影センター / OCTA-MIC）"),
     ("NIPPON_MEDICAL_SCHOOL", "日本医科大学付属病院"),
     ("YOKOHAMA_CITY_UNIV", "横浜市立大学"),
     ("OZAWAGANKA", "小沢眼科内科病院"),

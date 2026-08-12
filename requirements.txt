@@ -66,6 +66,12 @@ matplotlib==3.9.4
 # System & Utilities
 # ------------------
 psutil==7.2.2
+requests>=2.31.0
+python-dotenv>=1.0.0
+# OS-native secure store for GakuNin RDM PAT (Keychain / Credential Manager / libsecret).
+# flet-secure-storage requires flet>=0.80 and conflicts with flet==0.28.3; when upgrading
+# Flet, prefer flet-secure-storage — src/utils/grdm_secure_storage.py already tries it first.
+keyring>=24.0.0
 
 # PDF export (src/utils/report_generator.py, src/utils/mnv_results_chart.py; PyPI: fpdf2, import: fpdf)
 fpdf2==2.8.4
