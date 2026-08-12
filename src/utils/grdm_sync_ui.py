@@ -505,12 +505,27 @@ async def run_grdm_download(
 
     _show_snack(page, f"{inst_name}: {count}件を取得しました\n{target}")
 
+    # Publish pending facility BEFORE on_complete so second_reader_output_dir
+    # does not reuse a stale graded id while the queue is built.
+    try:
+        page.session.set("grdm_pending_institution_id", inst_name)
+    except Exception:
+        pass
+
     if on_complete is not None:
         result = on_complete(str(target))
         if asyncio.iscoroutine(result):
             result = await result
-        # Require explicit True — soft-fail loaders must return False
         if result is not True:
+            try:
+                from src.flet_ui.components.shared import session_discard
+
+                session_discard(page.session, "grdm_pending_institution_id")
+            except Exception:
+                try:
+                    page.session.set("grdm_pending_institution_id", "")
+                except Exception:
+                    pass
             _show_snack(
                 page,
                 f"{inst_name}: 取得はできましたが第2リーダー用スキャンに失敗しました。"
@@ -519,9 +534,10 @@ async def run_grdm_download(
             )
             return None
 
-    # Bind only after non-empty download (+ successful on_complete when provided)
+    # Commit graded facility; clear pending
     try:
         page.session.set("grdm_graded_institution_id", inst_name)
+        page.session.set("grdm_pending_institution_id", "")
     except Exception:
         pass
     return str(target)

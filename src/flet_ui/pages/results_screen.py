@@ -38,7 +38,7 @@ from src.utils.metadata_export import (
     export_batch_metadata_bundles,
     export_batch_pdf_reports,
 )
-from src.utils.institution_config import resolve_institution_id
+from src.utils.grdm_access import resolve_export_institution_id
 from src.utils.mnv_absent import is_mnv_absent_result
 from src.utils.second_reader import (
     READER_ROLE_KEY,
@@ -309,7 +309,8 @@ async def get_results_view(ctx: AppContext):
                 return
 
             target_dir = get_target_output_dir()
-            institution = resolve_institution_id(
+            # Second-reader / Team YY: prefer the facility being graded
+            institution = resolve_export_institution_id(
                 ctx.page.session,
                 getattr(ctx.page, "client_storage", None),
             )

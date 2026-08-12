@@ -247,12 +247,14 @@ def upload_file(
     folder_id: str = "",
     remote_name: Optional[str] = None,
     *,
-    skip_if_exists: bool = True,
+    skip_if_exists: bool = False,
+    overwrite: bool = True,
 ) -> dict:
     """ファイルをアップロード。folder_id省略時はルート直下に置く。
 
-    skip_if_exists=True（既定）のとき、HTTP 409（同名ファイル既存）は
-    ``{"skipped": True, "reason": "already_exists"}`` を返して継続可能にする。
+    同名ファイルが既にある場合 (HTTP 409):
+    - overwrite=True（既定）: 既存ファイルIDへ PUT して版を更新
+    - skip_if_exists=True かつ overwrite=False: スキップして継続
     """
     local_path = Path(local_path)
     remote_name = remote_name or local_path.name
@@ -266,10 +268,63 @@ def upload_file(
             params={"kind": "file", "name": remote_name},
             data=f,
         )
-    if resp.status_code == 409 and skip_if_exists:
+    if resp.status_code != 409:
+        resp.raise_for_status()
+        return resp.json()
+
+    if skip_if_exists and not overwrite:
         return {"skipped": True, "reason": "already_exists", "name": remote_name}
-    resp.raise_for_status()
-    return resp.json()
+
+    existing_id = _existing_file_id_from_conflict(resp, project_id, parent, remote_name)
+    if not existing_id:
+        resp.raise_for_status()
+    # Update existing file (creates a new version on OSF/WaterButler)
+    update_url = f"{FILES_BASE}/{project_id}/providers/osfstorage/{existing_id}"
+    with open(local_path, "rb") as f:
+        resp2 = requests.put(
+            update_url,
+            headers=_auth_headers(),
+            params={"kind": "file"},
+            data=f,
+        )
+    resp2.raise_for_status()
+    out = resp2.json() if resp2.content else {}
+    if isinstance(out, dict):
+        out["replaced"] = True
+        out["name"] = remote_name
+    return out if isinstance(out, dict) else {"replaced": True, "name": remote_name}
+
+
+def _existing_file_id_from_conflict(
+    resp: Any, project_id: str, parent_folder_id: str, remote_name: str
+) -> str:
+    """Extract existing file storage id from a 409 body or by listing the parent."""
+    try:
+        payload = resp.json()
+    except Exception:
+        payload = None
+    if isinstance(payload, dict):
+        # WaterButler may embed the conflicting entity under data / data.attributes
+        for cand in (
+            payload.get("data"),
+            (payload.get("data") or {}).get("attributes") if isinstance(payload.get("data"), dict) else None,
+            payload.get("meta"),
+        ):
+            if isinstance(cand, dict):
+                fid = normalize_storage_id(str(cand.get("id") or ""))
+                if fid:
+                    return fid
+                # nested path id
+                for key in ("path", "materialized"):
+                    raw = str(cand.get(key) or "").strip("/")
+                    if raw:
+                        return normalize_storage_id(raw.split("/")[-1])
+
+    for item in list_files(project_id, parent_folder_id):
+        attrs = item.get("attributes") or {}
+        if attrs.get("kind") == "file" and attrs.get("name") == remote_name:
+            return normalize_storage_id(str(item.get("id") or ""))
+    return ""
 
 
 def download_file(project_id: str, file_id: str, local_path: str) -> None:
@@ -302,28 +357,43 @@ def _remote_child_folders(project_id: str, folder_id: str) -> Dict[str, str]:
     return out
 
 
-def sync_local_to_grdm(local_folder: str, project_id: str, folder_id: str = "") -> int:
+def sync_local_to_grdm(
+    local_folder: str,
+    project_id: str,
+    folder_id: str = "",
+    *,
+    overwrite: bool = True,
+) -> int:
     """ローカルフォルダの中身（サブフォルダ含む）をGakuNin RDMへアップロードする。
 
     ``export/`` 配下の MedSAM / PDF なども再帰的に送る。
-    同名ファイルが既にある場合はスキップして続行する。
+    同名ファイルがある場合は既定で上書き（新バージョン作成）。
 
     Returns
     -------
     int
-        新規アップロードしたファイル件数（スキップは含まない）
+        アップロード／置換したファイル件数（スキップは含まない）
     """
     local_folder = Path(local_folder)
     if not local_folder.is_dir():
         raise FileNotFoundError(f"同期先フォルダが見つかりません: {local_folder}")
 
-    uploaded, _skipped = _sync_local_tree(local_folder, project_id, normalize_storage_id(folder_id))
+    uploaded, _skipped = _sync_local_tree(
+        local_folder,
+        project_id,
+        normalize_storage_id(folder_id),
+        overwrite=overwrite,
+    )
     print(f"{uploaded}件のファイルを同期しました（スキップ除く）")
     return uploaded
 
 
 def _sync_local_tree(
-    local_folder: Path, project_id: str, folder_id: str
+    local_folder: Path,
+    project_id: str,
+    folder_id: str,
+    *,
+    overwrite: bool = True,
 ) -> Tuple[int, int]:
     uploaded = 0
     skipped = 0
@@ -338,10 +408,19 @@ def _sync_local_tree(
 
     for f in files:
         print(f"アップロード中: {f.name}")
-        result = upload_file(project_id, str(f), folder_id=folder_id)
+        result = upload_file(
+            project_id,
+            str(f),
+            folder_id=folder_id,
+            overwrite=overwrite,
+            skip_if_exists=not overwrite,
+        )
         if result.get("skipped"):
             skipped += 1
             print(f"  スキップ（既存）: {f.name}")
+        elif result.get("replaced"):
+            uploaded += 1
+            print(f"  置換（新バージョン）: {f.name}")
         else:
             uploaded += 1
 
@@ -353,16 +432,14 @@ def _sync_local_tree(
                 str((created.get("id") if isinstance(created, dict) else "") or "")
             )
             if not remote_id and isinstance(created, dict):
-                # create_folder may return a list_files item directly on 409
                 remote_id = normalize_storage_id(str(created.get("id") or ""))
             if not remote_id:
-                # refresh listing
                 remote_folders = _remote_child_folders(project_id, folder_id)
                 remote_id = remote_folders.get(d.name, "")
             if not remote_id:
                 raise RuntimeError(f"リモートフォルダを作成できませんでした: {d.name}")
             remote_folders[d.name] = remote_id
-        u, s = _sync_local_tree(d, project_id, remote_id)
+        u, s = _sync_local_tree(d, project_id, remote_id, overwrite=overwrite)
         uploaded += u
         skipped += s
 

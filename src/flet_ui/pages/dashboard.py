@@ -1184,7 +1184,13 @@ async def get_dashboard_view(ctx: AppContext):
             graded_inst = infer_institution_from_path(img_parent)
         if not graded_inst and getattr(scan, "export_dir", None) is not None:
             graded_inst = infer_institution_from_path(scan.export_dir)
-        if not (graded_inst and looks_like_institution_folder(graded_inst)):
+
+        # Prefer an in-flight GRDM pull facility over a stale prior graded id
+        pending = (ctx.page.session.get("grdm_pending_institution_id") or "").strip()
+        if pending and looks_like_institution_folder(pending):
+            graded_inst = pending
+        elif not (graded_inst and looks_like_institution_folder(graded_inst)):
+            # Local folder scan only: fall back to previously committed graded id
             existing = (ctx.page.session.get("grdm_graded_institution_id") or "").strip()
             if existing and looks_like_institution_folder(existing):
                 graded_inst = existing

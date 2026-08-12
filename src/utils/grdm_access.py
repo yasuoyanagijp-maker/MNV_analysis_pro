@@ -166,6 +166,29 @@ def infer_institution_from_path(path: Any) -> str:
     return ""
 
 
+def resolve_export_institution_id(
+    session: Any = None,
+    client_storage: Any = None,
+) -> str:
+    """Institution for MedSAM/PDF export paths.
+
+    Prefer the facility currently being second-read (``grdm_graded_institution_id``
+    or pending GRDM pull), so Team YY does not write ``export/.../TEAM_YY/``.
+    Falls back to ``resolve_institution_id`` (site-lock / login).
+    """
+    from src.utils.institution_config import resolve_institution_id
+
+    if session is not None:
+        for key in ("grdm_graded_institution_id", "grdm_pending_institution_id"):
+            try:
+                raw = session.get(key)
+            except Exception:
+                raw = None
+            if raw and looks_like_institution_folder(str(raw)):
+                return normalize_institution_id(str(raw))
+    return resolve_institution_id(session, client_storage)
+
+
 def filter_institution_datasets(
     datasets: Sequence[Dict[str, str]],
     *,

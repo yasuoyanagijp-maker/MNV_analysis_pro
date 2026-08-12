@@ -164,7 +164,7 @@ def test_sync_local_to_grdm_recursive(tmp_path: Path):
     assert names == {"a.csv", "x.png"}
 
 
-def test_upload_file_skips_on_409(tmp_path: Path):
+def test_upload_file_skips_on_409_when_requested(tmp_path: Path):
     f = tmp_path / "a.csv"
     f.write_text("a")
 
@@ -178,8 +178,80 @@ def test_upload_file_skips_on_409(tmp_path: Path):
             return {}
 
     with patch.object(grdm.requests, "put", return_value=_Resp()):
-        result = grdm.upload_file("proj", str(f), folder_id="osfstorage/parent")
+        result = grdm.upload_file(
+            "proj",
+            str(f),
+            folder_id="osfstorage/parent",
+            skip_if_exists=True,
+            overwrite=False,
+        )
     assert result.get("skipped") is True
+
+
+def test_upload_file_overwrites_on_409(tmp_path: Path):
+    f = tmp_path / "a.csv"
+    f.write_text("a")
+
+    class _Conflict:
+        status_code = 409
+        content = b"{}"
+
+        def raise_for_status(self):
+            raise AssertionError("create should 409")
+
+        def json(self):
+            return {}
+
+    class _Ok:
+        status_code = 200
+        content = b'{"data":{"id":"file1"}}'
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"data": {"id": "file1"}}
+
+    calls = {"n": 0}
+
+    def _put(*args, **kwargs):
+        calls["n"] += 1
+        return _Conflict() if calls["n"] == 1 else _Ok()
+
+    with patch.object(grdm.requests, "put", side_effect=_put), patch.object(
+        grdm,
+        "list_files",
+        return_value=[
+            {"id": "osfstorage/file1", "attributes": {"name": "a.csv", "kind": "file"}}
+        ],
+    ):
+        result = grdm.upload_file("proj", str(f), folder_id="parent", overwrite=True)
+    assert result.get("replaced") is True
+    assert calls["n"] == 2
+
+
+def test_resolve_export_institution_prefers_graded(monkeypatch):
+    from src.utils.grdm_access import resolve_export_institution_id
+
+    session = MagicMock()
+    store = {
+        "institution_id": "TEAM_YY",
+        "grdm_graded_institution_id": "ARIAKE_OHANACHAYA",
+    }
+    session.get.side_effect = lambda k: store.get(k)
+    monkeypatch.setenv("ARIAKE_INSTITUTION_ID", "TEAM_YY")
+    assert resolve_export_institution_id(session) == "ARIAKE_OHANACHAYA"
+
+
+def test_pending_institution_preferred_over_stale_graded():
+    from src.utils.grdm_access import looks_like_institution_folder
+
+    pending = "TOKYO_UNIV"
+    stale = "ARIAKE_OHANACHAYA"
+    assert looks_like_institution_folder(pending)
+    # Simulate dashboard preference: pending wins
+    graded_inst = pending if looks_like_institution_folder(pending) else stale
+    assert graded_inst == "TOKYO_UNIV"
 
 
 def test_download_tree(tmp_path: Path):
