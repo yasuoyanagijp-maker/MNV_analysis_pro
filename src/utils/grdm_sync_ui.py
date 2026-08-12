@@ -509,8 +509,8 @@ async def run_grdm_download(
         result = on_complete(str(target))
         if asyncio.iscoroutine(result):
             result = await result
-        # Soft-fail loaders return False; never bind graded institution unless load OK
-        if result is False:
+        # Require explicit True — soft-fail loaders must return False
+        if result is not True:
             _show_snack(
                 page,
                 f"{inst_name}: 取得はできましたが第2リーダー用スキャンに失敗しました。"
