@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from flet import Colors, Icons, FontWeight
 from datetime import datetime
-from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, safe_round, session_discard
+from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, safe_round, session_discard, logout_to_login
 from src.utils.app_paths import get_exports_dir
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -39,14 +39,10 @@ from src.utils.metadata_export import (
     export_batch_pdf_reports,
 )
 from src.utils.grdm_access import (
-    GRDM_GRADED_INSTITUTION_KEY,
-    GRDM_PENDING_INSTITUTION_KEY,
-    clear_grdm_session_institutions,
     resolve_export_institution_id,
 )
 from src.utils.mnv_absent import is_mnv_absent_result
 from src.utils.second_reader import (
-    READER_ROLE_KEY,
     SR_FIRST_GRADER_CSV_KEY,
     SR_SCAN_ROOT_KEY,
     SR_CSV_PATH_KEY,
@@ -86,9 +82,8 @@ async def get_results_view(ctx: AppContext):
         is_sr_session and _sr_csv_saved and Path(str(_sr_csv_saved)).is_file()
     )
 
-    # エキスポート成功後に「ログアウト」ボタンを表示（第1グレーダー→第2リーダー交代動線）
+    # ログアウトは結果画面・サイドバーからいつでも可能（第1→第2交代動線）。
     EXPORT_LOGOUT_READY_KEY = "export_logout_ready"
-    _logout_ready = bool(ctx.page.session.get(EXPORT_LOGOUT_READY_KEY)) or _sr_csv_ready
 
     # Selection State (Default to Summary if multiple, or the first result)
     # We use a simple list index, -1 means Summary
@@ -569,54 +564,8 @@ async def get_results_view(ctx: AppContext):
     )
 
     async def on_logout(_=None):
-        """エキスポート後のログアウト: 認証・役割・第2リーダー状態を破棄して /login へ。"""
-        for key in (
-            "username",
-            "user",
-            READER_ROLE_KEY,
-            SR_SCAN_ROOT_KEY,
-            SR_FIRST_GRADER_CSV_KEY,
-            SR_CSV_PATH_KEY,
-            EXPORT_LOGOUT_READY_KEY,
-            GRDM_GRADED_INSTITUTION_KEY,
-            GRDM_PENDING_INSTITUTION_KEY,
-            "batch_results",
-            "last_result",
-            "results_selected_index",
-            "batch_csv_auto_saved",
-            "output_csv_paths",
-            "output_folder",
-            "original_input_dir",
-            "target_path",
-            "original_target_path",
-            "roi",
-            "roi_mask_b64",
-            "mnv_batch_paths",
-            "mnv_batch_index",
-            "mnv_batch_results",
-            "mnv_batch_names_preview",
-            "mnv_batch_awaiting_qc",
-            "mnv_batch_scales",
-            "mnv_batch_scale_stems",
-            "mnv_batch_scale_names",
-            "mnv_batch_default_fov",
-            "mnv_select_all_images",
-            "analysis_started_at",
-            "analysis_ended_at",
-            "analysis_duration_sec",
-        ):
-            session_discard(ctx.page.session, key)
-        # Also drop any client_storage copy so the next login cannot inherit
-        # another grader's facility after handoff.
-        clear_grdm_session_institutions(
-            None,
-            getattr(ctx.page, "client_storage", None),
-        )
-        await ctx.add_to_console(
-            "ログアウトしました。第2リーダーは Role を選択して再ログインしてください。",
-            "INFO",
-        )
-        ctx.page.go("/login")
+        """Discard auth/analysis session and return to /login (does not block on client_storage)."""
+        await logout_to_login(ctx.page)
 
     def _make_logout_btn():
         return ft.ElevatedButton(
@@ -625,10 +574,10 @@ async def get_results_view(ctx: AppContext):
             bgcolor=Colors.with_opacity(0.2, Colors.RED_400),
             color=Colors.RED_300,
             tooltip=(
-                "エキスポート完了後にログアウトします。"
-                "続けて第2リーダーがログインして二重読影を開始できます。"
+                "セッションを破棄してログイン画面に戻ります。"
+                "続けて第2リーダーが Role を選んで二重読影を開始できます。"
             ),
-            visible=_logout_ready,
+            visible=True,
             on_click=lambda _: ctx.page.run_task(on_logout),
         )
 
@@ -1198,7 +1147,7 @@ async def get_results_view(ctx: AppContext):
                     grdm_sync_btn,
                     integrated_data_btn,
                     logout_btn,
-                ], spacing=8),
+                ], spacing=8, wrap=True),
                 ft.Text(f"Overview of {total} processed images", color=TEXT_MUTED),
                 reorder_hint,
                 ft.Divider(height=24, color=Colors.TRANSPARENT),
@@ -1282,6 +1231,7 @@ async def get_results_view(ctx: AppContext):
                                     on_save_individual_pdf, r
                                 ),
                             ),
+                            logout_btn_detail,
                         ],
                         spacing=8,
                         wrap=True,

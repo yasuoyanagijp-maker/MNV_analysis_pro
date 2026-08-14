@@ -6,7 +6,7 @@ from typing import List
 import shutil
 from datetime import datetime
 import asyncio
-from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, session_discard
+from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, session_discard, persist_client_storage_async
 from src.utils.app_paths import get_upload_dir, sanitize_path_component, default_picker_dir
 from src.utils.cv2_path import (
     BGR_READ_OK,
@@ -258,11 +258,8 @@ async def get_dashboard_view(ctx: AppContext):
         )
         if institution_dd.value == "CUSTOM" and not raw:
             return
-        persist_institution_id(
-            raw,
-            ctx.page.session,
-            getattr(ctx.page, "client_storage", None),
-        )
+        code = persist_institution_id(raw, ctx.page.session, None)
+        persist_client_storage_async(ctx.page, {"institution_id": code})
 
     def _on_institution_dd_change(e):
         institution_custom.visible = institution_dd.value == "CUSTOM"
@@ -302,13 +299,48 @@ async def get_dashboard_view(ctx: AppContext):
             grdm_project_input.value or "",
             grdm_folder_input.value or "",
             ctx.page.session,
-            getattr(ctx.page, "client_storage", None),
+            None,
+        )
+        persist_client_storage_async(
+            ctx.page,
+            {
+                "grdm_project_id": grdm_project_input.value or "",
+                "grdm_folder_id": grdm_folder_input.value or "",
+            },
         )
 
     grdm_project_input.on_blur = lambda _: _sync_grdm_destination()
     grdm_project_input.on_submit = lambda _: _sync_grdm_destination()
     grdm_folder_input.on_blur = lambda _: _sync_grdm_destination()
     grdm_folder_input.on_submit = lambda _: _sync_grdm_destination()
+
+    async def _hydrate_grdm_from_client_storage():
+        cs = getattr(ctx.page, "client_storage", None)
+        if cs is None:
+            return
+        try:
+            proj = await cs.get_async("grdm_project_id")
+            fold = await cs.get_async("grdm_folder_id")
+        except Exception as ex:
+            print(f"GRDM client_storage hydrate failed: {ex}", flush=True)
+            return
+        changed = False
+        if proj and not grdm_project_input.value:
+            grdm_project_input.value = str(proj)
+            changed = True
+        if fold and not grdm_folder_input.value:
+            grdm_folder_input.value = str(fold)
+            changed = True
+        if changed:
+            persist_grdm_destination(
+                grdm_project_input.value or "",
+                grdm_folder_input.value or "",
+                ctx.page.session,
+                None,
+            )
+            ctx.page.update()
+
+    ctx.page.run_task(_hydrate_grdm_from_client_storage)
 
     async def _on_output_picker_result(e: ft.FilePickerResultEvent):
         if e.path:

@@ -596,3 +596,66 @@ def test_login_hot_path_does_not_call_sync_client_storage():
     assert "get_async" in login or "load_persisted_institution_id_async" in login
     assert "persist_institution_id_client_async" in login
 
+
+def test_check_connection_false_without_token(monkeypatch):
+    monkeypatch.setattr(grdm, "active_token", lambda: None)
+    assert grdm.check_connection() is False
+
+
+def test_check_connection_false_on_http_error(monkeypatch):
+    monkeypatch.setattr(grdm, "active_token", lambda: "tok")
+
+    class _Resp:
+        def raise_for_status(self):
+            raise grdm.requests.HTTPError("401")
+
+    monkeypatch.setattr(grdm.requests, "get", lambda *a, **k: _Resp())
+    assert grdm.check_connection() is False
+
+
+def test_logout_to_login_skips_sync_client_storage():
+    from src.flet_ui.components.shared import logout_to_login
+
+    store = {"username": "yy", "user": {"username": "yy"}, "batch_results": [1]}
+
+    class Session:
+        def contains_key(self, k):
+            return k in store
+
+        def remove(self, k):
+            store.pop(k, None)
+
+        def get(self, k):
+            return store.get(k)
+
+        def set(self, k, v):
+            store[k] = v
+
+    class CS:
+        def contains_key(self, k):
+            raise AssertionError("sync client_storage must not be used on logout")
+
+        def remove(self, k):
+            raise AssertionError("sync client_storage must not be used on logout")
+
+        async def remove_async(self, k):
+            return True
+
+    class Page:
+        def __init__(self):
+            self.session = Session()
+            self.client_storage = CS()
+            self.goes = []
+
+        def go(self, route, **kwargs):
+            self.goes.append(route)
+
+        def run_task(self, fn, *args):
+            return None
+
+    page = Page()
+    asyncio.run(logout_to_login(page))
+    assert page.goes and str(page.goes[0]).startswith("/login")
+    assert "username" not in store
+    assert "batch_results" not in store
+

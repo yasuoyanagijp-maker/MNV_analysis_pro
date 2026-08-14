@@ -3,6 +3,7 @@ from flet import Colors, Icons, FontWeight
 from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, TEXT_MUTED, GLASS_BG, AppContext
 from src.utils.institution_config import (
     INSTITUTION_PRESETS,
+    client_storage_set_async,
     load_persisted_institution_id,
     load_persisted_institution_id_async,
     persist_institution_id,
@@ -133,23 +134,24 @@ async def get_login_view(ctx: AppContext):
                 else (institution_dd.value or "")
             )
             code = persist_institution_id(raw_inst, ctx.page.session, None)
+            role = role_dd.value or ROLE_FIRST_GRADER
             ctx.page.session.set("username", username_field.value)
             ctx.page.session.set("institution_id", code)
-            ctx.page.session.set(
-                READER_ROLE_KEY, role_dd.value or ROLE_FIRST_GRADER
-            )
+            ctx.page.session.set(READER_ROLE_KEY, role)
             ctx.page.go("/")
 
             async def _persist_client_storage():
                 # Let dashboard first paint win the websocket before any CS RPC.
+                cs = getattr(ctx.page, "client_storage", None)
                 await persist_institution_id_client_async(
                     code,
-                    getattr(ctx.page, "client_storage", None),
+                    cs,
                     extra_remove_keys=(
                         GRDM_GRADED_INSTITUTION_KEY,
                         GRDM_PENDING_INSTITUTION_KEY,
                     ),
                 )
+                await client_storage_set_async(cs, READER_ROLE_KEY, role)
 
             ctx.page.run_task(_persist_client_storage)
         else:

@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 # Components
-from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, BG_DARK, TEXT_MUTED, BackendClient, AppContext, session_discard
+from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, BG_DARK, TEXT_MUTED, BackendClient, AppContext, session_discard, logout_to_login
 from src.flet_ui.pages.login import get_login_view
 from src.flet_ui.pages.dashboard import get_dashboard_view
 from src.flet_ui.pages.results_screen import get_results_view
@@ -56,6 +56,7 @@ async def main(page: ft.Page):
     page.overlay.extend([ctx.file_picker, ctx.directory_picker, ctx.output_directory_picker, ctx.save_file_picker])
     
     is_navigating = False
+    pending_route = None
 
     async def process_target_path(path: str):
         if not path: return
@@ -148,11 +149,14 @@ async def main(page: ft.Page):
         page.session.set("last_result", mock_res)
 
     async def route_change(e):
-        nonlocal is_navigating
-        if is_navigating: return
-        is_navigating = True
-        
+        nonlocal is_navigating, pending_route
         route_full = page.route or ""
+        if is_navigating:
+            pending_route = route_full
+            print(f"DEBUG: QUEUE ROUTE {route_full} (busy)", flush=True)
+            return
+        is_navigating = True
+        rendered = route_full
         base_route = route_full.split("?", 1)[0]
         print(f"DEBUG: NAVIGATING TO {route_full}", flush=True)
         t_nav = time.perf_counter()
@@ -191,6 +195,12 @@ async def main(page: ft.Page):
                     ft.IconButton(Icons.HOME_ROUNDED, on_click=lambda _: page.go("/"), tooltip="Home", icon_color=PRIMARY if base_route == "/" else TEXT_MUTED),
                     ft.IconButton(Icons.ANALYTICS_ROUNDED, on_click=lambda _: page.go("/"), tooltip="Analysis", icon_color=PRIMARY if base_route in ["/mnv", "/roi"] else TEXT_MUTED),
                     ft.IconButton(Icons.REMOVE_RED_EYE_ROUNDED, on_click=lambda _: page.go("/results", rt=uuid.uuid4().hex[:10]), tooltip="Results", icon_color=PRIMARY if base_route == "/results" else TEXT_MUTED),
+                    ft.IconButton(
+                        Icons.LOGOUT_ROUNDED,
+                        on_click=lambda _: page.run_task(logout_to_login, page),
+                        tooltip="ログアウト",
+                        icon_color=TEXT_MUTED,
+                    ),
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=20),
                 width=80,
                 bgcolor="#0A0A15",
@@ -226,6 +236,11 @@ async def main(page: ft.Page):
             page.update()
         finally:
             is_navigating = False
+            queued = pending_route
+            pending_route = None
+            if queued and queued.split("?", 1)[0] != rendered.split("?", 1)[0]:
+                print(f"DEBUG: FOLLOW QUEUED ROUTE {queued}", flush=True)
+                page.go(queued)
 
     page.on_route_change = route_change
     

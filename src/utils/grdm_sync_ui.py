@@ -37,6 +37,18 @@ from src.utils.grdm_secure_storage import GRDM_TOKEN_STORAGE_KEY, SecureStorage
 from src.utils.institution_config import resolve_institution_id
 from src.utils.second_reader import is_second_reader
 
+_GRDM_LOG = Path("/tmp/ariake_flet.log")
+
+
+def _grdm_log(message: str) -> None:
+    line = f"[GRDM] {message}"
+    print(line, flush=True)
+    try:
+        with _GRDM_LOG.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        pass
+
 
 def _show_snack(page: ft.Page, message: str, *, error: bool = False) -> None:
     bar = ft.SnackBar(
@@ -161,10 +173,12 @@ async def ensure_grdm_token(page: ft.Page, *, write_scope_hint: bool = True) -> 
 
         try:
             ok = await _with_loading(page, "保存済みトークンを確認中…", _check)
-        except Exception:
+        except Exception as ex:
+            _grdm_log(f"stored token check raised: {ex}")
             ok = False
         if ok:
             return token
+        _grdm_log("stored token rejected by GakuNin API")
         await clear_stored_grdm_token()
         _show_snack(
             page,
@@ -186,7 +200,12 @@ async def ensure_grdm_token(page: ft.Page, *, write_scope_hint: bool = True) -> 
         password=True,
     )
     if not token:
-        _show_snack(page, "トークン入力がキャンセルされました", error=True)
+        _grdm_log("PAT prompt cancelled or empty")
+        _show_snack(
+            page,
+            "GakuNin RDM の PAT が未入力です。同期するにはトークンが必要です。",
+            error=True,
+        )
         return None
 
     grdm.set_active_token(token)
@@ -198,11 +217,13 @@ async def ensure_grdm_token(page: ft.Page, *, write_scope_hint: bool = True) -> 
     try:
         ok = await _with_loading(page, "GakuNin RDM へ接続確認中…", _check_new)
     except Exception as ex:
-        _show_snack(page, f"接続失敗: {ex}", error=True)
+        _grdm_log(f"connection check raised: {ex}")
+        _show_snack(page, f"GakuNin RDM 接続失敗: {ex}", error=True)
         return None
 
     if not ok:
-        _show_snack(page, "接続失敗。トークンを確認してください", error=True)
+        _grdm_log("connection check returned False (invalid PAT or API error)")
+        _show_snack(page, "GakuNin RDM 接続失敗。トークンを確認してください", error=True)
         return None
 
     try:
@@ -231,9 +252,10 @@ async def ensure_grdm_destination(page: ft.Page) -> Optional[tuple]:
             hint="ダッシュボード Advanced Settings でも変更できます",
         )
         if not project_id:
+            _grdm_log("project_id missing")
             _show_snack(
                 page,
-                "project_id が未設定です。Advanced Settings で設定してください。",
+                "GakuNin RDM の project_id が未設定です。ダッシュボード Advanced Settings で設定してください。",
                 error=True,
             )
             return None
@@ -337,6 +359,7 @@ async def _prompt_institution_dataset(
 
 async def run_grdm_sync(page: ft.Page, local_folder: str) -> None:
     """Upload local export folder (recursive) to role-/institution-scoped GRDM path."""
+    _grdm_log(f"sync requested folder={local_folder}")
     folder = Path(local_folder) if local_folder else None
     if folder is None or not folder.is_dir():
         _show_snack(
@@ -408,7 +431,8 @@ async def run_grdm_sync(page: ft.Page, local_folder: str) -> None:
             _upload,
         )
     except Exception as ex:
-        _show_snack(page, f"同期に失敗しました: {ex}", error=True)
+        _grdm_log(f"sync failed: {ex}")
+        _show_snack(page, f"GakuNin RDM 同期に失敗しました: {ex}", error=True)
         return
 
     if count == 0:
@@ -453,7 +477,8 @@ async def run_grdm_download(
             page, "利用可能な第1読影データを照会中…", _list
         )
     except Exception as ex:
-        _show_snack(page, f"一覧取得に失敗しました: {ex}", error=True)
+        _grdm_log(f"list institution folders failed: {ex}")
+        _show_snack(page, f"GakuNin RDM 一覧取得に失敗しました: {ex}", error=True)
         return None
 
     allowed = filter_institution_datasets(

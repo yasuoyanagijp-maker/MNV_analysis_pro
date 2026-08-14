@@ -5,6 +5,7 @@ import time
 import httpx
 from pathlib import Path
 from typing import Awaitable, Callable, List, Optional
+import uuid
 
 # Custom Theme Colors
 PRIMARY = "#00E5FF"  # Cyan Neon
@@ -18,6 +19,109 @@ def session_discard(session, key: str) -> None:
     """Remove key if present. Flet SessionStorage has remove() only (no dict-like pop())."""
     if session.contains_key(key):
         session.remove(key)
+
+
+# Session keys dropped on logout. Keep in sync with results_screen / second_reader.
+LOGOUT_SESSION_KEYS = (
+    "username",
+    "user",
+    "reader_role",
+    "second_reader_scan_root",
+    "second_reader_first_grader_csv",
+    "second_reader_csv_path",
+    "export_logout_ready",
+    "grdm_graded_institution_id",
+    "grdm_pending_institution_id",
+    "batch_results",
+    "last_result",
+    "results_selected_index",
+    "batch_csv_auto_saved",
+    "output_csv_paths",
+    "output_folder",
+    "original_input_dir",
+    "target_path",
+    "original_target_path",
+    "roi",
+    "roi_mask_b64",
+    "mnv_batch_paths",
+    "mnv_batch_index",
+    "mnv_batch_results",
+    "mnv_batch_names_preview",
+    "mnv_batch_awaiting_qc",
+    "mnv_batch_scales",
+    "mnv_batch_scale_stems",
+    "mnv_batch_scale_names",
+    "mnv_batch_default_fov",
+    "mnv_select_all_images",
+    "analysis_started_at",
+    "analysis_ended_at",
+    "analysis_duration_sec",
+)
+
+
+def persist_client_storage_async(page: ft.Page, items: dict) -> None:
+    """Write client_storage without blocking the UI event loop.
+
+    Sync ``client_storage.get/set/remove`` uses ``threading.Event.wait`` on the
+    Flet UI thread, so the browser reply cannot be processed and each call
+    times out after 5s (logout/login appear frozen).
+    """
+
+    async def _run():
+        cs = getattr(page, "client_storage", None)
+        if cs is None:
+            return
+        for key, value in items.items():
+            try:
+                await cs.set_async(key, value)
+            except Exception as ex:
+                print(f"client_storage set_async {key} failed: {ex}", flush=True)
+
+    try:
+        page.run_task(_run)
+    except Exception as ex:
+        print(f"persist_client_storage_async schedule failed: {ex}", flush=True)
+
+
+async def logout_to_login(page: ft.Page) -> None:
+    """Discard auth/analysis session and navigate to /login.
+
+    Never call synchronous ``page.client_storage`` here — it deadlocks the
+    Flet web event loop for up to 5s per RPC.
+    """
+    session = page.session
+    print("LOGOUT: discarding session and navigating to /login", flush=True)
+    for key in LOGOUT_SESSION_KEYS:
+        try:
+            session_discard(session, key)
+        except Exception:
+            pass
+    try:
+        from src.utils.grdm_access import clear_grdm_session_institutions
+
+        clear_grdm_session_institutions(session, None)
+    except Exception:
+        pass
+
+    async def _clear_cs():
+        cs = getattr(page, "client_storage", None)
+        if cs is None:
+            return
+        for key in ("grdm_graded_institution_id", "grdm_pending_institution_id"):
+            try:
+                await cs.remove_async(key)
+            except Exception:
+                pass
+
+    try:
+        page.run_task(_clear_cs)
+    except Exception:
+        pass
+    try:
+        page.go("/login", rt=uuid.uuid4().hex[:10])
+        print("LOGOUT: page.go(/login) issued", flush=True)
+    except Exception as ex:
+        print(f"LOGOUT: page.go failed: {ex}", flush=True)
 
 
 class BackendClient:
