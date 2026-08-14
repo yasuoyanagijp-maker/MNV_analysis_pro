@@ -45,6 +45,21 @@ def test_persist_and_resolve_via_session():
     assert folder_id == "dir2"
 
 
+def test_resolve_grdm_destination_skips_client_storage_when_session_set():
+    """Avoid Flet client_storage RPC when session already has destination ids."""
+    session = MagicMock()
+    store = {"grdm_project_id": "from-session", "grdm_folder_id": "fold-session"}
+    session.get.side_effect = store.get
+    client = MagicMock()
+    client.get.side_effect = AssertionError("client_storage.get must not run")
+    project_id, folder_id = resolve_grdm_destination(
+        session=session, client_storage=client
+    )
+    assert project_id == "from-session"
+    assert folder_id == "fold-session"
+    client.get.assert_not_called()
+
+
 def test_set_active_token_updates_headers():
     grdm.set_active_token("test-token-value")
     assert grdm.TOKEN == "test-token-value"
@@ -276,7 +291,10 @@ def test_clear_grdm_session_institutions():
 
     session.remove.assert_any_call(GRDM_GRADED_INSTITUTION_KEY)
     session.remove.assert_any_call(GRDM_PENDING_INSTITUTION_KEY)
-    client.remove.assert_called_once_with(GRDM_GRADED_INSTITUTION_KEY)
+    client.remove.assert_any_call(GRDM_GRADED_INSTITUTION_KEY)
+    client.remove.assert_any_call(GRDM_PENDING_INSTITUTION_KEY)
+    session.contains_key.assert_not_called()
+    client.contains_key.assert_not_called()
 
 
 def test_pending_institution_preferred_over_stale_graded():

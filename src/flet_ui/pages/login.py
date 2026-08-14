@@ -5,7 +5,6 @@ from src.utils.institution_config import (
     INSTITUTION_PRESETS,
     load_persisted_institution_id,
     persist_institution_id,
-    resolve_institution_id,
 )
 from src.utils.second_reader import (
     READER_ROLE_KEY,
@@ -13,7 +12,11 @@ from src.utils.second_reader import (
     ROLE_FIRST_GRADER,
     ROLE_SECOND_READER,
 )
-from src.utils.grdm_access import clear_grdm_session_institutions
+from src.utils.grdm_access import (
+    GRDM_GRADED_INSTITUTION_KEY,
+    GRDM_PENDING_INSTITUTION_KEY,
+    clear_grdm_session_institutions,
+)
 
 
 async def get_login_view(ctx: AppContext):
@@ -88,6 +91,13 @@ async def get_login_view(ctx: AppContext):
     institution_dd.on_change = _on_institution_change
 
     error_text = ft.Text(color=Colors.RED_400, size=12, visible=False)
+    login_btn = ft.ElevatedButton(
+        "Secure Login",
+        height=50,
+        width=350,
+        bgcolor=PRIMARY,
+        color=Colors.BLACK,
+    )
 
     async def login_click(e):
         if not username_field.value or not password_field.value:
@@ -102,41 +112,62 @@ async def get_login_view(ctx: AppContext):
             ctx.page.update()
             return
 
-        e.control.disabled = True
+        login_btn.disabled = True
+        login_btn.text = "Signing in…"
         ctx.page.update()
 
         login_res = await ctx.client.login(username_field.value, password_field.value)
 
         if login_res.get("success"):
-            # Drop prior second-reader facility context before binding a new login
-            # (covers soft navigate to /login without going through results logout).
-            clear_grdm_session_institutions(
-                ctx.page.session,
-                getattr(ctx.page, "client_storage", None),
-            )
+            # Session only on the click path. Flet client_storage get/set/remove
+            # are blocking RPCs (up to 5s each) and delayed Launch Analysis.
+            clear_grdm_session_institutions(ctx.page.session, None)
             raw_inst = (
                 (institution_custom.value or "").strip()
                 if institution_dd.value == "CUSTOM"
                 else (institution_dd.value or "")
             )
-            code = persist_institution_id(
-                raw_inst,
-                ctx.page.session,
-                getattr(ctx.page, "client_storage", None),
-            )
-            # Env still wins for exports if set; session keeps UI choice for display
-            _ = resolve_institution_id(ctx.page.session, getattr(ctx.page, "client_storage", None))
+            code = persist_institution_id(raw_inst, ctx.page.session, None)
             ctx.page.session.set("username", username_field.value)
             ctx.page.session.set("institution_id", code)
             ctx.page.session.set(
                 READER_ROLE_KEY, role_dd.value or ROLE_FIRST_GRADER
             )
             ctx.page.go("/")
+
+            async def _persist_client_storage():
+                cs = getattr(ctx.page, "client_storage", None)
+                if cs is None:
+                    return
+                # Async RPCs so Launch Analysis stays clickable during persist.
+                try:
+                    if hasattr(cs, "remove_async"):
+                        for key in (
+                            GRDM_GRADED_INSTITUTION_KEY,
+                            GRDM_PENDING_INSTITUTION_KEY,
+                        ):
+                            try:
+                                await cs.remove_async(key)
+                            except Exception:
+                                pass
+                    else:
+                        clear_grdm_session_institutions(None, cs)
+                    if hasattr(cs, "set_async"):
+                        await cs.set_async("institution_id", code)
+                    else:
+                        persist_institution_id(code, None, cs)
+                except Exception as ex:
+                    print(f"DEBUG: deferred client_storage persist: {ex}", flush=True)
+
+            ctx.page.run_task(_persist_client_storage)
         else:
             error_text.value = login_res.get("message", "Login failed.")
             error_text.visible = True
-            e.control.disabled = False
+            login_btn.disabled = False
+            login_btn.text = "Secure Login"
             ctx.page.update()
+
+    login_btn.on_click = login_click
 
     return ft.Container(
         content=ft.Column([
@@ -160,14 +191,7 @@ async def get_login_view(ctx: AppContext):
                     ),
                     error_text,
                     ft.Container(height=10),
-                    ft.ElevatedButton(
-                        "Secure Login",
-                        height=50,
-                        width=350,
-                        bgcolor=PRIMARY,
-                        color=Colors.BLACK,
-                        on_click=login_click
-                    ),
+                    login_btn,
                     ft.Text("Forgot Password? ariake2024", size=10, color=TEXT_MUTED),
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),
                 padding=60,

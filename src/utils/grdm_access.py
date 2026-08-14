@@ -178,15 +178,14 @@ def clear_grdm_session_institutions(
     Prevents a later grader from inheriting another session's facility context
     after handoff (logout → re-login) or a soft navigate to /login.
     """
+    # Skip contains_key: Flet client_storage.contains_key() is a blocking RPC
+    # (wait_for_result, up to 5s). remove() is idempotent enough for these keys.
     for store in (session, client_storage):
         if store is None:
             continue
         for key in (GRDM_GRADED_INSTITUTION_KEY, GRDM_PENDING_INSTITUTION_KEY):
             try:
-                if hasattr(store, "contains_key") and hasattr(store, "remove"):
-                    if store.contains_key(key):
-                        store.remove(key)
-                elif hasattr(store, "remove"):
+                if hasattr(store, "remove"):
                     store.remove(key)
                 else:
                     store.set(key, None)

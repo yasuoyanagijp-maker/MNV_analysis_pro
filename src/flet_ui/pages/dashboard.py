@@ -113,9 +113,10 @@ async def get_dashboard_view(ctx: AppContext):
         return bool(getattr(ctx.page, "web", False))
 
     # --- Ensure pickers on overlay (on_result wired after load_batch_from_directory; FilePicker API is sync only) ---
+    # Do not page.update() here: route_change already updates after this view is
+    # returned. An extra update while views are cleared stalls Flet web.
     if ctx.directory_picker not in ctx.page.overlay:
         ctx.page.overlay.append(ctx.directory_picker)
-    ctx.page.update()
     
     analysis_type = ft.Dropdown(
         label="Analysis Type",
@@ -218,9 +219,9 @@ async def get_dashboard_view(ctx: AppContext):
         value=ctx.page.session.get("output_folder") or "",
     )
 
-    _inst_persisted = load_persisted_institution_id(
-        ctx.page.session, getattr(ctx.page, "client_storage", None)
-    )
+    # Session only: client_storage.get() is a blocking Flet RPC and delayed
+    # the post-login paint of Launch Analysis. Hydrate from client_storage after.
+    _inst_persisted = load_persisted_institution_id(ctx.page.session, None)
     _inst_preset_codes = {c for c, _ in INSTITUTION_PRESETS if c != "CUSTOM"}
     _inst_initial = (
         _inst_persisted
@@ -273,7 +274,7 @@ async def get_dashboard_view(ctx: AppContext):
     institution_custom.on_submit = lambda _: _sync_institution_session()
 
     _grdm_project, _grdm_folder = load_persisted_grdm_destination(
-        ctx.page.session, getattr(ctx.page, "client_storage", None)
+        ctx.page.session, None
     )
     grdm_project_input = ft.TextField(
         label="GakuNin RDM project_id",
