@@ -121,7 +121,13 @@ def _keyring_get(key: str) -> Optional[str]:
 
 
 def _keyring_set(key: str, value: str) -> None:
-    import keyring
+    try:
+        import keyring
+    except Exception as ex:
+        raise RuntimeError(
+            "keyring がインストールされていません。PAT を Keychain に保存できません。"
+            " pip install keyring のうえアプリを再起動してください。"
+        ) from ex
 
     backend = keyring.get_keyring()
     backend_name = _keyring_backend_name(backend)

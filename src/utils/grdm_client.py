@@ -487,11 +487,21 @@ def _download_tree(local_folder: Path, project_id: str, folder_id: str) -> int:
 def check_connection() -> bool:
     """set_active_token()の直後に呼び、トークンが有効かどうかを確認する。
     Fletアプリの「接続テスト」ボタンから使う想定。
+
+    GakuNin RDM の ``/nodes/`` は未認証でも HTTP 200 と空の data を返すため、
+    トークン無し・空リストを成功とみなさない。
     """
+    if not active_token():
+        print("[GRDM] check_connection: no PAT", flush=True)
+        return False
     try:
-        projects = list_projects()
-        return len(projects) >= 0
-    except requests.HTTPError:
+        resp = requests.get(
+            f"{API_BASE}/nodes/", headers=_auth_headers(), timeout=30
+        )
+        resp.raise_for_status()
+        return True
+    except requests.RequestException as ex:
+        print(f"[GRDM] check_connection failed: {ex}", flush=True)
         return False
 
 

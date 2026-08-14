@@ -1,11 +1,10 @@
 import flet as ft
 from flet import Colors, Icons, FontWeight
-from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, TEXT_MUTED, GLASS_BG, AppContext
+from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, TEXT_MUTED, GLASS_BG, AppContext, persist_client_storage_async
 from src.utils.institution_config import (
     INSTITUTION_PRESETS,
     load_persisted_institution_id,
     persist_institution_id,
-    resolve_institution_id,
 )
 from src.utils.second_reader import (
     READER_ROLE_KEY,
@@ -34,9 +33,7 @@ async def get_login_view(ctx: AppContext):
         width=350,
     )
 
-    persisted = load_persisted_institution_id(
-        ctx.page.session, getattr(ctx.page, "client_storage", None)
-    )
+    persisted = load_persisted_institution_id(ctx.page.session, None)
     preset_codes = {code for code, _ in INSTITUTION_PRESETS if code != "CUSTOM"}
     initial_preset = persisted if persisted in preset_codes else ("CUSTOM" if persisted else "ARIAKE_OHANACHAYA")
 
@@ -108,28 +105,26 @@ async def get_login_view(ctx: AppContext):
         login_res = await ctx.client.login(username_field.value, password_field.value)
 
         if login_res.get("success"):
-            # Drop prior second-reader facility context before binding a new login
-            # (covers soft navigate to /login without going through results logout).
-            clear_grdm_session_institutions(
-                ctx.page.session,
-                getattr(ctx.page, "client_storage", None),
-            )
+            # Session only here. Sync client_storage RPCs block the Flet web
+            # event loop (5s timeout each) and freeze login → dashboard.
+            clear_grdm_session_institutions(ctx.page.session, None)
             raw_inst = (
                 (institution_custom.value or "").strip()
                 if institution_dd.value == "CUSTOM"
                 else (institution_dd.value or "")
             )
-            code = persist_institution_id(
-                raw_inst,
-                ctx.page.session,
-                getattr(ctx.page, "client_storage", None),
-            )
-            # Env still wins for exports if set; session keeps UI choice for display
-            _ = resolve_institution_id(ctx.page.session, getattr(ctx.page, "client_storage", None))
+            code = persist_institution_id(raw_inst, ctx.page.session, None)
             ctx.page.session.set("username", username_field.value)
             ctx.page.session.set("institution_id", code)
             ctx.page.session.set(
                 READER_ROLE_KEY, role_dd.value or ROLE_FIRST_GRADER
+            )
+            persist_client_storage_async(
+                ctx.page,
+                {
+                    "institution_id": code,
+                    READER_ROLE_KEY: role_dd.value or ROLE_FIRST_GRADER,
+                },
             )
             ctx.page.go("/")
         else:
