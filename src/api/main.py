@@ -19,7 +19,13 @@ from fastapi.staticfiles import StaticFiles
 from src.api.schemas import AnalysisRequest, MNVResult, VDRequest, VDResult, LoginRequest, AuthResponse
 from core.mnv_pipeline import MNVPipeline
 from core.vd_analysis import VDAnalyzer
-from src.utils.app_paths import get_upload_dir, get_output_dir, get_exports_dir, sanitize_path_component
+from src.utils.app_paths import (
+    get_upload_dir,
+    get_output_dir,
+    get_exports_dir,
+    sanitize_path_component,
+    default_picker_dir,
+)
 from utils.cv2_path import imread_grayscale
 from utils.mnv_cc_resolve import resolve_flow_deficit_cc_path
 from utils.mnv_imagej_csv import metrics_for_csv_export
@@ -436,7 +442,7 @@ async def get_status(job_id: str):
 async def list_directory(path: str = None):
     """Lists contents of a directory for the custom file explorer."""
     if not path or path == "":
-        path = str(Path.home())
+        path = str(default_picker_dir())
     
     p = Path(path)
     if not p.exists() or not p.is_dir():

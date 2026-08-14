@@ -7,7 +7,7 @@ import shutil
 from datetime import datetime
 import asyncio
 from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, session_discard
-from src.utils.app_paths import get_upload_dir, sanitize_path_component
+from src.utils.app_paths import get_upload_dir, sanitize_path_component, default_picker_dir
 from src.utils.cv2_path import (
     BGR_READ_OK,
     BGR_READ_PERMISSION,
@@ -353,7 +353,7 @@ async def get_dashboard_view(ctx: AppContext):
             color=PRIMARY,
         )
 
-        state = {"path": str(Path.home()), "selected_file": None}
+        state = {"path": str(default_picker_dir()), "selected_file": None}
 
         async def load_dir(target_path):
             state["path"] = target_path
