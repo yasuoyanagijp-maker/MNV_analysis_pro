@@ -83,6 +83,35 @@ def persist_client_storage_async(page: ft.Page, items: dict) -> None:
         print(f"persist_client_storage_async schedule failed: {ex}", flush=True)
 
 
+def viewport_fit_side(
+    page,
+    *,
+    reserved_w: float = 360,
+    reserved_h: float = 280,
+    min_side: int = 240,
+    max_side: int = 880,
+) -> int:
+    """Largest square (px) that should fit in the current page without scrolling.
+
+    Uses ``page.width`` / ``page.height`` (web viewport) with ``page.window``
+    as fallback for native Flet. Conservative reserved chrome keeps the image
+    fully visible below headers, 1/N banners, and action buttons.
+    """
+    win = getattr(page, "window", None)
+    raw_w = getattr(page, "width", None) or getattr(win, "width", None) or 1400
+    raw_h = getattr(page, "height", None) or getattr(win, "height", None) or 900
+    try:
+        w = float(raw_w)
+    except (TypeError, ValueError):
+        w = 1400.0
+    try:
+        h = float(raw_h)
+    except (TypeError, ValueError):
+        h = 900.0
+    side = min(w - reserved_w, h - reserved_h)
+    return int(max(min_side, min(max_side, side)))
+
+
 async def logout_to_login(page: ft.Page) -> None:
     """Discard auth/analysis session and navigate to /login.
 

@@ -16,7 +16,13 @@ if str(_SRC) not in sys.path:
 from src.utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
 from src.utils.batch_csv_export import mark_analysis_started
 
-from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
+from src.flet_ui.components.shared import (
+    PRIMARY,
+    TEXT_MUTED,
+    AppContext,
+    session_discard,
+    viewport_fit_side,
+)
 from src.utils.cv2_path import imread_bgr
 
 
@@ -213,6 +219,15 @@ async def get_mnv_view(ctx: AppContext):
         on_click=run_analysis,
     )
 
+    # Fit preview to remaining viewport (title, 1/N hint, stepper, confirm button).
+    img_side = viewport_fit_side(
+        ctx.page,
+        reserved_w=220,
+        reserved_h=340,
+        min_side=280,
+        max_side=720,
+    )
+
     # ----------------------------------------------------
     # Visualize ROI Overlay (MNV only)
     # ----------------------------------------------------
@@ -249,8 +264,8 @@ async def get_mnv_view(ctx: AppContext):
                             src="",
                             src_base64=blended_b64,
                             fit=ft.ImageFit.CONTAIN,
-                            width=240,
-                            height=240,
+                            width=img_side,
+                            height=img_side,
                         ),
                         border=ft.border.all(2, PRIMARY),
                         border_radius=10,
@@ -271,8 +286,8 @@ async def get_mnv_view(ctx: AppContext):
                         src="",
                         src_base64=preview_b64,
                         fit=ft.ImageFit.CONTAIN,
-                        width=240,
-                        height=240,
+                        width=img_side,
+                        height=img_side,
                     ),
                     border=ft.border.all(2, Colors.AMBER_400),
                     border_radius=10,
@@ -287,7 +302,7 @@ async def get_mnv_view(ctx: AppContext):
     batch_hint = ""
     if batch_paths and not is_vd:
         batch_hint = (
-            f"MNV folder batch — image {batch_idx + 1} of {len(batch_paths)}. "
+            f"MNV folder batch — image {batch_idx + 1}/{len(batch_paths)}. "
         )
 
     step_title = "VD: Confirm & run pipeline" if is_vd else "MNV: Confirm & Analyze"
@@ -396,7 +411,6 @@ async def get_mnv_view(ctx: AppContext):
                     content=ft.Column(
                         [
                             img_control,
-                            ft.Text(target_name, size=13, color=Colors.WHITE),
                             ft.Text(roi_status_txt, size=11, color=roi_status_clr),
                             ft.Container(height=4),
                             auto_start_btn,
@@ -421,7 +435,7 @@ async def get_mnv_view(ctx: AppContext):
                         ),
                     ),
                     border_radius=14,
-                    width=720,
+                    width=img_side + 48,
                 ),
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,

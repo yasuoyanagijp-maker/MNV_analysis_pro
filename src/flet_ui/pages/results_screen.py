@@ -9,7 +9,17 @@ import shutil
 from pathlib import Path
 from flet import Colors, Icons, FontWeight
 from datetime import datetime
-from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, safe_round, session_discard, logout_to_login
+from src.flet_ui.components.shared import (
+    PRIMARY,
+    BG_DARK,
+    TEXT_MUTED,
+    GLASS_BG,
+    AppContext,
+    safe_round,
+    session_discard,
+    logout_to_login,
+    viewport_fit_side,
+)
 from src.utils.app_paths import get_exports_dir
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -53,14 +63,19 @@ from src.utils.second_reader import (
 )
 from src.utils.dual_grader_merge import RPD_THRESHOLD_PCT, merge_dual_grader_csvs
 from src.utils.mnv_results_chart import (
+    CHART_METRIC_DEFAULT_REMAP,
+    CHART_PNG_HEIGHT_PX,
+    CHART_PNG_WIDTH_PX,
     SUMMARY_TABLE_COLUMNS,
     build_batch_metric_chart_pdf,
+    build_batch_metric_chart_png_base64,
     chartable_numeric_columns,
     imagej_rows_from_batch,
     series_for_metric,
     smart_y_bounds,
 )
 from src.utils.grdm_sync_ui import make_grdm_sync_button
+
 
 async def get_results_view(ctx: AppContext):
     # --- DATA INITIALIZATION ---
@@ -809,7 +824,16 @@ async def get_results_view(ctx: AppContext):
         ctx.page.go("/results", rt=uuid.uuid4().hex[:12])
 
     # --- UI COMPONENTS ---
-    
+
+    def make_summary_nav_btn():
+        return ft.OutlinedButton(
+            "Summary",
+            icon=Icons.DASHBOARD_ROUNDED,
+            style=ft.ButtonStyle(color=PRIMARY),
+            tooltip="Back to Global Summary",
+            on_click=lambda _: ctx.page.run_task(select_result, -1),
+        )
+
     def metric_tile(label, value, unit, icon, color):
         return ft.Container(
             content=ft.Column(
@@ -960,175 +984,13 @@ async def get_results_view(ctx: AppContext):
         imagej_rows = imagej_rows_from_batch(batch_results)
         has_mnv_table = len(imagej_rows) > 0
 
-        table_block = ft.Container()
-        if has_mnv_table:
-            table_block = ft.Column(
+        # Build summary body as an explicit list — never insert empty expand
+        # Containers / BarChart / Image(src="") (Flet 0.28 fl_chart paints a
+        # solid light-grey canvas that covers tiles + table on Global Summary).
+        summary_controls: list = [
+            ft.Row(
                 [
-                    ft.Text("Results Table (CSV columns)", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-                    ft.Text(
-                        "Subtype / Pathophysiology and key metrics aligned with exported CSV.",
-                        size=12,
-                        color=TEXT_MUTED,
-                    ),
-                    ft.Container(
-                        content=ft.DataTable(
-                            columns=[
-                                ft.DataColumn(ft.Text(col, size=11, weight=FontWeight.W_600))
-                                for col in SUMMARY_TABLE_COLUMNS
-                            ],
-                            rows=[
-                                ft.DataRow(
-                                    cells=[
-                                        ft.DataCell(
-                                            ft.Text(
-                                                str(row.get(col, ""))[:48],
-                                                size=11,
-                                                tooltip=str(row.get(col, "")),
-                                            ),
-                                            on_tap=_open_summary_row_detail(idx)
-                                            if col == "File"
-                                            else None,
-                                        )
-                                        for col in SUMMARY_TABLE_COLUMNS
-                                    ],
-                                )
-                                for idx, row in enumerate(imagej_rows)
-                            ],
-                            bgcolor=Colors.with_opacity(0.02, Colors.WHITE),
-                            border_radius=12,
-                            column_spacing=18,
-                            heading_row_height=44,
-                            data_row_min_height=40,
-                        ),
-                        padding=8,
-                        border=ft.border.all(1, Colors.with_opacity(0.08, Colors.WHITE)),
-                        border_radius=12,
-                    ),
-                ],
-                spacing=8,
-            )
-
-        chart_block = ft.Container()
-        if has_mnv_table and nm >= 1:
-            metric_options = chartable_numeric_columns()
-            default_metric = ctx.page.session.get("results_chart_metric")
-            if default_metric not in metric_options:
-                default_metric = metric_options[0] if metric_options else "Maturity Index"
-            chart_points, values = series_for_metric(imagej_rows, default_metric)
-            y_min, y_max = smart_y_bounds(values) if values else (0.0, 1.0)
-            chart_height = 380
-            bar_groups = [
-                ft.BarChartGroup(
-                    x=i,
-                    bar_rods=[
-                        ft.BarChartRod(
-                            from_y=y_min,
-                            to_y=val,
-                            width=16,
-                            color=PRIMARY,
-                            border_radius=4,
-                        )
-                    ],
-                )
-                for i, val in enumerate(values)
-            ]
-            bottom_labels = [
-                ft.ChartAxisLabel(
-                    value=i,
-                    label=ft.Column(
-                        [
-                            ft.Text(
-                                pt["file"],
-                                size=9,
-                                text_align=ft.TextAlign.CENTER,
-                            ),
-                            ft.Text(
-                                pt["subtype"],
-                                size=8,
-                                color=TEXT_MUTED,
-                                text_align=ft.TextAlign.CENTER,
-                            ),
-                            ft.Text(
-                                pt["pathophysiology"],
-                                size=8,
-                                color=TEXT_MUTED,
-                                text_align=ft.TextAlign.CENTER,
-                            ),
-                        ],
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=0,
-                        tight=True,
-                    ),
-                )
-                for i, pt in enumerate(chart_points)
-            ]
-            chart_block = ft.Column(
-                [
-                    ft.Text("Batch Chart", size=20, weight=FontWeight.BOLD, color=PRIMARY),
-                    ft.Row(
-                        [
-                            ft.Dropdown(
-                                label="Y-axis metric",
-                                value=default_metric,
-                                width=360,
-                                options=[
-                                    ft.dropdown.Option(m) for m in metric_options[:40]
-                                ],
-                                border_color=PRIMARY,
-                                on_change=lambda e: ctx.page.run_task(
-                                    on_chart_metric_change, e.control.value
-                                ),
-                            ),
-                            ft.ElevatedButton(
-                                "Export PDF",
-                                icon=Icons.PICTURE_AS_PDF_ROUNDED,
-                                bgcolor=PRIMARY,
-                                color=Colors.BLACK,
-                                on_click=lambda _, m=default_metric: ctx.page.run_task(
-                                    on_export_chart_pdf, m
-                                ),
-                            ),
-                        ],
-                        spacing=12,
-                        vertical_alignment=ft.CrossAxisAlignment.END,
-                    ),
-                    ft.Container(
-                        content=ft.BarChart(
-                            bar_groups=bar_groups,
-                            border=ft.border.all(1, Colors.with_opacity(0.12, Colors.WHITE)),
-                            left_axis=ft.ChartAxis(
-                                labels_size=40,
-                                title=ft.Text(default_metric, size=11),
-                                title_size=12,
-                            ),
-                            bottom_axis=ft.ChartAxis(labels=bottom_labels, labels_size=72),
-                            min_y=y_min,
-                            max_y=y_max,
-                            interactive=True,
-                            expand=True,
-                        ),
-                        height=chart_height,
-                        padding=12,
-                        bgcolor=Colors.with_opacity(0.03, Colors.WHITE),
-                        border_radius=12,
-                    ),
-                ],
-                spacing=10,
-            )
-
-        reorder_hint = ft.Container()
-        if len(batch_results) > 1 and not awaiting_mnv_batch_qc:
-            reorder_hint = ft.Text(
-                "Sidebar: drag handles to reorder results (CSV export follows this order).",
-                size=11,
-                color=TEXT_MUTED,
-            )
-
-        return ft.ListView(
-            controls=[
-                ft.Row([
                     ft.Text("Batch Analytics Summary", size=32, weight=FontWeight.BOLD),
-                    ft.Container(expand=True),
                     ft.ElevatedButton(
                         "Save CSV",
                         icon=Icons.FILE_DOWNLOAD_ROUNDED,
@@ -1147,23 +1009,274 @@ async def get_results_view(ctx: AppContext):
                     grdm_sync_btn,
                     integrated_data_btn,
                     logout_btn,
-                ], spacing=8, wrap=True),
-                ft.Text(f"Overview of {total} processed images", color=TEXT_MUTED),
-                reorder_hint,
+                ],
+                spacing=8,
+                wrap=True,
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            ),
+            ft.Text(f"Overview of {total} processed images", color=TEXT_MUTED),
+        ]
+        if len(batch_results) > 1 and not awaiting_mnv_batch_qc:
+            summary_controls.append(
+                ft.Text(
+                    "Sidebar: drag handles to reorder results (CSV export follows this order).",
+                    size=11,
+                    color=TEXT_MUTED,
+                )
+            )
+        summary_controls.extend(
+            [
                 ft.Divider(height=24, color=Colors.TRANSPARENT),
-                ft.Row([
-                    metric_tile("Total Files", total, "items", Icons.FOLDER_ZIP_OUTLINED, Colors.BLUE_400),
-                    metric_tile("Success Rate", int(success_count / total * 100) if total > 0 else 0, "%", Icons.CHECK_CIRCLE_OUTLINED, Colors.GREEN_400),
-                    metric_tile("Mean Area", avg_area, "mm²", Icons.AREA_CHART_OUTLINED, Colors.CYAN_400),
-                    metric_tile("Mean Density", avg_vd, "%", Icons.GRAIN_ROUNDED, Colors.AMBER_400),
-                ], spacing=15),
+                ft.Row(
+                    [
+                        metric_tile(
+                            "Total Files",
+                            total,
+                            "items",
+                            Icons.FOLDER_ZIP_OUTLINED,
+                            Colors.BLUE_400,
+                        ),
+                        metric_tile(
+                            "Success Rate",
+                            int(success_count / total * 100) if total > 0 else 0,
+                            "%",
+                            Icons.CHECK_CIRCLE_OUTLINED,
+                            Colors.GREEN_400,
+                        ),
+                        metric_tile(
+                            "Mean Area",
+                            avg_area,
+                            "mm²",
+                            Icons.AREA_CHART_OUTLINED,
+                            Colors.CYAN_400,
+                        ),
+                        metric_tile(
+                            "Mean Density",
+                            avg_vd,
+                            "%",
+                            Icons.GRAIN_ROUNDED,
+                            Colors.AMBER_400,
+                        ),
+                    ],
+                    spacing=15,
+                ),
                 ft.Divider(height=32, color=Colors.with_opacity(0.1, Colors.WHITE)),
-                chart_block,
-                ft.Divider(height=24, color=Colors.TRANSPARENT) if has_mnv_table else ft.Container(height=0),
-                table_block,
-            ],
+            ]
+        )
+
+        # On-screen chart: dark-theme matplotlib PNG via ft.Image(src_base64=...).
+        # Do NOT mount ft.BarChart / fl_chart — Flet 0.28 paints a full-pane
+        # light-grey canvas that covers tiles + table (web + native). Never
+        # Image(src="") either (empty src also greys the pane).
+        if has_mnv_table and nm >= 1:
+            metric_options = chartable_numeric_columns()
+            default_metric = ctx.page.session.get("results_chart_metric")
+            if default_metric in CHART_METRIC_DEFAULT_REMAP:
+                default_metric = CHART_METRIC_DEFAULT_REMAP[default_metric]
+            if default_metric not in metric_options:
+                default_metric = (
+                    metric_options[0]
+                    if metric_options
+                    else "Maturity Index (U2)"
+                )
+            ctx.page.session.set("results_chart_metric", default_metric)
+
+            # Match PNG pixel aspect (CHART_PNG_*) so CONTAIN never crops title/labels.
+            page_w = getattr(ctx.page, "width", None)
+            try:
+                chart_w = max(560, min(1000, int(float(page_w)) - 80)) if page_w else 820
+            except (TypeError, ValueError):
+                chart_w = 820
+            chart_h = max(
+                420,
+                int(round(chart_w * CHART_PNG_HEIGHT_PX / float(CHART_PNG_WIDTH_PX))),
+            )
+
+            def _container_bar_fallback(metric_col: str) -> ft.Control:
+                pts, vals = series_for_metric(imagej_rows, metric_col)
+                if not vals:
+                    return ft.Text("No numeric data for this metric.", color=TEXT_MUTED, size=12)
+                y_lo, y_hi = smart_y_bounds(vals)
+                span = max(y_hi - y_lo, 1e-9)
+                plot_h = chart_h - 56
+                bars: list = []
+                for p, v in zip(pts, vals):
+                    bar_h = max(4, int((float(v) - y_lo) / span * plot_h))
+                    bars.append(
+                        ft.Column(
+                            [
+                                ft.Container(height=max(0, plot_h - bar_h)),
+                                ft.Container(
+                                    width=18,
+                                    height=bar_h,
+                                    bgcolor="#00E5FF",
+                                    border_radius=3,
+                                    border=ft.border.all(1, "#00B8D4"),
+                                ),
+                                ft.Text(
+                                    p.get("file") or "—",
+                                    size=10,
+                                    color=TEXT_MUTED,
+                                    width=72,
+                                    max_lines=2,
+                                    text_align=ft.TextAlign.CENTER,
+                                ),
+                            ],
+                            spacing=2,
+                            tight=True,
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        )
+                    )
+                return ft.Container(
+                    content=ft.Row(
+                        bars,
+                        spacing=14,
+                        scroll=ft.ScrollMode.AUTO,
+                        vertical_alignment=ft.CrossAxisAlignment.END,
+                    ),
+                    height=chart_h,
+                    width=chart_w,
+                    bgcolor=BG_DARK,
+                    border_radius=8,
+                    padding=ft.padding.only(left=8, right=8, top=8, bottom=4),
+                )
+
+            chart_body: ft.Control
+            try:
+                chart_b64 = build_batch_metric_chart_png_base64(
+                    batch_results, default_metric, theme="dark"
+                )
+                # Omit src entirely — empty src="" caused grey canvas.
+                # No HARD_EDGE clip: mismatched aspect previously cropped the PNG title.
+                chart_body = ft.Container(
+                    content=ft.Image(
+                        src_base64=chart_b64,
+                        width=chart_w,
+                        height=chart_h,
+                        fit=ft.ImageFit.CONTAIN,
+                    ),
+                    width=chart_w,
+                    height=chart_h,
+                    bgcolor=BG_DARK,
+                    border_radius=8,
+                    clip_behavior=ft.ClipBehavior.NONE,
+                )
+            except Exception as chart_ex:
+                print(f"SUMMARY CHART PNG fallback: {chart_ex}", flush=True)
+                chart_body = _container_bar_fallback(default_metric)
+
+            summary_controls.append(
+                ft.Column(
+                    [
+                        ft.Text(
+                            "Batch Chart",
+                            size=20,
+                            weight=FontWeight.BOLD,
+                            color=PRIMARY,
+                        ),
+                        ft.Row(
+                            [
+                                ft.Dropdown(
+                                    label="Y-axis metric",
+                                    value=default_metric,
+                                    width=380,
+                                    options=[
+                                        ft.dropdown.Option(m)
+                                        for m in metric_options[:40]
+                                    ],
+                                    border_color=PRIMARY,
+                                    on_change=lambda e: ctx.page.run_task(
+                                        on_chart_metric_change, e.control.value
+                                    ),
+                                ),
+                                ft.ElevatedButton(
+                                    "Export PDF",
+                                    icon=Icons.PICTURE_AS_PDF_ROUNDED,
+                                    bgcolor=PRIMARY,
+                                    color=Colors.BLACK,
+                                    on_click=lambda _, m=default_metric: ctx.page.run_task(
+                                        on_export_chart_pdf, m
+                                    ),
+                                ),
+                            ],
+                            spacing=12,
+                            vertical_alignment=ft.CrossAxisAlignment.END,
+                        ),
+                        chart_body,
+                    ],
+                    spacing=10,
+                    tight=True,
+                )
+            )
+
+        if has_mnv_table:
+            summary_controls.extend(
+                [
+                    ft.Divider(height=24, color=Colors.TRANSPARENT),
+                    ft.Column(
+                        [
+                            ft.Text(
+                                "Results Table (CSV columns)",
+                                size=20,
+                                weight=FontWeight.BOLD,
+                                color=PRIMARY,
+                            ),
+                            ft.Text(
+                                "Subtype / Pathophysiology and key metrics aligned with exported CSV.",
+                                size=12,
+                                color=TEXT_MUTED,
+                            ),
+                            ft.Container(
+                                content=ft.DataTable(
+                                    columns=[
+                                        ft.DataColumn(
+                                            ft.Text(col, size=11, weight=FontWeight.W_600)
+                                        )
+                                        for col in SUMMARY_TABLE_COLUMNS
+                                    ],
+                                    rows=[
+                                        ft.DataRow(
+                                            cells=[
+                                                ft.DataCell(
+                                                    ft.Text(
+                                                        str(row.get(col, ""))[:48],
+                                                        size=11,
+                                                        tooltip=str(row.get(col, "")),
+                                                    ),
+                                                    on_tap=_open_summary_row_detail(idx)
+                                                    if col == "File"
+                                                    else None,
+                                                )
+                                                for col in SUMMARY_TABLE_COLUMNS
+                                            ],
+                                        )
+                                        for idx, row in enumerate(imagej_rows)
+                                    ],
+                                    bgcolor=Colors.with_opacity(0.02, Colors.WHITE),
+                                    border_radius=12,
+                                    column_spacing=18,
+                                    heading_row_height=44,
+                                    data_row_min_height=40,
+                                ),
+                                padding=8,
+                                border=ft.border.all(
+                                    1, Colors.with_opacity(0.08, Colors.WHITE)
+                                ),
+                                border_radius=12,
+                            ),
+                        ],
+                        spacing=8,
+                        tight=True,
+                    ),
+                ]
+            )
+
+        return ft.Column(
+            controls=summary_controls,
             expand=True,
             spacing=10,
+            scroll=ft.ScrollMode.AUTO,
+            tight=False,
         )
 
     def get_vd_detail_content(idx):
@@ -1178,21 +1291,20 @@ async def get_results_view(ctx: AppContext):
             if vsl_only
             else "aligned with VDAnalyzer densities (%) & mainstreamer.run_vd_batch-style engine settings."
         )
-        _vd_fname = str(res.get("source_filename") or "VD Result")
+        # Sidebar is hidden on individual detail — show source filename here.
+        _vd_src = str(res.get("source_filename") or f"Item {idx + 1}")
         ctrls = [
             ft.Row(
                 [
                     ft.Column(
                         [
                             ft.Text(
-                                _vd_fname,
-                                size=14,
-                                weight=FontWeight.W_600,
+                                _vd_src,
                                 color=Colors.WHITE,
+                                size=18,
+                                weight=ft.FontWeight.W_600,
                                 max_lines=2,
                                 overflow=ft.TextOverflow.ELLIPSIS,
-                                selectable=True,
-                                tooltip=_vd_fname,
                             ),
                             ft.Text(
                                 f"Analysis type: VD | Timestamp: {res.get('analysis_timestamp', 'N/A')} — "
@@ -1206,6 +1318,7 @@ async def get_results_view(ctx: AppContext):
                     ),
                     ft.Row(
                         [
+                            make_summary_nav_btn(),
                             ft.ElevatedButton(
                                 "Save CSV",
                                 icon=Icons.FILE_DOWNLOAD_ROUNDED,
@@ -1558,6 +1671,13 @@ async def get_results_view(ctx: AppContext):
 
             sup_vis = _vd_at(res.get("superficial_visualization_b64"), ci)
             deep_vis = _vd_at(res.get("deep_visualization_b64"), ci)
+            vd_side = viewport_fit_side(
+                ctx.page,
+                reserved_w=160 if vsl_only else 240,
+                reserved_h=360,
+                min_side=240,
+                max_side=720 if vsl_only else 480,
+            )
             if vsl_only:
                 overlay_title = "Overlay (superficial / Vsl Density)"
                 overlay_body = ft.Column(
@@ -1565,11 +1685,10 @@ async def get_results_view(ctx: AppContext):
                         ft.Text("Superficial", color=TEXT_MUTED, size=12),
                         (
                             ft.Image(
-                                src="",
                                 src_base64=sup_vis,
                                 fit=ft.ImageFit.CONTAIN,
-                                width=520,
-                                height=520,
+                                width=vd_side,
+                                height=vd_side,
                             )
                             if sup_vis
                             else ft.Text("—", color=TEXT_MUTED)
@@ -1588,11 +1707,10 @@ async def get_results_view(ctx: AppContext):
                                 ft.Text("Superficial", color=TEXT_MUTED, size=12),
                                 (
                                     ft.Image(
-                                        src="",
                                         src_base64=sup_vis,
                                         fit=ft.ImageFit.CONTAIN,
-                                        width=380,
-                                        height=380,
+                                        width=vd_side,
+                                        height=vd_side,
                                     )
                                     if sup_vis
                                     else ft.Text("—", color=TEXT_MUTED)
@@ -1606,11 +1724,10 @@ async def get_results_view(ctx: AppContext):
                                 ft.Text("Deep", color=TEXT_MUTED, size=12),
                                 (
                                     ft.Image(
-                                        src="",
                                         src_base64=deep_vis,
                                         fit=ft.ImageFit.CONTAIN,
-                                        width=380,
-                                        height=380,
+                                        width=vd_side,
+                                        height=vd_side,
                                     )
                                     if deep_vis
                                     else ft.Text("—", color=TEXT_MUTED)
@@ -1665,23 +1782,27 @@ async def get_results_view(ctx: AppContext):
         except:
             pass
 
-        # Compact filename (was size=28). Keep Row+Column like VD detail —
-        # a ListView child Column with no_wrap Text + wrap Row broke individual results layout.
-        _mnv_fname = str(res.get("source_filename") or "Result Detail")
+        # Sidebar is hidden on individual detail — show source filename here.
+        vis_side = viewport_fit_side(
+            ctx.page,
+            reserved_w=120,
+            reserved_h=380,
+            min_side=280,
+            max_side=820,
+        )
+        _mnv_src = str(res.get("source_filename") or f"Item {idx + 1}")
         ctrls = [
             ft.Row(
                 [
                     ft.Column(
                         [
                             ft.Text(
-                                _mnv_fname,
-                                size=14,
-                                weight=FontWeight.W_600,
+                                _mnv_src,
                                 color=Colors.WHITE,
-                                max_lines=1,
+                                size=18,
+                                weight=ft.FontWeight.W_600,
+                                max_lines=2,
                                 overflow=ft.TextOverflow.ELLIPSIS,
-                                selectable=True,
-                                tooltip=_mnv_fname,
                             ),
                             ft.Text(
                                 f"Analysis type: MNV | Timestamp: {res.get('analysis_timestamp', 'N/A')}",
@@ -1694,6 +1815,7 @@ async def get_results_view(ctx: AppContext):
                     ),
                     ft.Row(
                         [
+                            make_summary_nav_btn(),
                             ft.ElevatedButton(
                                 "Save PDF Report",
                                 icon=Icons.PICTURE_AS_PDF_ROUNDED,
@@ -1870,6 +1992,8 @@ async def get_results_view(ctx: AppContext):
                             ft.Image(
                                 src_base64=res.get("visualization_base64"),
                                 fit=ft.ImageFit.CONTAIN,
+                                width=vis_side,
+                                height=vis_side,
                             )
                             if res.get("visualization_base64")
                             else ft.Text("No Image"),
@@ -2068,6 +2192,36 @@ async def get_results_view(ctx: AppContext):
     else:
         main_body = main_scroll
 
+    # Sidebar with filenames is the picker on Global Summary only.
+    # Individual MNV detail hides the 280px column (header shows source_filename;
+    # Summary button returns to Global Summary). VD-only batches have no summary
+    # index (-1), so keep the sidebar as the only way to open sibling files.
+    hide_result_sidebar = (
+        isinstance(selected_index, int)
+        and selected_index >= 0
+        and not vd_only_batch
+    )
+    print(
+        f"RESULTS LAYOUT: selected_index={selected_index} "
+        f"hide_result_sidebar={hide_result_sidebar}",
+        flush=True,
+    )
+
+    main_pane = ft.Container(
+        content=main_body,
+        expand=True,
+        padding=40,
+        clip_behavior=ft.ClipBehavior.HARD_EDGE,
+    )
+
+    if hide_result_sidebar:
+        return ft.Row(
+            [main_pane],
+            expand=True,
+            spacing=0,
+            vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+        )
+
     return ft.Row(
         [
             ft.Container(
@@ -2079,12 +2233,7 @@ async def get_results_view(ctx: AppContext):
                     right=ft.border.BorderSide(1, Colors.with_opacity(0.1, Colors.WHITE))
                 ),
             ),
-            ft.Container(
-                content=main_body,
-                expand=True,
-                padding=40,
-                clip_behavior=ft.ClipBehavior.HARD_EDGE,
-            ),
+            main_pane,
         ],
         expand=True,
         spacing=0,

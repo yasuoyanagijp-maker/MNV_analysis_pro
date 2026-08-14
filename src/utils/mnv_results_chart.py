@@ -32,6 +32,24 @@ SUMMARY_TABLE_COLUMNS = [
     "Fractal Dim",
 ]
 
+# On-screen PNG canvas (must match ft.Image aspect in results_screen).
+CHART_PNG_WIDTH_PX = 1180
+CHART_PNG_HEIGHT_PX = 640
+
+# Chart dropdown labels for standardized (U2) series → ImageJ CSV columns.
+# Pipeline default Maturity/Caliber columns are already U2; (U2) is display-only.
+CHART_METRIC_ALIASES: Dict[str, str] = {
+    "Maturity Index (U2)": "Maturity Index",
+    "Caliber Uniformity Score (U2)": "Caliber Uniformity Score",
+}
+
+# Prefer U2 only for legacy/bare session keys (no U2/PCA suffix).
+# Do NOT remap explicit PCA selections — users must keep Maturity/Caliber (PCA).
+CHART_METRIC_DEFAULT_REMAP: Dict[str, str] = {
+    "Maturity Index": "Maturity Index (U2)",
+    "Caliber Uniformity Score": "Caliber Uniformity Score (U2)",
+}
+
 _NON_NUMERIC_CSV = frozenset(
     {
         "ID",
@@ -50,12 +68,19 @@ _NON_NUMERIC_CSV = frozenset(
 )
 
 
+def resolve_chart_metric_col(metric_col: str) -> str:
+    """Map chart dropdown labels (e.g. U2) to ImageJ CSV column names."""
+    return CHART_METRIC_ALIASES.get(str(metric_col or "").strip(), str(metric_col or ""))
+
+
 def chartable_numeric_columns() -> List[str]:
-    """Numeric CSV columns suitable for batch comparison charts."""
+    """Numeric columns / chart labels suitable for batch comparison charts."""
     preferred = [
-        "Maturity Index",
+        "Maturity Index (U2)",
+        "Caliber Uniformity Score (U2)",
         "Network Complexity Score",
-        "Caliber Uniformity Score",
+        "Maturity Index (PCA)",
+        "Caliber Uniformity Score (PCA)",
         "MNV Area (mm2)",
         "Vsl Density (Vessel Area/MNV (%))",
         "Vessel density index adjusted by signal intensity (aVDI)",
@@ -64,12 +89,15 @@ def chartable_numeric_columns() -> List[str]:
         "Vsl Length (mm)",
         "Complexity Score",
     ]
+    # Bare U2 columns are shown as "(U2)" labels — skip duplicate bare names.
+    skip_bare_u2 = frozenset(CHART_METRIC_ALIASES.values())
     out: List[str] = []
     for col in preferred:
-        if col in IMAGEJ_CSV_COLUMNS and col not in _NON_NUMERIC_CSV:
+        csv_col = resolve_chart_metric_col(col)
+        if csv_col in IMAGEJ_CSV_COLUMNS and col not in out:
             out.append(col)
     for col in IMAGEJ_CSV_COLUMNS:
-        if col in _NON_NUMERIC_CSV or col in out:
+        if col in _NON_NUMERIC_CSV or col in out or col in skip_bare_u2:
             continue
         if "%" in col or "flag" in col.lower() or "reason" in col.lower():
             continue
@@ -146,26 +174,218 @@ def _truncate_label(text: str, max_len: int = 22) -> str:
     return s[: max_len - 3] + "..."
 
 
+def _short_filename(text: str, max_len: int = 18) -> str:
+    """Prefer stem before long IDs; truncate cleanly for axis ticks."""
+    s = str(text or "—").strip() or "—"
+    # Drop common image extensions for display
+    for ext in (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"):
+        if s.lower().endswith(ext):
+            s = s[: -len(ext)]
+            break
+    if len(s) <= max_len:
+        return s
+    # Keep head + tail so patient/ID cues stay visible
+    head = max(8, max_len // 2)
+    tail = max(4, max_len - head - 1)
+    return f"{s[:head]}…{s[-tail:]}"
+
+
 def series_for_metric(
     imagej_rows: Sequence[Dict[str, Any]],
     metric_col: str,
 ) -> Tuple[List[Dict[str, str]], List[float]]:
     """Return chart point metadata and numeric values for one CSV column."""
+    csv_col = resolve_chart_metric_col(metric_col)
     points: List[Dict[str, str]] = []
     values: List[float] = []
     for row in imagej_rows:
-        val = _parse_float(row.get(metric_col))
+        val = _parse_float(row.get(csv_col))
         if val is None:
             continue
         points.append(
             {
-                "file": _truncate_label(row.get("File")),
-                "subtype": _truncate_label(row.get("Subtype"), 18),
-                "pathophysiology": _truncate_label(row.get("Pathophysiology"), 18),
+                "file": _short_filename(row.get("File"), 20),
+                "subtype": _truncate_label(row.get("Subtype"), 16),
+                "pathophysiology": _truncate_label(row.get("Pathophysiology"), 16),
             }
         )
         values.append(val)
     return points, values
+
+
+_THEME = {
+    "dark": {
+        "fig": "#050510",
+        "axes": "#050510",
+        "spine": "#1E2A44",
+        "label": "#E8EEF8",
+        "tick": "#C5D0E0",
+        "muted": "#8B9BB4",
+        "grid": "#2A3550",
+        "bar": "#00E5FF",
+        "bar_edge": "#00B8D4",
+        "title": "#00E5FF",
+        "subtitle": "#8B9BB4",
+        "value": "#E8EEF8",
+    },
+    "light": {
+        "fig": "#FFFFFF",
+        "axes": "#FFFFFF",
+        "spine": "#CFD8DC",
+        "label": "#263238",
+        "tick": "#37474F",
+        "muted": "#607D8B",
+        "grid": "#ECEFF1",
+        "bar": "#00BCD4",
+        "bar_edge": "#00838F",
+        "title": "#006064",
+        "subtitle": "#546E7A",
+        "value": "#263238",
+    },
+}
+
+
+def build_batch_metric_chart_png(
+    batch_results: Sequence[Dict[str, Any]],
+    metric_col: str,
+    *,
+    title: str = "ARIAKE OCTA — MNV Batch Chart",
+    theme: str = "dark",
+    dpi: int = 144,
+    width_px: int = CHART_PNG_WIDTH_PX,
+    height_px: int = CHART_PNG_HEIGHT_PX,
+) -> bytes:
+    """Render a bar chart for one CSV metric and return PNG bytes (Agg backend).
+
+    Sized for on-screen display: figure pixel size ≈ Image widget so tick
+    labels stay readable after CONTAIN fit (avoid huge canvases that shrink).
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    colors = _THEME.get(theme, _THEME["dark"])
+    display_metric = str(metric_col or "").strip() or "Metric"
+    imagej_rows = imagej_rows_from_batch(batch_results)
+    points, values = series_for_metric(imagej_rows, display_metric)
+    if not values:
+        raise ValueError(f"No numeric data for column: {display_metric}")
+
+    n = len(values)
+    y_min, y_max = smart_y_bounds(values)
+
+    # Extra width for many bars; keep height fixed for label scale
+    w_px = max(width_px, int(140 * n + 420))
+    h_px = height_px
+    fig_w = w_px / float(dpi)
+    fig_h = h_px / float(dpi)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), facecolor=colors["fig"], dpi=dpi)
+    ax.set_facecolor(colors["axes"])
+
+    x = list(range(n))
+    # Thin rods — leave clear gaps between categories
+    bar_w = 0.22 if n <= 10 else max(0.14, 0.32 - 0.012 * n)
+    bars = ax.bar(
+        x,
+        values,
+        width=bar_w,
+        color=colors["bar"],
+        edgecolor=colors["bar_edge"],
+        linewidth=1.15,
+        zorder=3,
+        alpha=0.95,
+    )
+    for rect, v in zip(bars, values):
+        ax.text(
+            rect.get_x() + rect.get_width() / 2,
+            float(v),
+            f"{v:.3g}" if abs(v) < 1000 else f"{v:.0f}",
+            ha="center",
+            va="bottom",
+            fontsize=15,
+            color=colors["value"],
+            zorder=4,
+            clip_on=False,
+        )
+
+    ax.set_xticks(x)
+    tick_labels = []
+    for p in points:
+        lines = [p["file"]]
+        if p.get("subtype") and p["subtype"] != "—":
+            lines.append(p["subtype"])
+        if p.get("pathophysiology") and p["pathophysiology"] != "—":
+            lines.append(p["pathophysiology"])
+        tick_labels.append("\n".join(lines))
+    ax.set_xticklabels(
+        tick_labels, rotation=0, ha="center", fontsize=14, color=colors["tick"]
+    )
+    ax.tick_params(axis="y", labelsize=15, colors=colors["tick"], length=5, width=1)
+    ax.tick_params(axis="x", length=0, pad=14)
+
+    ax.set_ylabel(display_metric, fontsize=16, color=colors["label"], labelpad=12)
+    ax.set_title(
+        f"{title}\n{display_metric}",
+        fontsize=19,
+        color=colors["title"],
+        fontweight="bold",
+        pad=14,
+        loc="left",
+        linespacing=1.3,
+    )
+
+    # Headroom for value labels above bars
+    span = y_max - y_min
+    ax.set_ylim(y_min, y_max + span * 0.08)
+    ax.set_xlim(-0.55, n - 0.45)
+    ax.yaxis.grid(
+        True, linestyle="--", linewidth=0.8, color=colors["grid"], alpha=0.9, zorder=0
+    )
+    ax.set_axisbelow(True)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    for spine in ("left", "bottom"):
+        ax.spines[spine].set_color(colors["spine"])
+        ax.spines[spine].set_linewidth(1.15)
+
+    # Extra bottom for 3-line x tick labels; top pad keeps title unclipped
+    fig.subplots_adjust(left=0.09, right=0.985, top=0.84, bottom=0.34)
+
+    png_buf = io.BytesIO()
+    # Fixed canvas size — no bbox_inches='tight' (that shrinks text on screen)
+    fig.savefig(
+        png_buf,
+        format="png",
+        dpi=dpi,
+        facecolor=fig.get_facecolor(),
+        edgecolor="none",
+    )
+    plt.close(fig)
+    return png_buf.getvalue()
+
+
+def build_batch_metric_chart_png_base64(
+    batch_results: Sequence[Dict[str, Any]],
+    metric_col: str,
+    *,
+    title: str = "ARIAKE OCTA — MNV Batch Chart",
+    theme: str = "dark",
+) -> str:
+    """PNG chart as ASCII base64 for ft.Image(src_base64=...)."""
+    import base64
+
+    return base64.b64encode(
+        build_batch_metric_chart_png(
+            batch_results,
+            metric_col,
+            title=title,
+            theme=theme,
+            dpi=144,
+            width_px=CHART_PNG_WIDTH_PX,
+            height_px=CHART_PNG_HEIGHT_PX,
+        )
+    ).decode("ascii")
 
 
 def build_batch_metric_chart_pdf(
@@ -174,37 +394,23 @@ def build_batch_metric_chart_pdf(
     *,
     title: str = "ARIAKE OCTA — MNV Batch Chart",
 ) -> bytes:
-    """Render a bar chart for one CSV metric and return PDF bytes."""
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
+    """Render a bar chart for one CSV metric and return PDF bytes (light print theme)."""
     imagej_rows = imagej_rows_from_batch(batch_results)
     points, values = series_for_metric(imagej_rows, metric_col)
     if not values:
         raise ValueError(f"No numeric data for column: {metric_col}")
 
-    y_min, y_max = smart_y_bounds(values)
-    fig_w = max(8.0, min(16.0, 0.55 * len(points) + 4.0))
-    fig, ax = plt.subplots(figsize=(fig_w, 6.0))
-    x = list(range(len(values)))
-    ax.bar(x, values, color="#00E5FF", edgecolor="#00838F", linewidth=0.6)
-    ax.set_xticks(x)
-    tick_labels = [
-        f"{p['file']}\n{p['subtype']}\n{p['pathophysiology']}" for p in points
-    ]
-    ax.set_xticklabels(tick_labels, rotation=0, ha="center", fontsize=7)
-    ax.set_ylabel(metric_col, fontsize=10)
-    ax.set_title(f"{title}\n{metric_col}", fontsize=12, pad=12)
-    ax.set_ylim(y_min, y_max)
-    ax.grid(axis="y", alpha=0.25, linestyle="--")
-    fig.subplots_adjust(bottom=0.28)
-
-    png_buf = io.BytesIO()
-    fig.savefig(png_buf, format="png", dpi=150)
-    plt.close(fig)
-    png_buf.seek(0)
+    png_buf = io.BytesIO(
+        build_batch_metric_chart_png(
+            batch_results,
+            metric_col,
+            title=title,
+            theme="light",
+            dpi=160,
+            width_px=1400,
+            height_px=760,
+        )
+    )
 
     pdf = FPDF(orientation="L" if len(points) > 8 else "P", unit="mm")
     pdf.set_auto_page_break(auto=True, margin=12)

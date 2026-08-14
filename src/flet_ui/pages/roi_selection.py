@@ -6,7 +6,13 @@ import numpy as np
 import asyncio
 import uuid
 from pathlib import Path
-from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, AppContext, session_discard
+from src.flet_ui.components.shared import (
+    PRIMARY,
+    TEXT_MUTED,
+    AppContext,
+    session_discard,
+    viewport_fit_side,
+)
 from src.core.fast_region_growing import fast_region_growing
 from src.utils.cv2_path import (
     BGR_READ_DECODE,
@@ -25,8 +31,14 @@ async def get_roi_view(ctx: AppContext):
 
     await ctx.add_to_console(f"ROI Subtraction Mode: loading {target_path}", "INFO")
 
-    # Display canvas size (compact header/padding target typical laptop viewport).
-    ROI_DISPLAY_MAX = 420
+    # Fit the ROI canvas to the remaining viewport (header, 1/N caption, buttons).
+    ROI_DISPLAY_MAX = viewport_fit_side(
+        ctx.page,
+        reserved_w=520,
+        reserved_h=220,
+        min_side=280,
+        max_side=820,
+    )
 
     # State Definition
     state = {
@@ -357,11 +369,13 @@ async def get_roi_view(ctx: AppContext):
     action_tabs = ft.Row([confirm_crop_btn, redo_crop_btn], wrap=True, spacing=10)
 
     # GestureDetector wrapping the image and selection frame
+    image_stack = ft.Stack(
+        [img_control, selection_box],
+        width=ROI_DISPLAY_MAX,
+        height=ROI_DISPLAY_MAX,
+    )
     gesture = ft.GestureDetector(
-        content=ft.Stack([
-            img_control,
-            selection_box
-        ], width=ROI_DISPLAY_MAX, height=ROI_DISPLAY_MAX),
+        content=image_stack,
         on_pan_start=on_pan_start,
         on_pan_update=on_pan_update,
         on_pan_end=on_pan_end,
@@ -576,6 +590,12 @@ async def get_roi_view(ctx: AppContext):
 
             img_control.width = new_w
             img_control.height = new_h
+            image_stack.width = new_w
+            image_stack.height = new_h
+            image_layer.width = new_w
+            image_layer.height = new_h
+            img_stack.width = new_w
+            img_stack.height = new_h
 
             loading_layer.visible = False
             image_layer.visible = True
@@ -598,13 +618,13 @@ async def get_roi_view(ctx: AppContext):
     preview_names = ctx.page.session.get("mnv_batch_names_preview")
     batch_caption = ""
     if batch_paths:
-        batch_caption = f"MNV folder batch — image {batch_idx + 1} of {len(batch_paths)}: {Path(target_path).name}"
+        batch_caption = f"MNV folder batch — image {batch_idx + 1}/{len(batch_paths)}"
         if isinstance(preview_names, list) and preview_names:
             batch_caption += "\nキュー · " + " · ".join(str(n) for n in preview_names) + " （いずれも MNV）"
 
     is_reanalysis = ctx.page.session.get("is_reanalysis_mode")
     if is_reanalysis:
-        batch_caption = f"Re-analysis Mode: {Path(target_path).name}\nROIを再指定すると、古い結果が新しい解析結果に上書きされます。"
+        batch_caption = "Re-analysis Mode\nROIを再指定すると、古い結果が新しい解析結果に上書きされます。"
         
     return ft.Container(
         content=ft.Column([
