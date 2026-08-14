@@ -2193,8 +2193,14 @@ async def get_results_view(ctx: AppContext):
         main_body = main_scroll
 
     # Sidebar with filenames is the picker on Global Summary only.
-    # Individual detail must not show the 280px filename column.
-    hide_result_sidebar = isinstance(selected_index, int) and selected_index >= 0
+    # Individual MNV detail hides the 280px column (header shows source_filename;
+    # Summary button returns to Global Summary). VD-only batches have no summary
+    # index (-1), so keep the sidebar as the only way to open sibling files.
+    hide_result_sidebar = (
+        isinstance(selected_index, int)
+        and selected_index >= 0
+        and not vd_only_batch
+    )
     print(
         f"RESULTS LAYOUT: selected_index={selected_index} "
         f"hide_result_sidebar={hide_result_sidebar}",
