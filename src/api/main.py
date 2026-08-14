@@ -14,7 +14,7 @@ if str(SRC) not in sys.path:
 import asyncio
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from src.api.schemas import AnalysisRequest, MNVResult, VDRequest, VDResult, LoginRequest, AuthResponse
 from core.mnv_pipeline import MNVPipeline
@@ -46,6 +46,30 @@ app = FastAPI(title="ARIAKE OCTA Engine API")
 UPLOAD_DIR = get_upload_dir()
 EXPORTS_DIR = get_exports_dir()
 OUTPUT_BASE = get_output_dir()
+
+
+def _flet_ui_url() -> str:
+    ui_port = os.environ.get("FLET_PORT", "8550")
+    ui_host = (os.environ.get("FLET_SERVER_IP") or "127.0.0.1").strip()
+    if ui_host in ("0.0.0.0", "::", "[::]"):
+        ui_host = "127.0.0.1"
+    return f"http://{ui_host}:{ui_port}"
+
+
+@app.get("/")
+async def api_root():
+    """Browsers that open the API port (8000) instead of the Flet UI."""
+    ui_url = _flet_ui_url()
+    return HTMLResponse(
+        content=(
+            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+            f"<meta http-equiv='refresh' content='0;url={ui_url}'>"
+            "<title>ARIAKE OCTA API</title></head><body>"
+            "<p>This is the analysis API, not the app UI.</p>"
+            f"<p>Open <a href='{ui_url}'>{ui_url}</a></p>"
+            "</body></html>"
+        )
+    )
 
 
 @app.get("/download_export/{filename}")
