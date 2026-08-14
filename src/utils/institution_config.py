@@ -13,6 +13,7 @@ splits and LoRA dataset paths stay parseable.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from typing import Any, List, Optional, Sequence, Tuple
@@ -52,6 +53,10 @@ _CUSTOM_SENTINEL = "CUSTOM"
 _FALLBACK = "UNKNOWN"
 _ENV_KEY = "ARIAKE_INSTITUTION_ID"
 _STORAGE_KEY = "institution_id"
+# Flet client_storage RPCs can hang; never wait longer than this on UI paths.
+_CS_ASYNC_TIMEOUT = 1.0
+_CS_PERSIST_DELAY = 0.4
+_CS_HYDRATE_DELAY = 0.25
 
 
 def normalize_institution_id(raw: Optional[str]) -> str:
@@ -153,3 +158,98 @@ def load_persisted_institution_id(
     if env:
         return normalize_institution_id(env)
     return ""
+
+
+async def client_storage_get_async(
+    client_storage: Any,
+    key: str = _STORAGE_KEY,
+    *,
+    timeout: float = _CS_ASYNC_TIMEOUT,
+) -> Optional[str]:
+    """Read a client_storage key via get_async only. Never calls sync get()."""
+    if client_storage is None or not hasattr(client_storage, "get_async"):
+        return None
+    try:
+        stored = await asyncio.wait_for(
+            client_storage.get_async(key), timeout=timeout
+        )
+    except Exception:
+        return None
+    if stored is None or stored == "":
+        return None
+    return str(stored)
+
+
+async def client_storage_set_async(
+    client_storage: Any,
+    key: str,
+    value: str,
+    *,
+    timeout: float = _CS_ASYNC_TIMEOUT,
+) -> bool:
+    """Write a client_storage key via set_async only. Never calls sync set()."""
+    if client_storage is None or not hasattr(client_storage, "set_async"):
+        return False
+    try:
+        await asyncio.wait_for(
+            client_storage.set_async(key, value), timeout=timeout
+        )
+        return True
+    except Exception:
+        return False
+
+
+async def client_storage_remove_async(
+    client_storage: Any,
+    key: str,
+    *,
+    timeout: float = _CS_ASYNC_TIMEOUT,
+) -> None:
+    """Remove a client_storage key via remove_async only. Never calls sync remove()."""
+    if client_storage is None or not hasattr(client_storage, "remove_async"):
+        return
+    try:
+        await asyncio.wait_for(
+            client_storage.remove_async(key), timeout=timeout
+        )
+    except Exception:
+        pass
+
+
+async def load_persisted_institution_id_async(
+    client_storage: Any = None,
+    *,
+    delay: float = _CS_HYDRATE_DELAY,
+) -> str:
+    """Hydrate last facility from client_storage after the login form has painted."""
+    if delay > 0:
+        await asyncio.sleep(delay)
+    stored = await client_storage_get_async(client_storage, _STORAGE_KEY)
+    if not stored:
+        return ""
+    code = normalize_institution_id(stored)
+    return "" if code == _FALLBACK else code
+
+
+async def persist_institution_id_client_async(
+    institution_id: str,
+    client_storage: Any = None,
+    *,
+    delay: float = _CS_PERSIST_DELAY,
+    extra_remove_keys: Sequence[str] = (),
+) -> str:
+    """Persist institution_id to the browser after dashboard first paint.
+
+    Session must already have been written on the login click path. This uses
+    async client_storage APIs only so a hung RPC cannot freeze Launch Analysis.
+    """
+    code = normalize_institution_id(institution_id)
+    if delay > 0:
+        await asyncio.sleep(delay)
+    if client_storage is None:
+        return code
+    for key in extra_remove_keys:
+        await client_storage_remove_async(client_storage, key)
+    await client_storage_set_async(client_storage, _STORAGE_KEY, code)
+    return code
+
