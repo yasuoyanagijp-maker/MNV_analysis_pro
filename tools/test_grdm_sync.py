@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -476,3 +477,122 @@ def test_no_hardcoded_bearer_pat_in_source():
         assert "Bearer ey" not in text
         if name not in ("grdm_config.py", "grdm_access.py"):
             assert 'client_storage.set("grdm_token"' not in text
+
+
+class _FakeClientStorage:
+    """Async-only client_storage stand-in. Sync get/set/remove must not be used."""
+
+    def __init__(self, store=None, hang=False):
+        self.store = dict(store or {})
+        self.hang = hang
+        self.gets = []
+        self.sets = []
+        self.removes = []
+
+    def get(self, key):
+        raise AssertionError("sync client_storage.get must not run")
+
+    def set(self, key, value):
+        raise AssertionError("sync client_storage.set must not run")
+
+    def remove(self, key):
+        raise AssertionError("sync client_storage.remove must not run")
+
+    def contains_key(self, key):
+        raise AssertionError("sync client_storage.contains_key must not run")
+
+    async def get_async(self, key):
+        if self.hang:
+            await asyncio.sleep(5)
+        self.gets.append(key)
+        return self.store.get(key)
+
+    async def set_async(self, key, value):
+        if self.hang:
+            await asyncio.sleep(5)
+        self.sets.append((key, value))
+        self.store[key] = value
+
+    async def remove_async(self, key):
+        if self.hang:
+            await asyncio.sleep(5)
+        self.removes.append(key)
+        self.store.pop(key, None)
+
+
+def test_client_storage_get_async_skips_sync_get():
+    from src.utils.institution_config import client_storage_get_async
+
+    cs = _FakeClientStorage({"institution_id": "TOKYO_UNIV"})
+
+    async def _run():
+        return await client_storage_get_async(cs)
+
+    assert asyncio.run(_run()) == "TOKYO_UNIV"
+    assert cs.gets == ["institution_id"]
+
+
+def test_client_storage_get_async_times_out():
+    from src.utils.institution_config import client_storage_get_async
+
+    cs = _FakeClientStorage({"institution_id": "NOPE"}, hang=True)
+
+    async def _run():
+        return await client_storage_get_async(cs, timeout=0.05)
+
+    assert asyncio.run(_run()) is None
+
+
+def test_persist_institution_id_client_async_uses_async_only():
+    from src.utils.grdm_access import (
+        GRDM_GRADED_INSTITUTION_KEY,
+        GRDM_PENDING_INSTITUTION_KEY,
+    )
+    from src.utils.institution_config import persist_institution_id_client_async
+
+    cs = _FakeClientStorage(
+        {
+            GRDM_GRADED_INSTITUTION_KEY: "OLD",
+            GRDM_PENDING_INSTITUTION_KEY: "OLD2",
+        }
+    )
+
+    async def _run():
+        return await persist_institution_id_client_async(
+            "tokyo univ",
+            cs,
+            delay=0,
+            extra_remove_keys=(
+                GRDM_GRADED_INSTITUTION_KEY,
+                GRDM_PENDING_INSTITUTION_KEY,
+            ),
+        )
+
+    assert asyncio.run(_run()) == "TOKYO_UNIV"
+    assert cs.store["institution_id"] == "TOKYO_UNIV"
+    assert GRDM_GRADED_INSTITUTION_KEY not in cs.store
+    assert GRDM_PENDING_INSTITUTION_KEY not in cs.store
+
+
+def test_load_persisted_institution_id_async_normalizes():
+    from src.utils.institution_config import load_persisted_institution_id_async
+
+    cs = _FakeClientStorage({"institution_id": "tokyo univ"})
+
+    async def _run():
+        return await load_persisted_institution_id_async(cs, delay=0)
+
+    assert asyncio.run(_run()) == "TOKYO_UNIV"
+
+
+def test_login_hot_path_does_not_call_sync_client_storage():
+    login = (
+        Path(__file__).resolve().parents[1] / "src" / "flet_ui" / "pages" / "login.py"
+    ).read_text(encoding="utf-8")
+    assert "client_storage.get(" not in login
+    assert "client_storage.set(" not in login
+    assert "client_storage.remove(" not in login
+    assert "contains_key" not in login
+    assert "get_async" in login or "load_persisted_institution_id_async" in login
+    assert "persist_institution_id_client_async" in login
+

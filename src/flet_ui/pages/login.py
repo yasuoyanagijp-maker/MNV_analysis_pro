@@ -4,7 +4,9 @@ from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, TEXT_MUTED, GLA
 from src.utils.institution_config import (
     INSTITUTION_PRESETS,
     load_persisted_institution_id,
+    load_persisted_institution_id_async,
     persist_institution_id,
+    persist_institution_id_client_async,
 )
 from src.utils.second_reader import (
     READER_ROLE_KEY,
@@ -12,7 +14,11 @@ from src.utils.second_reader import (
     ROLE_FIRST_GRADER,
     ROLE_SECOND_READER,
 )
-from src.utils.grdm_access import clear_grdm_session_institutions
+from src.utils.grdm_access import (
+    GRDM_GRADED_INSTITUTION_KEY,
+    GRDM_PENDING_INSTITUTION_KEY,
+    clear_grdm_session_institutions,
+)
 
 
 async def get_login_view(ctx: AppContext):
@@ -33,9 +39,12 @@ async def get_login_view(ctx: AppContext):
         width=350,
     )
 
+    # Session / env only while building the form. Sync client_storage reads are
+    # blocking RPCs (up to 5s) and delayed first paint; hydrate via get_async after.
     persisted = load_persisted_institution_id(ctx.page.session, None)
     preset_codes = {code for code, _ in INSTITUTION_PRESETS if code != "CUSTOM"}
     initial_preset = persisted if persisted in preset_codes else ("CUSTOM" if persisted else "ARIAKE_OHANACHAYA")
+    _institution_locked = bool(persisted)
 
     institution_dd = ft.Dropdown(
         label="Institution code",
@@ -79,6 +88,8 @@ async def get_login_view(ctx: AppContext):
     )
 
     def _on_institution_change(_=None):
+        nonlocal _institution_locked
+        _institution_locked = True
         institution_custom.visible = institution_dd.value == "CUSTOM"
         ctx.page.update()
 
@@ -113,7 +124,7 @@ async def get_login_view(ctx: AppContext):
         login_res = await ctx.client.login(username_field.value, password_field.value)
 
         if login_res.get("success"):
-            # Session only on the click path. Flet client_storage get/set/remove
+            # Session only on the click path. Sync client_storage get/set/remove
             # are blocking RPCs (up to 5s each) and delayed Launch Analysis.
             clear_grdm_session_institutions(ctx.page.session, None)
             raw_inst = (
@@ -128,6 +139,19 @@ async def get_login_view(ctx: AppContext):
                 READER_ROLE_KEY, role_dd.value or ROLE_FIRST_GRADER
             )
             ctx.page.go("/")
+
+            async def _persist_client_storage():
+                # Let dashboard first paint win the websocket before any CS RPC.
+                await persist_institution_id_client_async(
+                    code,
+                    getattr(ctx.page, "client_storage", None),
+                    extra_remove_keys=(
+                        GRDM_GRADED_INSTITUTION_KEY,
+                        GRDM_PENDING_INSTITUTION_KEY,
+                    ),
+                )
+
+            ctx.page.run_task(_persist_client_storage)
         else:
             error_text.value = login_res.get("message", "Login failed.")
             error_text.visible = True
@@ -136,6 +160,29 @@ async def get_login_view(ctx: AppContext):
             ctx.page.update()
 
     login_btn.on_click = login_click
+
+    async def _hydrate_institution_dropdown():
+        if _institution_locked:
+            return
+        stored = await load_persisted_institution_id_async(
+            getattr(ctx.page, "client_storage", None),
+        )
+        if _institution_locked or not stored:
+            return
+        if stored in preset_codes:
+            institution_dd.value = stored
+            institution_custom.value = ""
+            institution_custom.visible = False
+        else:
+            institution_dd.value = "CUSTOM"
+            institution_custom.value = stored
+            institution_custom.visible = True
+        try:
+            ctx.page.update()
+        except Exception:
+            pass
+
+    ctx.page.run_task(_hydrate_institution_dropdown)
 
     return ft.Container(
         content=ft.Column([
