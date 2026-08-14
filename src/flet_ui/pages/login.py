@@ -1,10 +1,13 @@
 import flet as ft
 from flet import Colors, Icons, FontWeight
-from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, TEXT_MUTED, GLASS_BG, AppContext, persist_client_storage_async
+from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, TEXT_MUTED, GLASS_BG, AppContext
 from src.utils.institution_config import (
     INSTITUTION_PRESETS,
+    client_storage_set_async,
     load_persisted_institution_id,
+    load_persisted_institution_id_async,
     persist_institution_id,
+    persist_institution_id_client_async,
 )
 from src.utils.second_reader import (
     READER_ROLE_KEY,
@@ -12,7 +15,11 @@ from src.utils.second_reader import (
     ROLE_FIRST_GRADER,
     ROLE_SECOND_READER,
 )
-from src.utils.grdm_access import clear_grdm_session_institutions
+from src.utils.grdm_access import (
+    GRDM_GRADED_INSTITUTION_KEY,
+    GRDM_PENDING_INSTITUTION_KEY,
+    clear_grdm_session_institutions,
+)
 
 
 async def get_login_view(ctx: AppContext):
@@ -33,9 +40,12 @@ async def get_login_view(ctx: AppContext):
         width=350,
     )
 
+    # Session / env only while building the form. Sync client_storage reads are
+    # blocking RPCs (up to 5s) and delayed first paint; hydrate via get_async after.
     persisted = load_persisted_institution_id(ctx.page.session, None)
     preset_codes = {code for code, _ in INSTITUTION_PRESETS if code != "CUSTOM"}
     initial_preset = persisted if persisted in preset_codes else ("CUSTOM" if persisted else "ARIAKE_OHANACHAYA")
+    _institution_locked = bool(persisted)
 
     institution_dd = ft.Dropdown(
         label="Institution code",
@@ -79,12 +89,21 @@ async def get_login_view(ctx: AppContext):
     )
 
     def _on_institution_change(_=None):
+        nonlocal _institution_locked
+        _institution_locked = True
         institution_custom.visible = institution_dd.value == "CUSTOM"
         ctx.page.update()
 
     institution_dd.on_change = _on_institution_change
 
     error_text = ft.Text(color=Colors.RED_400, size=12, visible=False)
+    login_btn = ft.ElevatedButton(
+        "Secure Login",
+        height=50,
+        width=350,
+        bgcolor=PRIMARY,
+        color=Colors.BLACK,
+    )
 
     async def login_click(e):
         if not username_field.value or not password_field.value:
@@ -99,14 +118,15 @@ async def get_login_view(ctx: AppContext):
             ctx.page.update()
             return
 
-        e.control.disabled = True
+        login_btn.disabled = True
+        login_btn.text = "Signing in…"
         ctx.page.update()
 
         login_res = await ctx.client.login(username_field.value, password_field.value)
 
         if login_res.get("success"):
-            # Session only here. Sync client_storage RPCs block the Flet web
-            # event loop (5s timeout each) and freeze login → dashboard.
+            # Session only on the click path. Sync client_storage get/set/remove
+            # are blocking RPCs (up to 5s each) and delayed Launch Analysis.
             clear_grdm_session_institutions(ctx.page.session, None)
             raw_inst = (
                 (institution_custom.value or "").strip()
@@ -114,24 +134,57 @@ async def get_login_view(ctx: AppContext):
                 else (institution_dd.value or "")
             )
             code = persist_institution_id(raw_inst, ctx.page.session, None)
+            role = role_dd.value or ROLE_FIRST_GRADER
             ctx.page.session.set("username", username_field.value)
             ctx.page.session.set("institution_id", code)
-            ctx.page.session.set(
-                READER_ROLE_KEY, role_dd.value or ROLE_FIRST_GRADER
-            )
-            persist_client_storage_async(
-                ctx.page,
-                {
-                    "institution_id": code,
-                    READER_ROLE_KEY: role_dd.value or ROLE_FIRST_GRADER,
-                },
-            )
+            ctx.page.session.set(READER_ROLE_KEY, role)
             ctx.page.go("/")
+
+            async def _persist_client_storage():
+                # Let dashboard first paint win the websocket before any CS RPC.
+                cs = getattr(ctx.page, "client_storage", None)
+                await persist_institution_id_client_async(
+                    code,
+                    cs,
+                    extra_remove_keys=(
+                        GRDM_GRADED_INSTITUTION_KEY,
+                        GRDM_PENDING_INSTITUTION_KEY,
+                    ),
+                )
+                await client_storage_set_async(cs, READER_ROLE_KEY, role)
+
+            ctx.page.run_task(_persist_client_storage)
         else:
             error_text.value = login_res.get("message", "Login failed.")
             error_text.visible = True
-            e.control.disabled = False
+            login_btn.disabled = False
+            login_btn.text = "Secure Login"
             ctx.page.update()
+
+    login_btn.on_click = login_click
+
+    async def _hydrate_institution_dropdown():
+        if _institution_locked:
+            return
+        stored = await load_persisted_institution_id_async(
+            getattr(ctx.page, "client_storage", None),
+        )
+        if _institution_locked or not stored:
+            return
+        if stored in preset_codes:
+            institution_dd.value = stored
+            institution_custom.value = ""
+            institution_custom.visible = False
+        else:
+            institution_dd.value = "CUSTOM"
+            institution_custom.value = stored
+            institution_custom.visible = True
+        try:
+            ctx.page.update()
+        except Exception:
+            pass
+
+    ctx.page.run_task(_hydrate_institution_dropdown)
 
     return ft.Container(
         content=ft.Column([
@@ -155,14 +208,7 @@ async def get_login_view(ctx: AppContext):
                     ),
                     error_text,
                     ft.Container(height=10),
-                    ft.ElevatedButton(
-                        "Secure Login",
-                        height=50,
-                        width=350,
-                        bgcolor=PRIMARY,
-                        color=Colors.BLACK,
-                        on_click=login_click
-                    ),
+                    login_btn,
                     ft.Text("Forgot Password? ariake2024", size=10, color=TEXT_MUTED),
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),
                 padding=60,

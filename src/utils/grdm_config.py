@@ -22,15 +22,17 @@ def resolve_grdm_destination(
     client_storage: Any = None,
 ) -> Tuple[str, str]:
     """Return (project_id, folder_id). folder_id may be empty (project root)."""
-    project_id = _first_nonempty(
-        _session_get(session, _PROJECT_STORAGE_KEY),
-        _client_get(client_storage, _PROJECT_STORAGE_KEY),
-        os.environ.get(_PROJECT_ENV),
+    # Short-circuit: Flet client_storage.get() is a blocking RPC (up to 5s each).
+    # Do not call it when session already has the value.
+    project_id = (
+        _session_get(session, _PROJECT_STORAGE_KEY)
+        or _client_get(client_storage, _PROJECT_STORAGE_KEY)
+        or (os.environ.get(_PROJECT_ENV) or "").strip()
     )
-    folder_id = _first_nonempty(
-        _session_get(session, _FOLDER_STORAGE_KEY),
-        _client_get(client_storage, _FOLDER_STORAGE_KEY),
-        os.environ.get(_FOLDER_ENV),
+    folder_id = (
+        _session_get(session, _FOLDER_STORAGE_KEY)
+        or _client_get(client_storage, _FOLDER_STORAGE_KEY)
+        or (os.environ.get(_FOLDER_ENV) or "").strip()
     )
     return project_id, folder_id
 
@@ -93,8 +95,3 @@ def _client_get(client_storage: Any, key: str) -> Optional[str]:
     return s or None
 
 
-def _first_nonempty(*values: Optional[str]) -> str:
-    for v in values:
-        if v is not None and str(v).strip():
-            return str(v).strip()
-    return ""
