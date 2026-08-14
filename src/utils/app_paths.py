@@ -2,6 +2,7 @@ import re
 import sys
 import os
 from pathlib import Path
+from typing import Optional
 
 
 def sanitize_path_component(name: str) -> str:
@@ -61,3 +62,56 @@ def get_exports_dir() -> Path:
     d = get_upload_dir() / "exports"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def default_picker_dir(home: Optional[Path] = None) -> Path:
+    """Folder shown first in Select Folder: Desktop if present, else home.
+
+    Matches the well-known ``desktop`` start location used by web directory
+    pickers (File System Access API ``startIn: "desktop"``).
+    """
+    home_path = Path(home) if home is not None else Path.home()
+    for cand in _desktop_candidates(home_path):
+        try:
+            if cand.is_dir():
+                return cand.resolve()
+        except OSError:
+            continue
+    try:
+        return home_path.resolve()
+    except OSError:
+        return home_path
+
+
+def _desktop_candidates(home: Path):
+    """Yield likely Desktop paths for the current OS (existing or not)."""
+    env_desktop = (os.environ.get("XDG_DESKTOP_DIR") or "").strip()
+    if env_desktop:
+        yield Path(os.path.expandvars(env_desktop)).expanduser()
+
+    win_desktop = _windows_desktop_dir()
+    if win_desktop is not None:
+        yield win_desktop
+
+    yield home / "Desktop"
+    yield home / "デスクトップ"
+    yield home / "OneDrive" / "Desktop"
+    yield home / "OneDrive - Personal" / "Desktop"
+
+
+def _windows_desktop_dir() -> Optional[Path]:
+    """Actual Desktop folder on Windows (localized / OneDrive-aware)."""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        buf = ctypes.create_unicode_buffer(getattr(wintypes, "MAX_PATH", 260))
+        # CSIDL_DESKTOPDIRECTORY — the on-disk Desktop, not the virtual namespace
+        hr = ctypes.windll.shell32.SHGetFolderPathW(None, 0x0010, None, 0, buf)
+        if hr == 0 and buf.value:
+            return Path(buf.value)
+    except Exception:
+        return None
+    return None

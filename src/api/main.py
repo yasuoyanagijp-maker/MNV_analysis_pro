@@ -14,12 +14,18 @@ if str(SRC) not in sys.path:
 import asyncio
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from src.api.schemas import AnalysisRequest, MNVResult, VDRequest, VDResult, LoginRequest, AuthResponse
 from core.mnv_pipeline import MNVPipeline
 from core.vd_analysis import VDAnalyzer
-from src.utils.app_paths import get_upload_dir, get_output_dir, get_exports_dir, sanitize_path_component
+from src.utils.app_paths import (
+    get_upload_dir,
+    get_output_dir,
+    get_exports_dir,
+    sanitize_path_component,
+    default_picker_dir,
+)
 from utils.cv2_path import imread_grayscale
 from utils.mnv_cc_resolve import resolve_flow_deficit_cc_path
 from utils.mnv_imagej_csv import metrics_for_csv_export
@@ -46,6 +52,30 @@ app = FastAPI(title="ARIAKE OCTA Engine API")
 UPLOAD_DIR = get_upload_dir()
 EXPORTS_DIR = get_exports_dir()
 OUTPUT_BASE = get_output_dir()
+
+
+def _flet_ui_url() -> str:
+    ui_port = os.environ.get("FLET_PORT", "8550")
+    ui_host = (os.environ.get("FLET_SERVER_IP") or "127.0.0.1").strip()
+    if ui_host in ("0.0.0.0", "::", "[::]"):
+        ui_host = "127.0.0.1"
+    return f"http://{ui_host}:{ui_port}"
+
+
+@app.get("/")
+async def api_root():
+    """Browsers that open the API port (8000) instead of the Flet UI."""
+    ui_url = _flet_ui_url()
+    return HTMLResponse(
+        content=(
+            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+            f"<meta http-equiv='refresh' content='0;url={ui_url}'>"
+            "<title>ARIAKE OCTA API</title></head><body>"
+            "<p>This is the analysis API, not the app UI.</p>"
+            f"<p>Open <a href='{ui_url}'>{ui_url}</a></p>"
+            "</body></html>"
+        )
+    )
 
 
 @app.get("/download_export/{filename}")
@@ -436,7 +466,7 @@ async def get_status(job_id: str):
 async def list_directory(path: str = None):
     """Lists contents of a directory for the custom file explorer."""
     if not path or path == "":
-        path = str(Path.home())
+        path = str(default_picker_dir())
     
     p = Path(path)
     if not p.exists() or not p.is_dir():
