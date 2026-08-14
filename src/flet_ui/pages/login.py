@@ -1,6 +1,5 @@
 import flet as ft
 from flet import Colors, Icons, FontWeight
-import asyncio
 from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, TEXT_MUTED, GLASS_BG, AppContext
 from src.utils.institution_config import (
     INSTITUTION_PRESETS,
@@ -13,11 +12,7 @@ from src.utils.second_reader import (
     ROLE_FIRST_GRADER,
     ROLE_SECOND_READER,
 )
-from src.utils.grdm_access import (
-    GRDM_GRADED_INSTITUTION_KEY,
-    GRDM_PENDING_INSTITUTION_KEY,
-    clear_grdm_session_institutions,
-)
+from src.utils.grdm_access import clear_grdm_session_institutions
 
 
 async def get_login_view(ctx: AppContext):
@@ -133,33 +128,6 @@ async def get_login_view(ctx: AppContext):
                 READER_ROLE_KEY, role_dd.value or ROLE_FIRST_GRADER
             )
             ctx.page.go("/")
-
-            async def _persist_client_storage():
-                # Let the dashboard paint before any client_storage RPC.
-                await asyncio.sleep(0.4)
-                cs = getattr(ctx.page, "client_storage", None)
-                if cs is None:
-                    return
-                try:
-                    if hasattr(cs, "remove_async"):
-                        for key in (
-                            GRDM_GRADED_INSTITUTION_KEY,
-                            GRDM_PENDING_INSTITUTION_KEY,
-                        ):
-                            try:
-                                await asyncio.wait_for(cs.remove_async(key), timeout=1.0)
-                            except Exception:
-                                pass
-                    if hasattr(cs, "set_async"):
-                        await asyncio.wait_for(
-                            cs.set_async("institution_id", code), timeout=1.0
-                        )
-                    else:
-                        persist_institution_id(code, None, cs)
-                except Exception as ex:
-                    print(f"DEBUG: deferred client_storage persist: {ex}", flush=True)
-
-            ctx.page.run_task(_persist_client_storage)
         else:
             error_text.value = login_res.get("message", "Login failed.")
             error_text.visible = True
