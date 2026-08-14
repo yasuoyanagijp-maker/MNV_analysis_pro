@@ -1,5 +1,6 @@
 import flet as ft
 from flet import Colors, Icons, FontWeight
+import asyncio
 from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, TEXT_MUTED, GLASS_BG, AppContext
 from src.utils.institution_config import (
     INSTITUTION_PRESETS,
@@ -37,9 +38,7 @@ async def get_login_view(ctx: AppContext):
         width=350,
     )
 
-    persisted = load_persisted_institution_id(
-        ctx.page.session, getattr(ctx.page, "client_storage", None)
-    )
+    persisted = load_persisted_institution_id(ctx.page.session, None)
     preset_codes = {code for code, _ in INSTITUTION_PRESETS if code != "CUSTOM"}
     initial_preset = persisted if persisted in preset_codes else ("CUSTOM" if persisted else "ARIAKE_OHANACHAYA")
 
@@ -136,10 +135,11 @@ async def get_login_view(ctx: AppContext):
             ctx.page.go("/")
 
             async def _persist_client_storage():
+                # Let the dashboard paint before any client_storage RPC.
+                await asyncio.sleep(0.4)
                 cs = getattr(ctx.page, "client_storage", None)
                 if cs is None:
                     return
-                # Async RPCs so Launch Analysis stays clickable during persist.
                 try:
                     if hasattr(cs, "remove_async"):
                         for key in (
@@ -147,13 +147,13 @@ async def get_login_view(ctx: AppContext):
                             GRDM_PENDING_INSTITUTION_KEY,
                         ):
                             try:
-                                await cs.remove_async(key)
+                                await asyncio.wait_for(cs.remove_async(key), timeout=1.0)
                             except Exception:
                                 pass
-                    else:
-                        clear_grdm_session_institutions(None, cs)
                     if hasattr(cs, "set_async"):
-                        await cs.set_async("institution_id", code)
+                        await asyncio.wait_for(
+                            cs.set_async("institution_id", code), timeout=1.0
+                        )
                     else:
                         persist_institution_id(code, None, cs)
                 except Exception as ex:
