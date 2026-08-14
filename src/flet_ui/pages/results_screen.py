@@ -1291,12 +1291,21 @@ async def get_results_view(ctx: AppContext):
             if vsl_only
             else "aligned with VDAnalyzer densities (%) & mainstreamer.run_vd_batch-style engine settings."
         )
-        # Filename is in the left BATCH RESULTS list; omit it from the detail header.
+        # Sidebar is hidden on individual detail — show source filename here.
+        _vd_src = str(res.get("source_filename") or f"Item {idx + 1}")
         ctrls = [
             ft.Row(
                 [
                     ft.Column(
                         [
+                            ft.Text(
+                                _vd_src,
+                                color=Colors.WHITE,
+                                size=18,
+                                weight=ft.FontWeight.W_600,
+                                max_lines=2,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
                             ft.Text(
                                 f"Analysis type: VD | Timestamp: {res.get('analysis_timestamp', 'N/A')} — "
                                 + _vd_detail_blurb,
@@ -1773,7 +1782,7 @@ async def get_results_view(ctx: AppContext):
         except:
             pass
 
-        # Filename omitted from detail header; left sidebar is hidden on this view.
+        # Sidebar is hidden on individual detail — show source filename here.
         vis_side = viewport_fit_side(
             ctx.page,
             reserved_w=120,
@@ -1781,11 +1790,20 @@ async def get_results_view(ctx: AppContext):
             min_side=280,
             max_side=820,
         )
+        _mnv_src = str(res.get("source_filename") or f"Item {idx + 1}")
         ctrls = [
             ft.Row(
                 [
                     ft.Column(
                         [
+                            ft.Text(
+                                _mnv_src,
+                                color=Colors.WHITE,
+                                size=18,
+                                weight=ft.FontWeight.W_600,
+                                max_lines=2,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
                             ft.Text(
                                 f"Analysis type: MNV | Timestamp: {res.get('analysis_timestamp', 'N/A')}",
                                 color=TEXT_MUTED,

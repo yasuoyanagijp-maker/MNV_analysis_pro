@@ -43,12 +43,11 @@ CHART_METRIC_ALIASES: Dict[str, str] = {
     "Caliber Uniformity Score (U2)": "Caliber Uniformity Score",
 }
 
-# Prefer U2 when session still holds bare or PCA caliber/maturity keys.
+# Prefer U2 only for legacy/bare session keys (no U2/PCA suffix).
+# Do NOT remap explicit PCA selections — users must keep Maturity/Caliber (PCA).
 CHART_METRIC_DEFAULT_REMAP: Dict[str, str] = {
     "Maturity Index": "Maturity Index (U2)",
-    "Maturity Index (PCA)": "Maturity Index (U2)",
     "Caliber Uniformity Score": "Caliber Uniformity Score (U2)",
-    "Caliber Uniformity Score (PCA)": "Caliber Uniformity Score (U2)",
 }
 
 _NON_NUMERIC_CSV = frozenset(
