@@ -1664,38 +1664,129 @@ async def get_dashboard_view(ctx: AppContext):
         border_radius=16,
     )
 
-    return ft.Container(
-        content=ft.Column([
-            ft.Container(
-                content=ft.Row(
-                    [
-                        ft.Column(
-                            [
-                                ft.Text(
-                                    "ARIAKE OCTA",
-                                    size=26,
-                                    weight=FontWeight.W_800,
-                                    color=Colors.WHITE,
-                                ),
-                                ft.Text(
-                                    "Unified Analytics Command Center"
-                                    + (" — 第2リーダー" if _is_sr else ""),
-                                    size=12,
-                                    color=TEXT_MUTED,
-                                ),
-                            ],
-                            spacing=2,
-                            expand=True,
-                        ),
-                    ],
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    def _advanced_settings_body():
+        return ft.Column([
+            ft.Row([
+                analysis_type,
+                scale_mm,
+                manual_path,
+            ], spacing=20,
+                vertical_alignment=ft.CrossAxisAlignment.END),
+            ft.Row([
+                output_path_input,
+                ft.IconButton(
+                    Icons.FOLDER_OPEN,
+                    on_click=lambda _: ctx.page.run_task(
+                        handle_select_output_folder),
+                    tooltip="Select Output Folder",
                 ),
-                margin=ft.margin.only(bottom=12, top=0),
+            ], spacing=10,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Row(
+                [institution_dd, institution_custom],
+                spacing=16,
+                vertical_alignment=ft.CrossAxisAlignment.END,
             ),
+            ft.Text(
+                "Institution code → export/images|masks|meta/{institution_id}/ "
+                "(Login name = rater_id). Override with env ARIAKE_INSTITUTION_ID.",
+                size=11, color=TEXT_MUTED,
+            ),
+            ft.Row(
+                [grdm_project_input, grdm_folder_input],
+                spacing=16,
+                vertical_alignment=ft.CrossAxisAlignment.END,
+            ),
+            ft.Text(
+                "GakuNin RDM 同期先ベース: project_id / folder_id "
+                "(env: GRDM_PROJECT_ID / GRDM_FOLDER_ID)。"
+                " 実パスは第1→{folder}/{institution}/、"
+                "第2→{folder}/second_reading/{institution}/。"
+                " Team YY は全施設データを選択可。PAT は OS 安全領域へ保存"
+                "（client_storage には保存しません）。",
+                size=11, color=TEXT_MUTED,
+            ),
+            ft.Row(
+                [vd_sup_suffix, vd_deep_suffix, vd_side, vd_pair_mode_switch],
+                spacing=16,
+                vertical_alignment=ft.CrossAxisAlignment.END,
+            ),
+            ft.Row(
+                [mnv_select_all_switch],
+                spacing=16,
+                vertical_alignment=ft.CrossAxisAlignment.END,
+            ),
+            ft.Text(
+                "MNV: auto-select excludes *1/*2/*4; toggle ON for all images.  "
+                "VD: pair mode matches SCP+DCP by suffix (like Integrated); "
+                "single-image mode analyzes every file.  "
+                "Integrated: VD pairs first, then MNV ROI queue.",
+                size=11, color=TEXT_MUTED,
+            ),
+            ft.ElevatedButton(
+                "Select Folder (Advanced)",
+                icon=Icons.FOLDER_OPEN,
+                bgcolor=Colors.with_opacity(0.15, PRIMARY),
+                color=PRIMARY,
+                on_click=lambda _: ctx.page.run_task(
+                    handle_select_folder),
+                width=260,
+            ),
+        ], spacing=12)
 
-            second_reader_card,
-            ft.Divider(height=10, color=Colors.TRANSPARENT) if _is_sr else ft.Container(height=0),
+    def _on_advanced_change(e):
+        expanded = str(getattr(e, "data", "")).lower() in ("true", "1")
+        if expanded and not advanced_tile.controls:
+            advanced_tile.controls = [_advanced_settings_body()]
+            ctx.page.update()
 
+    advanced_tile = ft.ExpansionTile(
+        title=ft.Text("⚙  Advanced Settings",
+                      size=14, color=TEXT_MUTED),
+        subtitle=ft.Text(
+            "Direct access to analysis type, scale, VD suffixes, "
+            "and output path — for expert use.",
+            size=11, color=Colors.with_opacity(0.5, TEXT_MUTED),
+        ),
+        initially_expanded=False,
+        tile_padding=ft.padding.symmetric(horizontal=0),
+        controls=[],
+        on_change=_on_advanced_change,
+    )
+
+    home_blocks = [
+        ft.Container(
+            content=ft.Row(
+                [
+                    ft.Column(
+                        [
+                            ft.Text(
+                                "ARIAKE OCTA",
+                                size=26,
+                                weight=FontWeight.W_800,
+                                color=Colors.WHITE,
+                            ),
+                            ft.Text(
+                                "Unified Analytics Command Center"
+                                + (" — 第2リーダー" if _is_sr else ""),
+                                size=12,
+                                color=TEXT_MUTED,
+                            ),
+                        ],
+                        spacing=2,
+                        expand=True,
+                    ),
+                ],
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            margin=ft.margin.only(bottom=12, top=0),
+        ),
+    ]
+    if _is_sr:
+        home_blocks.append(second_reader_card)
+        home_blocks.append(ft.Divider(height=10, color=Colors.TRANSPARENT))
+
+    home_blocks.append(
             ft.Container(
                 content=ft.Column([
                     # ── Primary action ────────────────────────────────────
@@ -1753,90 +1844,7 @@ async def get_dashboard_view(ctx: AppContext):
                     ),
 
                     ft.Divider(height=10, color=Colors.TRANSPARENT),
-
-                    # ── Advanced Settings (collapsible) ───────────────────
-                    ft.ExpansionTile(
-                        title=ft.Text("⚙  Advanced Settings",
-                                      size=14, color=TEXT_MUTED),
-                        subtitle=ft.Text(
-                            "Direct access to analysis type, scale, VD suffixes, "
-                            "and output path — for expert use.",
-                            size=11, color=Colors.with_opacity(0.5, TEXT_MUTED),
-                        ),
-                        initially_expanded=False,
-                        tile_padding=ft.padding.symmetric(horizontal=0),
-                        controls=[
-                            ft.Column([
-                                ft.Row([
-                                    analysis_type,
-                                    scale_mm,
-                                    manual_path,
-                                ], spacing=20,
-                                    vertical_alignment=ft.CrossAxisAlignment.END),
-                                ft.Row([
-                                    output_path_input,
-                                    ft.IconButton(
-                                        Icons.FOLDER_OPEN,
-                                        on_click=lambda _: ctx.page.run_task(
-                                            handle_select_output_folder),
-                                        tooltip="Select Output Folder",
-                                    ),
-                                ], spacing=10,
-                                    vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                                ft.Row(
-                                    [institution_dd, institution_custom],
-                                    spacing=16,
-                                    vertical_alignment=ft.CrossAxisAlignment.END,
-                                ),
-                                ft.Text(
-                                    "Institution code → export/images|masks|meta/{institution_id}/ "
-                                    "(Login name = rater_id). Override with env ARIAKE_INSTITUTION_ID.",
-                                    size=11, color=TEXT_MUTED,
-                                ),
-                                ft.Row(
-                                    [grdm_project_input, grdm_folder_input],
-                                    spacing=16,
-                                    vertical_alignment=ft.CrossAxisAlignment.END,
-                                ),
-                                ft.Text(
-                                    "GakuNin RDM 同期先ベース: project_id / folder_id "
-                                    "(env: GRDM_PROJECT_ID / GRDM_FOLDER_ID)。"
-                                    " 実パスは第1→{folder}/{institution}/、"
-                                    "第2→{folder}/second_reading/{institution}/。"
-                                    " Team YY は全施設データを選択可。PAT は OS 安全領域へ保存"
-                                    "（client_storage には保存しません）。",
-                                    size=11, color=TEXT_MUTED,
-                                ),
-                                ft.Row(
-                                    [vd_sup_suffix, vd_deep_suffix, vd_side, vd_pair_mode_switch],
-                                    spacing=16,
-                                    vertical_alignment=ft.CrossAxisAlignment.END,
-                                ),
-                                ft.Row(
-                                    [mnv_select_all_switch],
-                                    spacing=16,
-                                    vertical_alignment=ft.CrossAxisAlignment.END,
-                                ),
-                                ft.Text(
-                                    "MNV: auto-select excludes *1/*2/*4; toggle ON for all images.  "
-                                    "VD: pair mode matches SCP+DCP by suffix (like Integrated); "
-                                    "single-image mode analyzes every file.  "
-                                    "Integrated: VD pairs first, then MNV ROI queue.",
-                                    size=11, color=TEXT_MUTED,
-                                ),
-                                ft.ElevatedButton(
-                                    "Select Folder (Advanced)",
-                                    icon=Icons.FOLDER_OPEN,
-                                    bgcolor=Colors.with_opacity(0.15, PRIMARY),
-                                    color=PRIMARY,
-                                    on_click=lambda _: ctx.page.run_task(
-                                        handle_select_folder),
-                                    width=260,
-                                ),
-                            ], spacing=12),
-                        ],
-                    ),
-
+                    advanced_tile,
                     ft.Divider(height=10, color=Colors.TRANSPARENT),
                     batch_container,
                 ], spacing=10),
@@ -1844,7 +1852,10 @@ async def get_dashboard_view(ctx: AppContext):
                 bgcolor=GLASS_BG,
                 border_radius=16,
             )
-        ], scroll=ft.ScrollMode.ADAPTIVE, spacing=0),
+    )
+
+    return ft.Container(
+        content=ft.Column(home_blocks, scroll=ft.ScrollMode.ADAPTIVE, spacing=0),
         padding=ft.padding.symmetric(horizontal=28, vertical=16),
         expand=True,
         opacity=1.0,

@@ -5,6 +5,7 @@ import uuid
 import traceback
 import os
 import sys
+import time
 from pathlib import Path
 
 # Components
@@ -154,6 +155,7 @@ async def main(page: ft.Page):
         route_full = page.route or ""
         base_route = route_full.split("?", 1)[0]
         print(f"DEBUG: NAVIGATING TO {route_full}", flush=True)
+        t_nav = time.perf_counter()
 
         try:
             # Login Guard (Bypassed in DEV_MODE)
@@ -214,6 +216,10 @@ async def main(page: ft.Page):
                 )
             )
             page.update()
+            print(
+                f"DEBUG: NAVIGATED {base_route} in {time.perf_counter() - t_nav:.3f}s",
+                flush=True,
+            )
         except Exception as ex:
             print(f"CRITICAL UI ERROR: {traceback.format_exc()}", flush=True)
             page.views.append(ft.View("/error", [ft.Text(f"Error: {str(ex)}", color="red")]))
@@ -247,4 +253,9 @@ if __name__ == "__main__":
         # host=0.0.0.0 makes url_host 0.0.0.0, which most browsers will not load (blank tab). Local dev: 127.0.0.1.
         # Override bind address with FLET_SERVER_IP (e.g. 0.0.0.0 for LAN); open http://127.0.0.1:PORT on same machine.
         app_kwargs["host"] = os.environ.get("FLET_SERVER_IP", "127.0.0.1")
+        # CanvasKit (Flet default) needs WebGL. Without it, login → Launch Analysis
+        # can stall for many seconds. HTML renderer is the reliable web default.
+        renderer = (os.environ.get("FLET_WEB_RENDERER") or "html").strip().lower()
+        app_kwargs["web_renderer"] = renderer
+        print(f"Flet: web_renderer={renderer}", flush=True)
     ft.app(**app_kwargs)
