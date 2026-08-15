@@ -1,6 +1,6 @@
 # ARIAKE OCTA — Caliber Uniformity CSV ツール
 
-MNV バッチ CSV に **Caliber Uniformity Score (U2)** と **Maturity Index (U2)** を追加するスタンドアロンツールです（GUI 不要）。
+MNV バッチ CSV に **Standardized Caliber Uniformity Score** と **Standardized Maturity Index** を追加するスタンドアロンツールです（GUI 不要）。
 
 ## 必要列（CSV ヘッダー）
 - `File`
@@ -8,7 +8,7 @@ MNV バッチ CSV に **Caliber Uniformity Score (U2)** と **Maturity Index (U2
 - `Dilated vessel (%)`
 - `Network Complexity Score`
 
-任意: 既存の `Caliber Uniformity Score` / `Maturity Index` の右隣に U2 列を挿入します。
+任意: 既存の `Caliber Uniformity Score` / `Maturity Index` の右隣に Standardized 列を挿入します（旧 `… (U2)` 列がある場合は置き換え）。
 
 ## size_class（層）
 ファイル名（`File` 列）から自動判定します。

@@ -1078,7 +1078,7 @@ async def get_results_view(ctx: AppContext):
                 default_metric = (
                     metric_options[0]
                     if metric_options
-                    else "Maturity Index (U2)"
+                    else "Standardized Maturity Index"
                 )
             ctx.page.session.set("results_chart_metric", default_metric)
 

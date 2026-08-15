@@ -5,7 +5,7 @@
 ## 前提
 
 - 入力は常に **2本**（施設側読影 CSV と 第2読影 CSV）
-- 採用前に **U2 再計算は必須**
+- 採用前に **Standardized 再計算（内部名 U2）は必須**
 - 出力はマイクロン向け **3点セット**
 - 単独アプリ化は仕様固定後（現在は本 CLI）
 
@@ -69,7 +69,7 @@ for each matched (Case, Visit):
 ```
 
 実装: `compute_adopted_from_dual_csv.py`  
-U2: `tools/caliber_u2/compute_caliber_u2_from_csv.py` → `src/core/caliber_u2.py`
+Standardized（U2）: `tools/caliber_u2/compute_caliber_u2_from_csv.py` → `src/core/caliber_u2.py`
 
 ## 検証用（トレーニングデータ）
 

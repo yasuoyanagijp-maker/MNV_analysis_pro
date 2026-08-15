@@ -171,7 +171,7 @@ Web モードでは、フォルダ／画像の指定に **手動パス入力**�
 - **RPD ≤ 20%**（両値が有限）→ **算術平均を採用**  
 - **RPD > 20%** または欠損 → **NA（再計測／合議）** — 統合出力の `*_recheck_list.csv` を参照  
 
-採用前に Caliber / Maturity の **U2** を両 CSV で再計算してから突合します。
+採用前に Caliber / Maturity の **Standardized スコア**を両 CSV で再計算してから突合します。
 
 **突合キーの注意（アプリと CLI は別物）**
 
@@ -321,7 +321,7 @@ GakuNin RDM（プロジェクト配下）/
 3. **統合解析データ** を押すと、アプリが次を自動実行します。  
    1. 第1グレーダー CSV をスキャン結果から自動検索  
    2. 第2 CSV と **`File` / `ID` の stem** で行を突合（Case+Visit キーの CLI とは異なる — §6A.1）  
-   3. 両 CSV で Caliber / Maturity **U2** を再計算  
+   3. 両 CSV で Caliber / Maturity の **Standardized スコア**を再計算  
    4. 指標ごとに **RPD ≤ 20% → 平均採用**、超過・欠損 → **NA**  
    5. 次を `integrated_output_YYYY_MM_DD/`（第1・第2と同階層）へ出力  
 

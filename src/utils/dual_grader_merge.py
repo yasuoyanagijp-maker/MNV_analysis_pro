@@ -4,7 +4,7 @@ Merge first-grader and second-reader MNV CSVs into one adopted-values CSV.
 Reuses the reading-center RPD adoption code
 (``tools/reading_center_rpd/compute_adopted_from_dual_csv.py``):
 
-1. Recompute Caliber Uniformity (U2) + Maturity (U2) on both CSVs.
+1. Recompute Standardized Caliber Uniformity + Standardized Maturity on both CSVs.
 2. Match rows by image file stem (the second reader grades the exported
    ``export/images/{institution}/{lesion_id}.png`` files, whose stems equal the
    first grader's original filenames after sanitization).
@@ -90,7 +90,9 @@ def _apply_u2_safe(
     try:
         return apply_u2(list(fieldnames), [dict(r) for r in rows], None)
     except (Exception, SystemExit) as ex:  # SystemExit: missing reference json
-        warnings.append(f"U2 recompute failed for {label}: {ex} — using original values.")
+        warnings.append(
+            f"Standardized score recompute failed for {label}: {ex} — using original values."
+        )
         return list(fieldnames), [dict(r) for r in rows]
 
 
@@ -123,7 +125,7 @@ def merge_dual_grader_csvs(
         # Legacy callers / older tool builds may still raise SystemExit.
         raise ValueError(f"CSV read failed: {ex}") from ex
 
-    # Step 1 — U2 recompute (same fixed pipeline as the reading-center tool)
+    # Step 1 — Standardized (U2) recompute (same fixed pipeline as the reading-center tool)
     fields_a, rows_a = _apply_u2_safe(fields_a, rows_a, warnings, first_label)
     fields_b, rows_b = _apply_u2_safe(fields_b, rows_b, warnings, second_label)
 
@@ -242,7 +244,7 @@ def _render_summary_md(s: Dict[str, Any]) -> str:
         "",
         "## ルール",
         "",
-        "1. 両CSVで Caliber/Maturity **U2** を再計算。",
+        "1. 両CSVで Caliber/Maturity の **Standardized スコア**を再計算。",
         "2. ファイル名（stem）で行を突合。",
         f"3. RPD ≤ {s['threshold_pct']:g}% → 採用値 = 算術平均、超過 → **NA**（再計測）。",
         "",
