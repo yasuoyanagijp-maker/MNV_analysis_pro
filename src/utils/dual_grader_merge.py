@@ -15,10 +15,15 @@ Outputs (into the second reader's output folder):
   - ``{prefix}_adopted_values.csv``  … batch-CSV schema, adopted values
   - ``{prefix}_recheck_list.csv``    … discordant major metrics (RPD > threshold)
   - ``{prefix}_summary.md``          … counts + rule statement
+  - ``{prefix}_avg_fallback.csv``    … PROVISIONAL: adopted values with NA cells
+    filled by mean(Grader1, Reader2) — reference only, NOT the official values
+    (the official resolution of NA cells is the third-reader based
+    ``triad_median_resolver`` output)
 """
 
 from __future__ import annotations
 
+import csv
 import re
 import sys
 from collections import Counter
@@ -58,6 +63,43 @@ RECHECK_FIELDS = [
 ]
 
 _QUALITATIVE_META = ("Subtype", "Pathophysiology", "Quality of analysis")
+
+# Flag columns appended (only) to the provisional avg-fallback CSV.
+AVG_FILLED_FLAG_COL = "is_avg_filled"
+AVG_FILLED_COLS_COL = "avg_filled_columns"
+
+
+def _avg_fallback_comment_lines(rpd_threshold: float) -> List[str]:
+    """Comment lines written above the header of the avg-fallback CSV.
+
+    Kept comma-free so naive CSV parsers do not see extra columns; readers that
+    honour comments can skip them (e.g. ``pandas.read_csv(..., comment='#')``).
+    """
+    return [
+        "# PROVISIONAL / REFERENCE ONLY — NOT the official adopted values.",
+        f"# NA cells (RPD > {rpd_threshold:g}% or undefined RPD) are filled here with the simple mean of Grader1 and Reader2.",
+        f"# Filled cells are flagged per row: {AVG_FILLED_FLAG_COL}=TRUE and the column names are listed in {AVG_FILLED_COLS_COL}.",
+        "# この値は暫定平均であり 正式な確定値ではありません。",
+        "# RPD閾値超過セルは両読影者が系統的にズレている可能性があり 単純平均は真値の折衷にはなりません。",
+        "# 正式な確定値は第3読影者ベースの解決結果（triad_median_resolver）を使用してください。",
+    ]
+
+
+def write_csv_with_comments(
+    path: Path,
+    fieldnames: List[str],
+    rows: List[Dict[str, Any]],
+    comment_lines: List[str],
+) -> None:
+    """Like ``write_csv`` but prepends ``#``-prefixed comment lines above the header."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+        for line in comment_lines:
+            f.write(line.rstrip("\r\n") + "\r\n")
+        w = csv.DictWriter(f, fieldnames=list(fieldnames), extrasaction="ignore")
+        w.writeheader()
+        for row in rows:
+            w.writerow({k: row.get(k, "") for k in fieldnames})
 
 
 def match_stem(filename: str) -> str:
@@ -156,6 +198,7 @@ def merge_dual_grader_csvs(
 
     # Step 3 — RPD adoption per numeric column (existing RPD<=20% rule)
     adopted_rows: List[Dict[str, Any]] = []
+    avg_fallback_rows: List[Dict[str, Any]] = []
     recheck_rows: List[Dict[str, str]] = []
     for key in common:
         ra, rb = idx_a[key], idx_b[key]
@@ -168,10 +211,15 @@ def merge_dual_grader_csvs(
             vb = str(rb.get(meta) or "").strip()
             out[meta] = va if va == vb else ("NA" if (va or vb) else "")
 
+        # Provisional avg-fallback: NA cells where both readers have a value
+        # are filled with the simple mean (reference only — see module docstring).
+        avg_filled: Dict[str, str] = {}
         for col in numeric_cols:
             a, b = to_float(ra.get(col)), to_float(rb.get(col))
             val, status, rpd_s = adopt_pair(a, b, rpd_threshold)
             out[col] = val
+            if val == "NA" and a is not None and b is not None:
+                avg_filled[col] = f"{(a + b) / 2.0:.10g}"
             if col in MAJOR_METRICS and status in ("RECHECK", "MISSING"):
                 rule = (
                     "MISSING"
@@ -193,20 +241,40 @@ def merge_dual_grader_csvs(
                 )
         adopted_rows.append(out)
 
+        avg_out = dict(out)
+        avg_out.update(avg_filled)
+        avg_out["Analyst"] = (
+            f"Dual-read mean (RPD<={rpd_threshold:g}%) + PROVISIONAL avg fill for NA (reference only)"
+        )
+        avg_out[AVG_FILLED_FLAG_COL] = "TRUE" if avg_filled else "FALSE"
+        avg_out[AVG_FILLED_COLS_COL] = ";".join(avg_filled)
+        avg_fallback_rows.append(avg_out)
+
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     if not prefix:
         prefix = f"MNV_integrated_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
     adopted_path = out_dir / f"{prefix}_adopted_values.csv"
+    avg_fallback_path = out_dir / f"{prefix}_avg_fallback.csv"
     recheck_path = out_dir / f"{prefix}_recheck_list.csv"
     summary_path = out_dir / f"{prefix}_summary.md"
 
     write_csv(adopted_path, fieldnames, adopted_rows)
+    write_csv_with_comments(
+        avg_fallback_path,
+        fieldnames + [AVG_FILLED_FLAG_COL, AVG_FILLED_COLS_COL],
+        avg_fallback_rows,
+        _avg_fallback_comment_lines(rpd_threshold),
+    )
     write_csv(recheck_path, RECHECK_FIELDS, recheck_rows)
 
     recheck_by_metric = dict(Counter(r["Metric"] for r in recheck_rows))
     files_recheck = len({r["File"] for r in recheck_rows})
+    avg_filled_cells = sum(
+        len([c for c in r.get(AVG_FILLED_COLS_COL, "").split(";") if c])
+        for r in avg_fallback_rows
+    )
     summary = {
         "first_csv": str(first_csv),
         "second_csv": str(second_csv),
@@ -221,8 +289,10 @@ def merge_dual_grader_csvs(
         "recheck_cells": len(recheck_rows),
         "recheck_files": files_recheck,
         "recheck_by_metric": recheck_by_metric,
+        "avg_filled_cells": avg_filled_cells,
         "warnings": warnings,
         "adopted_csv": str(adopted_path),
+        "avg_fallback_csv": str(avg_fallback_path),
         "recheck_csv": str(recheck_path),
         "summary_md": str(summary_path),
     }
@@ -245,6 +315,10 @@ def _render_summary_md(s: Dict[str, Any]) -> str:
         "1. 両CSVで Caliber/Maturity **U2** を再計算。",
         "2. ファイル名（stem）で行を突合。",
         f"3. RPD ≤ {s['threshold_pct']:g}% → 採用値 = 算術平均、超過 → **NA**（再計測）。",
+        "",
+        f"4. 参考出力 `{Path(s['avg_fallback_csv']).name}`: NA セルを G1/G2 の単純平均で"
+        f"補完した**暫定ファイル**（{s['avg_filled_cells']} セル補完）。正式な確定値ではなく、"
+        "確定値は第3読影者ベースの解決結果（triad_median_resolver）を使用すること。",
         "",
         "**根拠:** 20%は測定誤差を許容しつつ、過度な除外を避けるために設定した。",
         "",
