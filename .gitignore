@@ -61,3 +61,14 @@ logs/
 .env
 .env.*
 !.env.example
+
+# Visualization-boundary pilot QA (local overlays; regenerate with scripts)
+tools/roi_visualization_boundary/**/qa/
+tools/roi_visualization_boundary/**/qa_masks/
+
+# Pilot dumps that still carry original export filenames
+tools/roi_visualization_boundary/method_b/adoption/MNV_batch_methodB_*.csv
+tools/roi_visualization_boundary/method_b/adoption/*_adopted_values.csv
+tools/roi_visualization_boundary/method_b/adoption/*_recheck_list.csv
+tools/roi_visualization_boundary/method_b/adoption/comparison.json
+tools/roi_visualization_boundary/method_b/prime/method_b_prime_comparison.json

@@ -52,6 +52,19 @@ async def get_roi_view(ctx: AppContext):
         "drag_start": None,
         "crop_start": None,
         "crop_end": None,
+        # Analyze-resolution cache (same space as confirm → analyze mask)
+        "orig_w": None,
+        "orig_h": None,
+        "full_gray": None,
+        "display_base": None,  # RGB viz on canvas after 着色画像; else OCTA
+        "vessel_binary_full": None,
+        "color_mask_full": None,
+        "trim_snapshot": None,
+        "trim_refined": None,
+        "trim_refined_full": None,
+        "confirm_mask_full": None,  # analyze-res mask after Accept, until next edit
+        "trim_preview": False,
+        "computing_color": False,
     }
 
     # UI Controls
@@ -78,45 +91,253 @@ async def get_roi_view(ctx: AppContext):
         _, buf = cv2.imencode('.jpg', img_arr, [cv2.IMWRITE_JPEG_QUALITY, 80])
         return base64.b64encode(buf).decode('utf-8')
 
+    def _underlay():
+        src = state["display_base"] if state.get("display_base") is not None else state["base_img"]
+        return src.copy()
+
+    def _analyze_size():
+        ow, oh = state.get("orig_w"), state.get("orig_h")
+        if ow and oh:
+            return int(ow), int(oh)
+        inv = 1.0 / float(state["scale"] or 1.0)
+        return int(state["new_w"] * inv), int(state["new_h"] * inv)
+
+    def _display_to_full(mask_disp):
+        ow, oh = _analyze_size()
+        if mask_disp.shape[0] == oh and mask_disp.shape[1] == ow:
+            return mask_disp.copy()
+        return cv2.resize(mask_disp, (ow, oh), interpolation=cv2.INTER_NEAREST)
+
+    def _full_to_display(mask_full):
+        nw, nh = int(state["new_w"]), int(state["new_h"])
+        if mask_full.shape[0] == nh and mask_full.shape[1] == nw:
+            return mask_full.copy()
+        return cv2.resize(mask_full, (nw, nh), interpolation=cv2.INTER_NEAREST)
+
+    def _has_roi():
+        m = state.get("current_mask")
+        return m is not None and int(np.sum(m)) > 0
+
+    def _clear_color_state():
+        state["display_base"] = None
+        state["vessel_binary_full"] = None
+        state["color_mask_full"] = None
+        state["trim_snapshot"] = None
+        state["trim_refined"] = None
+        state["trim_refined_full"] = None
+        state["confirm_mask_full"] = None
+        state["trim_preview"] = False
+        state["computing_color"] = False
+
+    def _sync_color_ui():
+        sync = state.get("_sync_color_ui")
+        if sync:
+            sync()
+
     async def render_mask():
         if state["base_img"] is None or state["current_mask"] is None:
             return
-            
-        base = state["base_img"].copy()
-        mask = state["current_mask"]
-        
+
+        base = _underlay()
         overlay = base.copy()
-        # ROI領域を緑色の半透明で表示
-        overlay[mask == 255] = [0, 255, 0] # BGR format
-        
-        blended = cv2.addWeighted(overlay, 0.4, base, 0.6, 0)
+        if (
+            state.get("trim_preview")
+            and state.get("trim_snapshot") is not None
+            and state.get("trim_refined") is not None
+        ):
+            orig = state["trim_snapshot"]
+            refined = state["trim_refined"]
+            if orig.shape[:2] == overlay.shape[:2] and refined.shape[:2] == overlay.shape[:2]:
+                removed = (orig > 0) & (refined == 0)
+                kept = refined > 0
+                overlay[removed] = [0, 0, 255]
+                overlay[kept] = [0, 255, 0]
+            blended = cv2.addWeighted(overlay, 0.45, base, 0.55, 0)
+        else:
+            mask = state["current_mask"]
+            overlay[mask == 255] = [0, 255, 0]
+            blended = cv2.addWeighted(overlay, 0.4, base, 0.6, 0)
         img_control.src_base64 = encode_img_b64(blended)
-        
+
         undo_button.disabled = len(state["history_masks"]) <= 1
+        _sync_color_ui()
         ctx.page.update()
 
-    async def save_state(new_mask):
+    async def save_state(new_mask, *, from_trim=False):
+        if not from_trim:
+            state["trim_snapshot"] = None
+            state["trim_refined"] = None
+            state["trim_refined_full"] = None
+            state["confirm_mask_full"] = None
         state["history_masks"].append(new_mask.copy())
         state["current_mask"] = new_mask.copy()
         await render_mask()
 
     async def handle_undo(e):
+        if state.get("trim_preview"):
+            await handle_undo_trim(e)
+            return
         if len(state["history_masks"]) > 1:
             state["history_masks"].pop() # Remove current state
             state["current_mask"] = state["history_masks"][-1].copy()
+            state["confirm_mask_full"] = None
+            state["trim_snapshot"] = None
+            state["trim_refined"] = None
+            state["trim_refined_full"] = None
             await render_mask()
             await ctx.add_to_console("Undo performed.", "INFO")
 
     async def handle_reset(e):
         if state["base_img"] is not None:
-            blended = state["base_img"].copy()
+            _clear_color_state()
             state["history_masks"].clear()
             blank_mask = np.zeros((state["new_h"], state["new_w"]), dtype=np.uint8)
             await save_state(blank_mask)
             await ctx.add_to_console("Mask reset.", "INFO")
 
+    async def handle_color_preview(e):
+        if state.get("computing_color") or state.get("trim_preview"):
+            return
+        if not _has_roi() or state.get("full_gray") is None:
+            status_text.value = "⚠️ 先にROIを描いてください。"
+            status_text.color = Colors.RED_400
+            ctx.page.update()
+            return
+
+        state["computing_color"] = True
+        color_btn.disabled = True
+        trim_btn.disabled = True
+        status_text.value = "着色画像を作成中（血管検出）..."
+        status_text.color = Colors.AMBER_400
+        color_progress.visible = True
+        ctx.page.update()
+
+        full_roi = _display_to_full(state["current_mask"])
+        gray = state["full_gray"]
+        cached_binary = state.get("vessel_binary_full")
+        try:
+            scale_sess = ctx.page.session.get("scale") or 6.0
+            scale_mm = float(scale_sess)
+        except (TypeError, ValueError):
+            scale_mm = 6.0
+        pixel_size_mm = scale_mm / float(gray.shape[1])
+
+        def _compute():
+            from src.ariake_octa.mnv.color_mask import compute_rgb_and_color_mask
+
+            return compute_rgb_and_color_mask(
+                gray,
+                full_roi,
+                vessel_binary=cached_binary,
+                pixel_size_mm=pixel_size_mm,
+            )
+
+        try:
+            loop = asyncio.get_event_loop()
+            binary, rgb, color_mask = await loop.run_in_executor(None, _compute)
+        except Exception as ex:
+            state["computing_color"] = False
+            color_progress.visible = False
+            status_text.value = f"⚠️ 着色画像の作成に失敗しました: {ex}"
+            status_text.color = Colors.RED_400
+            _sync_color_ui()
+            ctx.page.update()
+            await ctx.add_to_console(f"着色画像 failed: {ex}", "ERROR")
+            return
+
+        state["vessel_binary_full"] = binary
+        state["color_mask_full"] = color_mask
+        rgb_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        state["display_base"] = cv2.resize(
+            rgb_bgr, (state["new_w"], state["new_h"]), interpolation=cv2.INTER_AREA
+        )
+        state["computing_color"] = False
+        color_progress.visible = False
+        status_text.value = "着色画像を表示しています。マスクは未変更です。余白trim、またはこれまでどおり手動で編集できます。"
+        status_text.color = TEXT_MUTED
+        await render_mask()
+        await ctx.add_to_console("着色画像を表示（ROIマスクは未変更）。", "INFO")
+
+    async def handle_trim(e):
+        if state.get("trim_preview") or state.get("computing_color"):
+            return
+        color_full = state.get("color_mask_full")
+        if color_full is None or not _has_roi():
+            status_text.value = "⚠️ 先に着色画像を作成してください。"
+            status_text.color = Colors.RED_400
+            ctx.page.update()
+            return
+
+        full_roi = _display_to_full(state["current_mask"])
+        if color_full.shape[:2] != full_roi.shape[:2]:
+            color_u8 = cv2.resize(
+                (color_full.astype(np.uint8) * 255),
+                (full_roi.shape[1], full_roi.shape[0]),
+                interpolation=cv2.INTER_NEAREST,
+            )
+            color_bool = color_u8 > 0
+        else:
+            color_bool = color_full.astype(bool)
+        refined_full = np.where(
+            color_bool & (full_roi > 0), 255, 0
+        ).astype(np.uint8)
+        if int(np.sum(refined_full)) == 0:
+            status_text.value = "⚠️ 着色領域とROIの重なりがありません。手動で調整してください。"
+            status_text.color = Colors.RED_400
+            ctx.page.update()
+            return
+
+        state["trim_snapshot"] = state["current_mask"].copy()
+        state["trim_refined"] = _full_to_display(refined_full)
+        state["trim_refined_full"] = refined_full
+        state["trim_preview"] = True
+        status_text.value = "緑が残す領域、赤が除く余白です。採用するか、取り消してください。"
+        status_text.color = TEXT_MUTED
+        await render_mask()
+        await ctx.add_to_console("余白trim プレビュー（未採用）。", "INFO")
+
+    async def handle_accept_trim(e):
+        refined = state.get("trim_refined")
+        if refined is None:
+            return
+        state["trim_preview"] = False
+        state["confirm_mask_full"] = state.get("trim_refined_full")
+        await save_state(refined, from_trim=True)
+        status_text.value = "余白をtrimしました。必要なら手動で削る／追加してください。"
+        status_text.color = Colors.GREEN_400
+        await ctx.add_to_console("余白trim を採用しました。", "SUCCESS")
+
+    async def handle_undo_trim(e):
+        snapshot = state.get("trim_snapshot")
+        if snapshot is None:
+            state["trim_preview"] = False
+            state["trim_refined"] = None
+            state["trim_refined_full"] = None
+            await render_mask()
+            return
+        if state.get("trim_preview"):
+            state["trim_preview"] = False
+            state["trim_refined"] = None
+            state["trim_refined_full"] = None
+            state["trim_snapshot"] = None
+            await render_mask()
+            status_text.value = "trimを取り消しました。マスクは元のままです。"
+            status_text.color = TEXT_MUTED
+            await ctx.add_to_console("余白trim プレビューを取り消しました。", "INFO")
+            return
+        await save_state(snapshot, from_trim=True)
+        state["trim_snapshot"] = None
+        state["trim_refined"] = None
+        state["trim_refined_full"] = None
+        state["confirm_mask_full"] = None
+        status_text.value = "trim前のマスクに戻しました。"
+        status_text.color = TEXT_MUTED
+        await ctx.add_to_console("余白trim を元に戻しました。", "INFO")
+
     # Interaction Events
     async def on_pan_start(e: ft.DragStartEvent):
+        if state.get("trim_preview") or state.get("computing_color"):
+            return
         if state["mode"] == "crop":
             state["drag_start"] = True
             state["crop_start"] = (e.local_x, e.local_y)
@@ -155,7 +376,7 @@ async def get_roi_view(ctx: AppContext):
                 cv2.polylines(temp_mask, [pts], False, 255, 2)
                 
                 # Temporary render
-                base = state["base_img"].copy()
+                base = _underlay()
                 overlay = base.copy()
                 overlay[temp_mask == 255] = [0, 255, 0]
                 blended = cv2.addWeighted(overlay, 0.4, base, 0.6, 0)
@@ -194,7 +415,7 @@ async def get_roi_view(ctx: AppContext):
                         temp_mask[noise_mask == 255] = 0
                         
                         # Live preview
-                        base = state["base_img"].copy()
+                        base = _underlay()
                         overlay = base.copy()
                         overlay[temp_mask == 255] = [0, 255, 0]
                         blended = cv2.addWeighted(overlay, 0.4, base, 0.6, 0)
@@ -213,6 +434,8 @@ async def get_roi_view(ctx: AppContext):
             await asyncio.sleep(0.05)
 
     async def on_tap_down(e: ft.ContainerTapEvent):
+        if state.get("trim_preview") or state.get("computing_color"):
+            return
         if state["mode"] != "erase" or state["base_img"] is None: return
         x, y = int(e.local_x), int(e.local_y)
         
@@ -326,7 +549,84 @@ async def get_roi_view(ctx: AppContext):
     has_orig = ctx.page.session.get("original_target_path") is not None
     redo_crop_btn = ft.ElevatedButton("🔙 元画像に戻す", on_click=redo_crop, visible=has_orig, bgcolor=Colors.TRANSPARENT, color=TEXT_MUTED)
 
+    color_progress = ft.ProgressRing(width=18, height=18, stroke_width=2, color=PRIMARY, visible=False)
+    color_btn = ft.ElevatedButton(
+        "着色画像",
+        icon=Icons.PALETTE,
+        bgcolor=Colors.TRANSPARENT,
+        color=TEXT_MUTED,
+        disabled=True,
+        on_click=handle_color_preview,
+    )
+    trim_disclaimer = ft.Text(
+        "着色のない余白だけを除きます。背景血管の削除と、切り落とした血管の追加は、これまでどおり手動です。",
+        size=11,
+        color=TEXT_MUTED,
+        visible=False,
+    )
+    trim_btn = ft.ElevatedButton(
+        "余白trim",
+        icon=Icons.CONTENT_CUT,
+        bgcolor=Colors.TRANSPARENT,
+        color=TEXT_MUTED,
+        disabled=True,
+        visible=False,
+        on_click=handle_trim,
+    )
+    after_caption = ft.Text(
+        "緑=残す領域 / 赤=除く余白",
+        size=11,
+        color=TEXT_MUTED,
+        visible=False,
+    )
+    accept_trim_btn = ft.ElevatedButton(
+        "採用",
+        icon=Icons.CHECK,
+        bgcolor=PRIMARY,
+        color=Colors.BLACK,
+        visible=False,
+        on_click=handle_accept_trim,
+    )
+    undo_trim_btn = ft.ElevatedButton(
+        "取り消す",
+        icon=Icons.UNDO,
+        bgcolor=Colors.TRANSPARENT,
+        color=TEXT_MUTED,
+        visible=False,
+        on_click=handle_undo_trim,
+    )
+
+    def _sync_color_ui_impl():
+        has_roi = _has_roi()
+        computing = bool(state.get("computing_color"))
+        preview = bool(state.get("trim_preview"))
+        crop = state.get("mode") == "crop"
+        has_color = state.get("color_mask_full") is not None
+        color_btn.disabled = (not has_roi) or computing or preview or crop
+        color_btn.bgcolor = PRIMARY if has_color and not crop else Colors.TRANSPARENT
+        color_btn.color = Colors.BLACK if has_color and not crop else TEXT_MUTED
+        trim_btn.visible = has_color and not crop
+        trim_btn.disabled = (not has_color) or (not has_roi) or computing or preview or crop
+        trim_btn.bgcolor = Colors.AMBER_400 if preview else Colors.TRANSPARENT
+        trim_btn.color = Colors.BLACK if preview else TEXT_MUTED
+        trim_disclaimer.visible = has_color and not crop
+        after_caption.visible = preview
+        accept_trim_btn.visible = preview
+        undo_trim_btn.visible = preview or (
+            state.get("trim_snapshot") is not None and not computing and not crop
+        )
+        color_progress.visible = computing
+
+    state["_sync_color_ui"] = _sync_color_ui_impl
+
     async def set_mode(new_mode):
+        cancelled_preview = False
+        if state.get("trim_preview") and new_mode in ("draw", "erase"):
+            state["trim_preview"] = False
+            state["trim_refined"] = None
+            state["trim_refined_full"] = None
+            state["trim_snapshot"] = None
+            cancelled_preview = True
         state["mode"] = new_mode
         if new_mode == "crop":
             crop_btn.bgcolor = Colors.BLUE_400
@@ -363,7 +663,11 @@ async def get_roi_view(ctx: AppContext):
             selection_box.visible = False
             
         status_text.color = TEXT_MUTED
-        ctx.page.update()
+        if cancelled_preview:
+            await render_mask()
+        else:
+            _sync_color_ui()
+            ctx.page.update()
 
     mode_tabs = ft.Column([crop_btn, draw_btn, erase_btn], spacing=6)
     action_tabs = ft.Row([confirm_crop_btn, redo_crop_btn], wrap=True, spacing=10)
@@ -415,28 +719,33 @@ async def get_roi_view(ctx: AppContext):
     )
 
     async def confirm_roi(e):
+        if state.get("trim_preview"):
+            status_text.value = "⚠️ 余白trimの採用または取り消しを先に選んでください。"
+            status_text.color = Colors.RED_400
+            ctx.page.update()
+            return
+        if state.get("computing_color"):
+            return
         if state["current_mask"] is None or np.sum(state["current_mask"]) == 0:
             status_text.value = "⚠️ ROIが空です。領域を選択してください。"
             status_text.color = Colors.RED_400
             ctx.page.update()
             return
-            
-        inv_scale = 1.0 / state["scale"]
-        orig_w = int(state["new_w"] * inv_scale)
-        orig_h = int(state["new_h"] * inv_scale)
-        full_mask = cv2.resize(state["current_mask"], (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
-        
+
+        full_mask = state.get("confirm_mask_full")
+        if full_mask is None:
+            full_mask = _display_to_full(state["current_mask"])
         _, buf = cv2.imencode('.png', full_mask)
         mask_b64 = base64.b64encode(buf).decode('utf-8')
-        
-        pts = np.argwhere(state["current_mask"] > 0)
+
+        pts = np.argwhere(full_mask > 0)
         y_min, x_min = pts.min(axis=0)
         y_max, x_max = pts.max(axis=0)
         roi = {
-            "x": int(x_min * inv_scale), 
-            "y": int(y_min * inv_scale),
-            "w": int((x_max - x_min) * inv_scale), 
-            "h": int((y_max - y_min) * inv_scale),
+            "x": int(x_min),
+            "y": int(y_min),
+            "w": int(x_max - x_min),
+            "h": int(y_max - y_min),
         }
         
         ctx.page.session.set("roi", roi)
@@ -451,7 +760,9 @@ async def get_roi_view(ctx: AppContext):
 
         clean_path = str(target_path).strip().strip("'").strip('"')
         try:
-            if state["base_img"] is not None and state.get("scale"):
+            if state.get("orig_w") and state.get("orig_h"):
+                orig_w, orig_h = int(state["orig_w"]), int(state["orig_h"])
+            elif state["base_img"] is not None and state.get("scale"):
                 inv_scale = 1.0 / float(state["scale"])
                 orig_w = int(state["new_w"] * inv_scale)
                 orig_h = int(state["new_h"] * inv_scale)
@@ -575,6 +886,14 @@ async def get_roi_view(ctx: AppContext):
             state["new_w"] = new_w
             state["new_h"] = new_h
             state["scale"] = sc
+            state["orig_w"] = orig_w
+            state["orig_h"] = orig_h
+            state["full_gray"] = (
+                cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
+                if base_img.ndim == 3
+                else base_img.copy()
+            )
+            _clear_color_state()
             
             # Initialize empty mask and push to history
             blank_mask = np.zeros((new_h, new_w), dtype=np.uint8)
@@ -671,11 +990,18 @@ async def get_roi_view(ctx: AppContext):
                     action_tabs,
                     ft.Row([undo_button, reset_button]),
                     ft.Divider(height=8, color=Colors.TRANSPARENT),
+                    ft.Row([color_btn, color_progress], spacing=8),
+                    trim_disclaimer,
+                    trim_btn,
+                    after_caption,
+                    ft.Row([accept_trim_btn, undo_trim_btn], spacing=8),
+                    ft.Divider(height=8, color=Colors.TRANSPARENT),
                     ft.Container(
                         content=ft.Column([
                             ft.Row([ft.Icon(Icons.CROP_SQUARE, color=PRIMARY, size=18), ft.Text("1. ドラッグして囲む", color=Colors.WHITE, size=12)]),
                             ft.Row([ft.Icon(Icons.BACKSPACE, color=Colors.RED_400, size=18), ft.Text("2. 黒い背景をクリックして削る", color=Colors.WHITE, size=12)]),
-                            ft.Row([ft.Icon(Icons.UNDO, color=Colors.AMBER_400, size=18), ft.Text("3. ミスしたらUndoで戻る", color=Colors.WHITE, size=12)])
+                            ft.Row([ft.Icon(Icons.UNDO, color=Colors.AMBER_400, size=18), ft.Text("3. ミスしたらUndoで戻る", color=Colors.WHITE, size=12)]),
+                            ft.Row([ft.Icon(Icons.PALETTE, color=PRIMARY, size=18), ft.Text("4. 着色画像 → 余白trim（任意）", color=Colors.WHITE, size=12)]),
                         ], spacing=6),
                         padding=12,
                         bgcolor=Colors.with_opacity(0.05, Colors.WHITE),

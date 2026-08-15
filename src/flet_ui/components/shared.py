@@ -331,7 +331,12 @@ class BackendClient:
         else:
             writer.writerow(["Metric", "Value", "Unit"])
             writer.writerow(["MNV Area", data.get("mnv_area_mm2", 0), "mm2"])
-            writer.writerow(["Vessel Density", data.get("vessel_density", 0), "%"])
+            vd = data.get("vessel_density", 0)
+            try:
+                vd = float(vd) * 100.0
+            except (TypeError, ValueError):
+                pass
+            writer.writerow(["Vessel Density", vd, "%"])
             writer.writerow(["Fractal Dimension", data.get("fractal_dimension", 0), "FD"])
         
         return output.getvalue()

@@ -30,15 +30,18 @@ def _subtype_display(data: dict, pm: dict) -> str:
     return str(data.get("mnv_subtype") or pm.get("mnv_subtype") or _dash())
 
 
-def _avdi_display(data: dict) -> str:
+def _vsl_density_display(data: dict) -> str:
+    """ImageJ vessel_density is Vsl/MNV ratio (0–1); PDF shows percent."""
     pm = metrics_from_session_result_row(data)
-    vd, mi = pm.get("vessel_density"), pm.get("mean_intensity")
-    if vd is not None and mi is not None:
-        try:
-            return f"{round(float(vd) * float(mi) * 100, 2):.2f}"
-        except (TypeError, ValueError):
-            pass
-    return _dash()
+    vd = pm.get("vessel_density")
+    if vd is None:
+        vd = data.get("vessel_density")
+    if vd is None:
+        return _dash()
+    try:
+        return f"{round(float(vd) * 100, 2):.2f} %"
+    except (TypeError, ValueError):
+        return _dash()
 
 
 def _float_metric(pm: dict, key: str, digits: int = 2) -> str:
@@ -561,7 +564,7 @@ def generate_pdf_report(data: dict, output_path: str) -> None:
         _metrics_table_row(pdf, "Area (mm2)", _round_fmt(data.get("mnv_area_mm2", 0)))
         _metrics_table_row(pdf, "Subtype", _subtype_display(data, pm))
         _metrics_table_row(pdf, "Complexity", _round_fmt(data.get("complexity_score", 0)))
-        _metrics_table_row(pdf, "Vsl Density", _avdi_display(data))
+        _metrics_table_row(pdf, "Vsl Density", _vsl_density_display(data))
     pdf.ln(8)
 
     # --- Advanced Morphometry ---

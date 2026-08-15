@@ -1,0 +1,76 @@
+{
+  "n_runs": 36,
+  "displacements_um": [
+    0,
+    5,
+    10,
+    20,
+    30,
+    50
+  ],
+  "densify_spacing_px": 1.0,
+  "densify": true,
+  "move_rule": "bounded_normal_snap_to_pass1_colormask",
+  "sign_flip_rejected": true,
+  "enable_color_snap": "documented_only",
+  "devices": [
+    {
+      "grader": "g1",
+      "case": "abe 20250409",
+      "device": "CIRRUS",
+      "stratum": "small_3mm",
+      "fov_mm": 3.0,
+      "px_per_mm": 150.0
+    },
+    {
+      "grader": "g1",
+      "case": "abe 20260225",
+      "device": "CIRRUS",
+      "stratum": "small_3mm",
+      "fov_mm": 3.0,
+      "px_per_mm": 150.0
+    },
+    {
+      "grader": "g1",
+      "case": "asai 20230314",
+      "device": "CIRRUS",
+      "stratum": "small_3mm",
+      "fov_mm": 3.0,
+      "px_per_mm": 150.0
+    },
+    {
+      "grader": "g2",
+      "case": "abe 20250409",
+      "device": "CIRRUS",
+      "stratum": "small_3mm",
+      "fov_mm": 3.0,
+      "px_per_mm": 150.0
+    },
+    {
+      "grader": "g2",
+      "case": "abe 20260225",
+      "device": "CIRRUS",
+      "stratum": "small_3mm",
+      "fov_mm": 3.0,
+      "px_per_mm": 150.0
+    },
+    {
+      "grader": "g2",
+      "case": "asai 20230314",
+      "device": "CIRRUS",
+      "stratum": "small_3mm",
+      "fov_mm": 3.0,
+      "px_per_mm": 150.0
+    }
+  ],
+  "unique_devices": [
+    "CIRRUS"
+  ],
+  "unique_strata": [
+    "small_3mm"
+  ],
+  "unique_px_per_mm": [
+    150.0
+  ],
+  "cross_device_validation": false
+}
