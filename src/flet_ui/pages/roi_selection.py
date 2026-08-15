@@ -68,6 +68,9 @@ async def get_roi_view(ctx: AppContext):
         alignment=ft.alignment.center_left,
         padding=ft.padding.symmetric(horizontal=16),
     )
+    # Faint fill for non-selected mode buttons so their clickable area stays
+    # visible (fully transparent buttons looked like plain text).
+    INACTIVE_BG = Colors.with_opacity(0.07, Colors.WHITE)
 
     # UI Controls
     status_text = ft.Text("ドラッグしてROI（抽出領域）の枠を作成してください", color=TEXT_MUTED)
@@ -336,7 +339,7 @@ async def get_roi_view(ctx: AppContext):
         width=PANEL_BTN_W,
         height=BTN_H,
         style=panel_btn_style,
-        bgcolor=Colors.TRANSPARENT,
+        bgcolor=INACTIVE_BG,
         color=TEXT_MUTED,
         on_click=lambda e: ctx.page.run_task(set_mode, "crop"),
     )
@@ -358,7 +361,7 @@ async def get_roi_view(ctx: AppContext):
         width=PANEL_BTN_W,
         height=BTN_H,
         style=panel_btn_style,
-        bgcolor=Colors.TRANSPARENT,
+        bgcolor=INACTIVE_BG,
         color=TEXT_MUTED,
         on_click=lambda e: ctx.page.run_task(set_mode, "erase"),
     )
@@ -392,9 +395,9 @@ async def get_roi_view(ctx: AppContext):
         if new_mode == "crop":
             crop_btn.bgcolor = Colors.BLUE_400
             crop_btn.color = Colors.WHITE
-            draw_btn.bgcolor = Colors.TRANSPARENT
+            draw_btn.bgcolor = INACTIVE_BG
             draw_btn.color = TEXT_MUTED
-            erase_btn.bgcolor = Colors.TRANSPARENT
+            erase_btn.bgcolor = INACTIVE_BG
             erase_btn.color = TEXT_MUTED
             status_text.value = "ドラッグして必要な部分（解析領域）を四角く囲んでください"
             confirm_crop_btn.visible = True
@@ -403,21 +406,21 @@ async def get_roi_view(ctx: AppContext):
             state["crop_start"] = None
             state["crop_end"] = None
         elif new_mode == "draw":
-            crop_btn.bgcolor = Colors.TRANSPARENT
+            crop_btn.bgcolor = INACTIVE_BG
             crop_btn.color = TEXT_MUTED
             draw_btn.bgcolor = PRIMARY
             draw_btn.color = Colors.BLACK
-            erase_btn.bgcolor = Colors.TRANSPARENT
+            erase_btn.bgcolor = INACTIVE_BG
             erase_btn.color = TEXT_MUTED
             status_text.value = "ドラッグしてROI（抽出領域）をフリーハンドで囲んでください"
             confirm_crop_btn.visible = False
             selection_box.visible = False
         else:
-            crop_btn.bgcolor = Colors.TRANSPARENT
+            crop_btn.bgcolor = INACTIVE_BG
             crop_btn.color = TEXT_MUTED
             erase_btn.bgcolor = Colors.RED_400
             erase_btn.color = Colors.WHITE
-            draw_btn.bgcolor = Colors.TRANSPARENT
+            draw_btn.bgcolor = INACTIVE_BG
             draw_btn.color = TEXT_MUTED
             status_text.value = "緑の領域内の「黒い隙間」を丸ごと長押ししてノイズを除去してください"
             confirm_crop_btn.visible = False
