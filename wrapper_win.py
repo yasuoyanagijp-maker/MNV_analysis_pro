@@ -59,11 +59,16 @@ else:
         sys.stderr = open(_log, "a", encoding="utf-8", buffering=1)
 
 def get_free_port() -> int:
-    """Finds an available ephemeral port."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        s.listen(1)
-        return int(s.getsockname()[1])
+    """Finds an available ephemeral port (shared with src.utils.local_ports)."""
+    try:
+        from src.utils.local_ports import get_free_port as _shared
+
+        return _shared()
+    except ImportError:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            s.listen(1)
+            return int(s.getsockname()[1])
 
 def run_api_server(port: int):
     """Worker process: Runs the FastAPI backend via uvicorn."""
@@ -110,8 +115,10 @@ if __name__ == "__main__":
     os.environ.setdefault("ARIAKE_SAVE_STAGES", "false")
     os.environ.setdefault("ARIAKE_ENABLE_ROI_REFINEMENT", "false")
     
-    api_port = get_free_port()
-    flet_port = get_free_port()
+    _api_raw = (os.environ.get("ARIAKE_API_PORT") or "").strip()
+    _flet_raw = (os.environ.get("FLET_PORT") or "").strip()
+    api_port = int(_api_raw) if _api_raw.isdigit() else get_free_port()
+    flet_port = int(_flet_raw) if _flet_raw.isdigit() else get_free_port()
 
     # Share ports via environment for Flet frontend and BackendClient
     os.environ["ARIAKE_API_PORT"] = str(api_port)
@@ -154,7 +161,7 @@ if __name__ == "__main__":
             import ctypes
 
             msg = f"{type(e).__name__}: {e}"[:900]
-            ctypes.windll.user32.MessageBoxW(0, msg, "ARIAKE OCTA", 0x10)
+            ctypes.windll.user32.MessageBoxW(0, msg, "ARIAKE OCTA Pro", 0x10)
         except Exception:
             pass
     finally:

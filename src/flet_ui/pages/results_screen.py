@@ -70,6 +70,7 @@ from src.utils.mnv_results_chart import (
     build_batch_metric_chart_pdf,
     build_batch_metric_chart_png_base64,
     chartable_numeric_columns,
+    format_summary_table_cell,
     imagej_rows_from_batch,
     series_for_metric,
     smart_y_bounds,
@@ -1239,9 +1240,13 @@ async def get_results_view(ctx: AppContext):
                                             cells=[
                                                 ft.DataCell(
                                                     ft.Text(
-                                                        str(row.get(col, ""))[:48],
+                                                        format_summary_table_cell(
+                                                            col, row.get(col, "")
+                                                        )[:48],
                                                         size=11,
-                                                        tooltip=str(row.get(col, "")),
+                                                        tooltip=format_summary_table_cell(
+                                                            col, row.get(col, "")
+                                                        ),
                                                     ),
                                                     on_tap=_open_summary_row_detail(idx)
                                                     if col == "File"

@@ -1,5 +1,6 @@
-# dmgbuild_settings.py — ARIAKE OCTA DMG レイアウト設定
-# 使用方法: dmgbuild -s dmgbuild_settings.py "ARIAKE OCTA" dist/ARIAKE_OCTA.dmg
+# dmgbuild_settings.py — ARIAKE OCTA Pro DMG レイアウト設定
+# 使用方法: dmgbuild -s dmgbuild_settings.py "ARIAKE OCTA Pro" dist/ARIAKE_OCTA.dmg
+# （.app / .zip ファイル名 ARIAKE_OCTA は配布互換のため維持。表示名は Pro）
 
 import os
 from pathlib import Path
@@ -12,7 +13,7 @@ APP_PATH = str(DIST_DIR / "ARIAKE_OCTA.app")
 
 # ── DMG 基本設定 ──────────────────────────────────────────────────────────────
 application = APP_PATH
-appname = "ARIAKE OCTA"
+appname = "ARIAKE OCTA Pro"
 format = "UDZO"          # 圧縮フォーマット（配布用）
 compression_level = 9
 size = None              # 自動計算

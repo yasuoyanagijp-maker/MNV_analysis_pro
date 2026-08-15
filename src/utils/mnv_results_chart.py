@@ -7,6 +7,7 @@ from __future__ import annotations
 import io
 import math
 import re
+import textwrap
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from fpdf import FPDF
@@ -167,6 +168,22 @@ def smart_y_bounds(values: Sequence[float]) -> Tuple[float, float]:
     return lo - margin, hi + margin
 
 
+def format_summary_table_cell(col: str, val: Any) -> str:
+    """Format a Results Table (CSV columns) cell; numerics to 1 decimal."""
+    if col in _NON_NUMERIC_CSV:
+        return "" if val is None else str(val)
+    parsed = _parse_float(val)
+    if parsed is None:
+        return "" if val is None else str(val)
+    return f"{round(parsed, 1):.1f}"
+
+
+def _wrap_axis_label(text: str, width: int = 24) -> str:
+    """Wrap long Y-axis labels so they stay inside the figure."""
+    s = str(text or "").strip() or "Metric"
+    return "\n".join(textwrap.wrap(s, width=width, break_long_words=False)) or s
+
+
 def _truncate_label(text: str, max_len: int = 22) -> str:
     s = str(text or "—").strip() or "—"
     if len(s) <= max_len:
@@ -249,7 +266,7 @@ def build_batch_metric_chart_png(
     batch_results: Sequence[Dict[str, Any]],
     metric_col: str,
     *,
-    title: str = "ARIAKE OCTA — MNV Batch Chart",
+    title: str = "ARIAKE OCTA Pro — MNV Batch Chart",
     theme: str = "dark",
     dpi: int = 144,
     width_px: int = CHART_PNG_WIDTH_PX,
@@ -300,7 +317,7 @@ def build_batch_metric_chart_png(
         ax.text(
             rect.get_x() + rect.get_width() / 2,
             float(v),
-            f"{v:.3g}" if abs(v) < 1000 else f"{v:.0f}",
+            f"{round(float(v), 1):.1f}",
             ha="center",
             va="bottom",
             fontsize=15,
@@ -324,16 +341,12 @@ def build_batch_metric_chart_png(
     ax.tick_params(axis="y", labelsize=15, colors=colors["tick"], length=5, width=1)
     ax.tick_params(axis="x", length=0, pad=14)
 
-    ax.set_ylabel(display_metric, fontsize=16, color=colors["label"], labelpad=12)
-    ax.set_title(
-        f"{title}\n{display_metric}",
-        fontsize=19,
-        color=colors["title"],
-        fontweight="bold",
-        pad=14,
-        loc="left",
-        linespacing=1.3,
-    )
+    # Metric name only on Y-axis (no product banner title on the PNG).
+    # Wrap + wider left margin so the label is not clipped by the figure edge.
+    ylabel = _wrap_axis_label(display_metric, width=22)
+    ax.set_ylabel(ylabel, fontsize=14, color=colors["label"], labelpad=10)
+    # `title` kept for API/PDF callers; on-screen chart omits it.
+    _ = title
 
     # Headroom for value labels above bars
     span = y_max - y_min
@@ -349,8 +362,9 @@ def build_batch_metric_chart_png(
         ax.spines[spine].set_color(colors["spine"])
         ax.spines[spine].set_linewidth(1.15)
 
-    # Extra bottom for 3-line x tick labels; top pad keeps title unclipped
-    fig.subplots_adjust(left=0.09, right=0.985, top=0.84, bottom=0.34)
+    # Left room for wrapped ylabel; bottom for 3-line x ticks
+    left_m = 0.20 if len(display_metric) > 28 else 0.14
+    fig.subplots_adjust(left=left_m, right=0.985, top=0.94, bottom=0.34)
 
     png_buf = io.BytesIO()
     # Fixed canvas size — no bbox_inches='tight' (that shrinks text on screen)
@@ -369,7 +383,7 @@ def build_batch_metric_chart_png_base64(
     batch_results: Sequence[Dict[str, Any]],
     metric_col: str,
     *,
-    title: str = "ARIAKE OCTA — MNV Batch Chart",
+    title: str = "ARIAKE OCTA Pro — MNV Batch Chart",
     theme: str = "dark",
 ) -> str:
     """PNG chart as ASCII base64 for ft.Image(src_base64=...)."""
@@ -392,7 +406,7 @@ def build_batch_metric_chart_pdf(
     batch_results: Sequence[Dict[str, Any]],
     metric_col: str,
     *,
-    title: str = "ARIAKE OCTA — MNV Batch Chart",
+    title: str = "ARIAKE OCTA Pro — MNV Batch Chart",
 ) -> bytes:
     """Render a bar chart for one CSV metric and return PDF bytes (light print theme)."""
     imagej_rows = imagej_rows_from_batch(batch_results)

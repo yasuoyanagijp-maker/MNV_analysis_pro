@@ -99,4 +99,8 @@ app = BUNDLE(
     name='ARIAKE_OCTA.app',
     icon=None,
     bundle_identifier='com.ariake.octa',
+    info_plist={
+        "CFBundleDisplayName": "ARIAKE OCTA Pro",
+        "CFBundleName": "ARIAKE OCTA Pro",
+    },
 )
