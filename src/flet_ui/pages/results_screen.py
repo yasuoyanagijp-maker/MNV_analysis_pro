@@ -74,6 +74,7 @@ from src.utils.mnv_results_chart import (
     imagej_rows_from_batch,
     series_for_metric,
     smart_y_bounds,
+    summary_table_header_label,
 )
 from src.utils.grdm_sync_ui import make_grdm_sync_button
 
@@ -1231,7 +1232,12 @@ async def get_results_view(ctx: AppContext):
                                 content=ft.DataTable(
                                     columns=[
                                         ft.DataColumn(
-                                            ft.Text(col, size=11, weight=FontWeight.W_600)
+                                            ft.Text(
+                                                summary_table_header_label(col),
+                                                size=11,
+                                                weight=FontWeight.W_600,
+                                                tooltip=col,
+                                            )
                                         )
                                         for col in SUMMARY_TABLE_COLUMNS
                                     ],
