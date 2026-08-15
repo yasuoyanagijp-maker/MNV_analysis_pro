@@ -58,6 +58,19 @@ def get_free_port() -> int:
             return int(s.getsockname()[1])
 
 
+def _resolve_launch_port(env_key: str) -> int:
+    """Prefer env port when free; bump if busy; else ephemeral."""
+    try:
+        from src.utils.local_ports import resolve_env_port_or_ephemeral
+
+        return resolve_env_port_or_ephemeral(env_key)
+    except ImportError:
+        raw = (os.environ.get(env_key) or "").strip()
+        if raw.isdigit():
+            return int(raw)
+        return get_free_port()
+
+
 def run_api_server(port: int):
     """Worker process: Runs the FastAPI backend via uvicorn."""
     import uvicorn
@@ -96,12 +109,10 @@ if __name__ == "__main__":
     os.environ.setdefault("ARIAKE_SAVE_STAGES", "false")
     os.environ.setdefault("ARIAKE_ENABLE_ROI_REFINEMENT", "false")
     
-    # Ephemeral ports (packaged + local dist-parity). Optional explicit override
-    # via ARIAKE_API_PORT / FLET_PORT for debugging only.
-    _api_raw = (os.environ.get("ARIAKE_API_PORT") or "").strip()
-    _flet_raw = (os.environ.get("FLET_PORT") or "").strip()
-    api_port = int(_api_raw) if _api_raw.isdigit() else get_free_port()
-    flet_port = int(_flet_raw) if _flet_raw.isdigit() else get_free_port()
+    # Ephemeral ports by default. If ARIAKE_API_PORT / FLET_PORT are set for
+    # debugging, still fall back when those ports are already taken.
+    api_port = _resolve_launch_port("ARIAKE_API_PORT")
+    flet_port = _resolve_launch_port("FLET_PORT")
 
     # Share ports via environment for Flet frontend and BackendClient
     os.environ["ARIAKE_API_PORT"] = str(api_port)

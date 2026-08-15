@@ -65,6 +65,28 @@ def pick_listen_port(
     return get_free_port(host=host)
 
 
+def resolve_env_port_or_ephemeral(env_key: str, env: Optional[dict] = None) -> int:
+    """
+    If ``env_key`` is a numeric port, use it when free (else bump).
+    If unset, pick an ephemeral free port — packaged wrapper default.
+    Always writes the chosen port back into ``env``.
+    """
+    e = env if env is not None else os.environ
+    raw = (e.get(env_key) or "").strip()
+    if raw.isdigit():
+        preferred = int(raw)
+        chosen = pick_listen_port(preferred)
+        if chosen != preferred:
+            print(
+                f"[Wrapper] {env_key}={preferred} busy → using {chosen}",
+                flush=True,
+            )
+    else:
+        chosen = get_free_port()
+    e[env_key] = str(chosen)
+    return chosen
+
+
 def resolve_api_port(env: Optional[dict] = None) -> int:
     """ARIAKE_API_PORT if set, else prefer 8000; bump if busy — writes back into env."""
     e = env if env is not None else os.environ
