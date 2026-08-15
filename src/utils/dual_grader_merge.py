@@ -207,6 +207,10 @@ def merge_dual_grader_csvs(
 
     recheck_by_metric = dict(Counter(r["Metric"] for r in recheck_rows))
     files_recheck = len({r["File"] for r in recheck_rows})
+    # 症例別リスト（最終読影者のRECHECK再読影の入力になる — recheck_md_parser 参照）
+    recheck_by_file: Dict[str, List[str]] = {}
+    for r in recheck_rows:
+        recheck_by_file.setdefault(r["File"], []).append(r["Metric"])
     summary = {
         "first_csv": str(first_csv),
         "second_csv": str(second_csv),
@@ -221,6 +225,7 @@ def merge_dual_grader_csvs(
         "recheck_cells": len(recheck_rows),
         "recheck_files": files_recheck,
         "recheck_by_metric": recheck_by_metric,
+        "recheck_by_file": recheck_by_file,
         "warnings": warnings,
         "adopted_csv": str(adopted_path),
         "recheck_csv": str(recheck_path),
@@ -250,13 +255,19 @@ def _render_summary_md(s: Dict[str, Any]) -> str:
         "",
         "## RECHECK",
         "",
-        f"- 主要指標セル: {s['recheck_cells']} 件（対象ファイル {s['recheck_files']} 件）",
+        f"- 主要指標セル: {s['recheck_cells']} 件（対象症例 {s['recheck_files']} 件）",
     ]
     if s["recheck_by_metric"]:
         for m, n in sorted(s["recheck_by_metric"].items(), key=lambda x: -x[1]):
             lines.append(f"  - {m}: {n}")
     else:
         lines.append("  - (なし)")
+    # 症例別（最終読影者が再読影する対象 — recheck_md_parser がこの形式を読む）
+    recheck_by_file = s.get("recheck_by_file") or {}
+    if recheck_by_file:
+        lines.append("- 症例別（NA となった主要指標）:")
+        for fname in sorted(recheck_by_file):
+            lines.append(f"  - {fname}: {', '.join(recheck_by_file[fname])}")
     if s["first_only"] or s["second_only"]:
         lines += ["", "## 突合できなかった行", ""]
         if s["first_only"]:

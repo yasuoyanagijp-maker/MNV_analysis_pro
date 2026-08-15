@@ -52,6 +52,15 @@ MNV 解析結果の **RGB 合成表示**は、ImageJ 版の減算方式と整合
 
 ---
 
+## 二重読影・最終読影者（RECHECK再解析・トライアッド確定）
+
+- **G1×G2 統合（統合解析データ）**: 数値列ごとに **RPD ≤ 20% は平均を採用、超過は NA（RECHECK）**（`src/utils/dual_grader_merge.py`、閾値は `tools/reading_center_rpd/compute_adopted_from_dual_csv.py` の `DEFAULT_RPD_PCT = 20.0`。全数値列共通の単一閾値で、パラメータ種別による違いはありません）。
+- **最終読影者ロール**: ログイン画面の Role に「最終読影者（RECHECK再読影・トライアッド確定）」を追加。RECHECK対象MD（`*_summary.md`）をファイル選択すると対象症例のみが再読影キューに入り、確定値は **median(G1, G2, 最終読影者)** になります。`RPD(median, 最終読影者) > 20%`（既存閾値を流用）のセルは値を確定したまま **要レビュー** フラグが付きます（処理は継続）。3値の **CV%**（SD/平均×100）を再現性報告用に保持します。
+- **dry-run（2段階確定）**: 本確定の前に全セルをプレビュー表示し、確認後に新規ファイル（`*_triad_adopted_values.csv` 等）として書き出します。**既存の統合CSVは上書きしません。**
+- 詳細（実装前確認事項3点の結果・閾値の実際の値・dry-run所見・MDパース仕様）は **[documentation/triad_recheck/README.md](documentation/triad_recheck/README.md)** を参照してください。
+
+---
+
 ## macOS へのインストール（配布用）
 
 1. 配布フォルダ（または DMG 内）に **`ARIAKE_OCTA.app`** と **`インストール.command`** が**同じ階層**にあることを確認します。  

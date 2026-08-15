@@ -20,6 +20,7 @@ from src.utils.institution_config import (
 from src.utils.second_reader import (
     READER_ROLE_KEY,
     READER_ROLE_OPTIONS,
+    ROLE_FINAL_READER,
     ROLE_FIRST_GRADER,
     ROLE_SECOND_READER,
 )
@@ -85,7 +86,9 @@ async def get_login_view(ctx: AppContext):
         width=350,
         border_color=PRIMARY,
         focused_border_color=PRIMARY_GLOW,
-        value=_role_persisted if _role_persisted in (ROLE_FIRST_GRADER, ROLE_SECOND_READER) else ROLE_FIRST_GRADER,
+        value=_role_persisted
+        if _role_persisted in (ROLE_FIRST_GRADER, ROLE_SECOND_READER, ROLE_FINAL_READER)
+        else ROLE_FIRST_GRADER,
         options=[
             ft.dropdown.Option(code, label) for code, label in READER_ROLE_OPTIONS
         ],
@@ -93,6 +96,8 @@ async def get_login_view(ctx: AppContext):
             "第2リーダー: 施設エキスポート（export/meta）の親フォルダ、"
             "または GakuNin RDM から第1読影データを取得して二重読影。"
             " RPD≤20% で平均採用。中央読影は施設コード Team YY。"
+            " 最終読影者: RECHECK対象MD（*_summary.md）を選択して再読影し、"
+            "G1/G2/最終読影者の3値中央値で確定します。"
         ),
     )
 

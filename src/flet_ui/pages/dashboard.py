@@ -40,16 +40,30 @@ from src.utils.vd_folder_preflight import (
     vd_pair_suffixes_configured,
 )
 from src.utils.second_reader import (
+    FR_ADOPTED_CSV_KEY,
+    FR_CSV_PATH_KEY,
+    FR_MD_PATH_KEY,
+    FR_PREFIX_KEY,
+    FR_RECHECK_CSV_KEY,
+    FR_TARGETS_KEY,
     SR_FIRST_GRADER_CSV_KEY,
     SR_SCAN_ROOT_KEY,
     SR_CSV_PATH_KEY,
     bind_fov_to_batch_paths,
+    final_reader_output_dir,
     format_scale_dropdown_value,
+    is_final_reader,
     is_second_reader,
     load_meta_fov_by_stem,
     resolve_image_fov_map,
     resolve_second_reader_scan,
     second_reader_output_dir,
+)
+from src.utils.dual_grader_merge import match_stem
+from src.utils.recheck_md_parser import (
+    RecheckMdError,
+    parse_recheck_md,
+    sibling_pipeline_files,
 )
 
 
@@ -1271,6 +1285,216 @@ async def get_dashboard_view(ctx: AppContext):
             session_discard(ctx.page.session, "grdm_graded_institution_id")
         return True
 
+    def _final_reader_error_dialog(title: str, body: str):
+        ctx.page.open(
+            ft.AlertDialog(
+                title=ft.Text(title, color=Colors.WHITE),
+                content=ft.Container(
+                    content=ft.Text(body, selectable=True, size=12, color=TEXT_MUTED),
+                    width=560,
+                ),
+                bgcolor=GLASS_BG,
+            )
+        )
+
+    async def load_final_reader_recheck(fspath) -> bool:
+        """
+        最終読影者: RECHECK対象MD（*_summary.md）を指定し、記載された症例画像
+        だけを通常の ROI→解析キューに投入する。RECHECK指定外のセルは後段の
+        トライアッド確定でも一切使用しない。
+        """
+        if not fspath:
+            return False
+        raw = str(fspath).strip().strip("'").strip('"')
+        md_path = Path(raw)
+        if md_path.is_dir():
+            # フォルダ確定時は最新の summary.md を自動選択（triad出力は除外）
+            cands = [
+                f
+                for f in md_path.glob("*_summary.md")
+                if not f.name.endswith("_triad_summary.md")
+            ]
+            cands.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+            if not cands:
+                _final_reader_error_dialog(
+                    "RECHECK MDが見つかりません",
+                    f"選択フォルダに *_summary.md がありません:\n{md_path}\n\n"
+                    "統合解析データの出力フォルダ（integrated_output_*）内の "
+                    "*_summary.md ファイルをクリックして選択してください。",
+                )
+                return False
+            md_path = cands[0]
+        if not md_path.is_file() or md_path.suffix.lower() != ".md":
+            _final_reader_error_dialog(
+                "RECHECK MDを選択してください",
+                f"MDファイルではありません: {md_path}",
+            )
+            return False
+
+        # ── パース（未知パラメータは処理を止めて報告） ──
+        try:
+            parsed = parse_recheck_md(md_path)
+        except RecheckMdError as ex:
+            _final_reader_error_dialog("RECHECK MD 解析エラー（処理を中止しました）", str(ex))
+            await ctx.add_to_console(f"最終読影者: MD解析エラー: {ex}", "ERROR")
+            return False
+        for w in parsed.warnings:
+            await ctx.add_to_console(f"最終読影者 MD: {w}", "WARN")
+
+        recheck_csv, adopted_csv, prefix = sibling_pipeline_files(md_path)
+        if recheck_csv is None or adopted_csv is None:
+            _final_reader_error_dialog(
+                "統合出力ファイルが不足しています",
+                "MDと同じフォルダに以下が必要です:\n"
+                f"  {prefix}_recheck_list.csv → {'OK' if recheck_csv else '見つかりません'}\n"
+                f"  {prefix}_adopted_values.csv → {'OK' if adopted_csv else '見つかりません'}\n\n"
+                f"フォルダ: {md_path.parent}",
+            )
+            return False
+
+        target_stems = {t.image_stem for t in parsed.targets}
+        await ctx.add_to_console(
+            f"最終読影者: RECHECK対象 {len(parsed.targets)} セル / "
+            f"{len(target_stems)} 症例画像 — {md_path.name}",
+            "INFO",
+        )
+
+        # ── 対象画像の探索: MDの親（integrated_output_*）の親から export バンドルを探す ──
+        scan = None
+        try:
+            scan = resolve_second_reader_scan(md_path.parent.parent)
+        except ValueError:
+            scan = None
+
+        stem_to_image = {}
+        meta_files = []
+        if scan is not None:
+            meta_files = scan.meta_files
+            for img in scan.images:
+                s = match_stem(img.name)
+                if s in target_stems and s not in stem_to_image:
+                    stem_to_image[s] = img
+        missing = sorted(target_stems - set(stem_to_image))
+        if missing:
+            # フォールバック: MD周辺を限定的に再帰検索
+            search_root = md_path.parent.parent
+            for pat in ("*.png", "*.tif", "*.tiff", "*.jpg", "*.jpeg"):
+                for img in search_root.rglob(pat):
+                    s = match_stem(img.name)
+                    if s in target_stems and s not in stem_to_image:
+                        stem_to_image[s] = img
+            missing = sorted(target_stems - set(stem_to_image))
+        if missing:
+            names = ", ".join(
+                t.image_file for t in parsed.targets if t.image_stem in set(missing)
+            )
+            await ctx.add_to_console(
+                f"最終読影者: 対象画像が見つかりません（スキップ）: {names}", "WARN"
+            )
+        if not stem_to_image:
+            _final_reader_error_dialog(
+                "対象画像が見つかりません",
+                "RECHECK対象の症例画像を探せませんでした。\n"
+                f"探索起点: {md_path.parent.parent}\n"
+                "第1グレーダーの export/images バンドルが同じ親フォルダ配下にあるか"
+                "確認してください。",
+            )
+            return False
+
+        images = sorted(stem_to_image.values(), key=lambda p: p.name.lower())
+
+        # ── FOV（export/meta）を第2リーダーと同じ方法で適用 ──
+        path_to_fov, default_fov, fov_warnings = resolve_image_fov_map(
+            images, meta_files
+        )
+        for w in fov_warnings:
+            await ctx.add_to_console(f"最終読影者 FOV: {w}", "WARN")
+        if default_fov is not None:
+            scale_txt = format_scale_dropdown_value(default_fov)
+            scale_mm.value = scale_txt
+            ctx.page.session.set("scale", float(default_fov))
+            ctx.page.session.set("mnv_batch_default_fov", float(default_fov))
+        else:
+            session_discard(ctx.page.session, "mnv_batch_default_fov")
+        stem_to_fov = load_meta_fov_by_stem(meta_files)
+        name_to_fov = {
+            img.name: float(stem_to_fov[img.stem])
+            for img in images
+            if img.stem in stem_to_fov
+        }
+        if stem_to_fov:
+            ctx.page.session.set("mnv_batch_scale_stems", stem_to_fov)
+            ctx.page.session.set("mnv_batch_scale_names", name_to_fov)
+        else:
+            session_discard(ctx.page.session, "mnv_batch_scale_stems")
+            session_discard(ctx.page.session, "mnv_batch_scale_names")
+        if path_to_fov:
+            ctx.page.session.set("mnv_batch_scales", path_to_fov)
+        else:
+            session_discard(ctx.page.session, "mnv_batch_scales")
+
+        # ── セッションへ RECHECK 文脈を保存（結果画面のトライアッド確定で使用） ──
+        targets_payload = [
+            {
+                "image_file": t.image_file,
+                "image_stem": t.image_stem,
+                "display_name": t.display_name,
+                "column": t.column,
+            }
+            for t in parsed.targets
+        ]
+        ctx.page.session.set(FR_MD_PATH_KEY, str(md_path))
+        ctx.page.session.set(FR_TARGETS_KEY, targets_payload)
+        ctx.page.session.set(FR_RECHECK_CSV_KEY, str(recheck_csv))
+        ctx.page.session.set(FR_ADOPTED_CSV_KEY, str(adopted_csv))
+        ctx.page.session.set(FR_PREFIX_KEY, prefix)
+        session_discard(ctx.page.session, FR_CSV_PATH_KEY)
+
+        # ── 出力フォルダ: 第1/第2/統合出力と同階層の final_reader_output_* ──
+        from src.utils.grdm_access import infer_institution_from_path
+
+        graded_inst = ""
+        if scan is not None:
+            graded_inst = infer_institution_from_path(scan.images_dir)
+        anchor = scan.scan_root if scan is not None else md_path.parent
+        out_dir = final_reader_output_dir(anchor, graded_inst or None)
+        ctx.page.session.set("output_folder", str(out_dir))
+        output_path_input.value = str(out_dir)
+
+        # ── 対象画像のみをステージングして通常の MNV キューに投入 ──
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        staging = get_upload_dir() / "recheck_staging" / stamp
+        staging.mkdir(parents=True, exist_ok=True)
+        staged_any = False
+        for img in images:
+            try:
+                shutil.copy2(img, staging / img.name)
+                staged_any = True
+            except Exception as ex:
+                await ctx.add_to_console(
+                    f"最終読影者: 画像コピー失敗 [{img.name}]: {ex}", "ERROR"
+                )
+        if not staged_any:
+            return False
+
+        analysis_type.value = "MNV"
+        ctx.page.session.set("mnv_select_all_images", True)
+        mnv_select_all_switch.value = True
+        ctx.page.update()
+
+        try:
+            ok = await _load_batch_from_directory_core(str(staging))
+        except Exception as ex:
+            await ctx.add_to_console(f"最終読影者: キュー投入失敗: {ex}", "ERROR")
+            return False
+        if ok:
+            await ctx.add_to_console(
+                f"最終読影者: {len(images)} 症例画像の再読影を開始します"
+                "（RECHECK指定セルのみ確定に使用されます）。",
+                "INFO",
+            )
+        return ok
+
     async def load_batch_from_directory(fspath):
         if is_second_reader(ctx.page.session):
             await load_second_reader_batch(fspath)
@@ -1300,6 +1524,12 @@ async def get_dashboard_view(ctx: AppContext):
         await show_folder_explorer(
             "第2リーダー: 第1グレーダーの出力フォルダ（export の親フォルダ）を選択",
             on_select=load_second_reader_batch,
+        )
+
+    async def handle_final_reader_start(_=None):
+        await show_folder_explorer(
+            "最終読影者: RECHECK対象のMDファイル（*_summary.md）をクリックして選択",
+            on_select=load_final_reader_recheck,
         )
 
     # ─────────────────────────────────────────────────────────────────────
@@ -1704,6 +1934,56 @@ async def get_dashboard_view(ctx: AppContext):
         border_radius=16,
     )
 
+    _is_fr = is_final_reader(ctx.page.session)
+    final_reader_card = ft.Container(
+        visible=_is_fr,
+        content=ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Icon(Icons.GAVEL_ROUNDED, size=28, color=Colors.PURPLE_200),
+                        ft.Text(
+                            "最終読影者モード — RECHECK再解析・トライアッド中央値確定",
+                            size=15,
+                            weight=FontWeight.BOLD,
+                            color=Colors.WHITE,
+                        ),
+                    ],
+                    spacing=10,
+                ),
+                ft.Text(
+                    "統合解析データ（G1×G2）で NA（RECHECK）となった主要指標セルを再読影します。"
+                    " *_summary.md を選択すると対象症例だけがキューに入り、"
+                    "確定値は median(G1, G2, 最終読影者) になります。"
+                    " |median − 最終読影者| の RPD が既存閾値を超えるセルは"
+                    "『要レビュー』フラグ付きで確定します（処理は継続）。",
+                    size=11,
+                    color=TEXT_MUTED,
+                ),
+                ft.ElevatedButton(
+                    "RECHECK対象MDファイルを選択して再読影開始",
+                    icon=Icons.RULE_FOLDER_ROUNDED,
+                    bgcolor=Colors.PURPLE_200,
+                    color=Colors.BLACK,
+                    on_click=lambda _: ctx.page.run_task(handle_final_reader_start),
+                    width=420,
+                ),
+                ft.Text(
+                    "再読影後は結果画面で Save CSV →「トライアッド確定」。"
+                    " dry-run プレビューで全セル（G1/G2/最終読影者/中央値/CV%/要レビュー）を"
+                    "確認してから本確定を実行します。既存の統合CSVは上書きされません。",
+                    size=10,
+                    color=TEXT_MUTED,
+                ),
+            ],
+            spacing=10,
+        ),
+        padding=18,
+        bgcolor=Colors.with_opacity(0.08, Colors.PURPLE_200),
+        border=ft.border.all(2, Colors.with_opacity(0.45, Colors.PURPLE_200)),
+        border_radius=16,
+    )
+
     def _advanced_settings_body():
         return ft.Column([
             ft.Row([
@@ -1808,7 +2088,11 @@ async def get_dashboard_view(ctx: AppContext):
                             ),
                             ft.Text(
                                 "Unified Analytics Command Center"
-                                + (" — 第2リーダー" if _is_sr else ""),
+                                + (
+                                    " — 第2リーダー"
+                                    if _is_sr
+                                    else (" — 最終読影者" if _is_fr else "")
+                                ),
                                 size=12,
                                 color=TEXT_MUTED,
                             ),
@@ -1824,6 +2108,9 @@ async def get_dashboard_view(ctx: AppContext):
     ]
     if _is_sr:
         home_blocks.append(second_reader_card)
+        home_blocks.append(ft.Divider(height=10, color=Colors.TRANSPARENT))
+    if _is_fr:
+        home_blocks.append(final_reader_card)
         home_blocks.append(ft.Divider(height=10, color=Colors.TRANSPARENT))
 
     home_blocks.append(
