@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 # Components
-from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, BG_DARK, TEXT_MUTED, BackendClient, AppContext, session_discard, logout_to_login
+from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, BG_DARK, TEXT_MUTED, BackendClient, AppContext, session_discard, logout_to_login, APP_WINDOW_TITLE
 from src.flet_ui.pages.login import get_login_view
 from src.flet_ui.pages.dashboard import get_dashboard_view
 from src.flet_ui.pages.results_screen import get_results_view
@@ -36,7 +36,7 @@ def _flet_use_web() -> bool:
 
 async def main(page: ft.Page):
     print("MAIN_START: Initializing app", flush=True)
-    page.title = "ARIAKE OCTA - Advanced Retinal Analysis"
+    page.title = APP_WINDOW_TITLE
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = BG_DARK
     page.window.width = 1400
@@ -250,11 +250,14 @@ async def main(page: ft.Page):
         page.go("/login")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("FLET_PORT", 8550))
+    from src.utils.local_ports import resolve_flet_port
+
     use_web = _flet_use_web()
+    port = resolve_flet_port(use_web=use_web)
     print(
         f"Flet: FLET_USE_WEB={os.environ.get('FLET_USE_WEB', '1')} -> "
-        f"{'web browser' if use_web else 'native window'}",
+        f"{'web browser' if use_web else 'native window'} "
+        f"(port {port})",
         flush=True,
     )
     app_kwargs = {

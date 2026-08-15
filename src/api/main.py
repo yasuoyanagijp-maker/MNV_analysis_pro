@@ -46,7 +46,7 @@ from utils.vd_job_progress import (
     vd_progress_get,
 )
 
-app = FastAPI(title="ARIAKE OCTA Engine API")
+app = FastAPI(title="ARIAKE OCTA Pro Engine API")
 
 # Ensure uploads directory exists
 UPLOAD_DIR = get_upload_dir()
@@ -70,7 +70,7 @@ async def api_root():
         content=(
             "<!DOCTYPE html><html><head><meta charset='utf-8'>"
             f"<meta http-equiv='refresh' content='0;url={ui_url}'>"
-            "<title>ARIAKE OCTA API</title></head><body>"
+            "<title>ARIAKE OCTA Pro API</title></head><body>"
             "<p>This is the analysis API, not the app UI.</p>"
             f"<p>Open <a href='{ui_url}'>{ui_url}</a></p>"
             "</body></html>"
@@ -116,8 +116,8 @@ results_cache = {}
 
 @app.post("/login", response_model=AuthResponse)
 async def login(request: LoginRequest):
-    # Alpha version: Simple researcher authentication
-    # Alpha version: Simple researcher authentication
+    # Simple researcher authentication (production Pro build)
+    # Simple researcher authentication (production Pro build)
     # In a real app, this would check against a DB with hashed passwords
     if request.password == "ariake2024":
         return AuthResponse(
@@ -490,5 +490,8 @@ async def list_directory(path: str = None):
         return {"error": str(e)}
 
 if __name__ == "__main__":
-    port = int(os.environ.get("ARIAKE_API_PORT", 8000))
+    from src.utils.local_ports import resolve_api_port
+
+    port = resolve_api_port()
+    print(f"API: listening on http://127.0.0.1:{port}", flush=True)
     uvicorn.run(app, host="127.0.0.1", port=port)

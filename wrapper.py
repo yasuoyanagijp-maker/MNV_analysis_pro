@@ -44,12 +44,32 @@ if sys.stdout is None:
 if sys.stderr is None:
     sys.stderr = open(_log, "a", encoding="utf-8", buffering=1)
 
+
 def get_free_port() -> int:
-    """Finds an available ephemeral port."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        s.listen(1)
-        return int(s.getsockname()[1])
+    """Finds an available ephemeral port (shared with src.utils.local_ports)."""
+    try:
+        from src.utils.local_ports import get_free_port as _shared
+
+        return _shared()
+    except ImportError:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            s.listen(1)
+            return int(s.getsockname()[1])
+
+
+def _resolve_launch_port(env_key: str) -> int:
+    """Prefer env port when free; bump if busy; else ephemeral."""
+    try:
+        from src.utils.local_ports import resolve_env_port_or_ephemeral
+
+        return resolve_env_port_or_ephemeral(env_key)
+    except ImportError:
+        raw = (os.environ.get(env_key) or "").strip()
+        if raw.isdigit():
+            return int(raw)
+        return get_free_port()
+
 
 def run_api_server(port: int):
     """Worker process: Runs the FastAPI backend via uvicorn."""
@@ -89,8 +109,10 @@ if __name__ == "__main__":
     os.environ.setdefault("ARIAKE_SAVE_STAGES", "false")
     os.environ.setdefault("ARIAKE_ENABLE_ROI_REFINEMENT", "false")
     
-    api_port = get_free_port()
-    flet_port = get_free_port()
+    # Ephemeral ports by default. If ARIAKE_API_PORT / FLET_PORT are set for
+    # debugging, still fall back when those ports are already taken.
+    api_port = _resolve_launch_port("ARIAKE_API_PORT")
+    flet_port = _resolve_launch_port("FLET_PORT")
 
     # Share ports via environment for Flet frontend and BackendClient
     os.environ["ARIAKE_API_PORT"] = str(api_port)
@@ -117,13 +139,25 @@ if __name__ == "__main__":
         
         flet_view = ft.AppView.WEB_BROWSER if use_web == "1" else ft.AppView.FLET_APP
         print(f"[Frontend] Starting Flet ({flet_view}) on port {flet_port}...", flush=True)
+        if use_web == "1":
+            print(
+                f"[Frontend] Open http://127.0.0.1:{flet_port} if the browser does not open.",
+                flush=True,
+            )
         
-        ft.app(
+        ft_kwargs = dict(
             target=main_app.main,
             view=flet_view,
             port=flet_port,
             upload_dir=str(main_app.UPLOAD_ROOT),
         )
+        if use_web == "1":
+            ft_kwargs["host"] = os.environ.get("FLET_SERVER_IP", "127.0.0.1")
+            renderer = (os.environ.get("FLET_WEB_RENDERER") or "canvaskit").strip().lower()
+            if renderer == "html":
+                renderer = "canvaskit"
+            ft_kwargs["web_renderer"] = renderer
+        ft.app(**ft_kwargs)
     except KeyboardInterrupt:
         print("\n[Wrapper] KeyboardInterrupt received.", flush=True)
     except Exception as e:

@@ -14,6 +14,12 @@ BG_DARK = "#050510"
 GLASS_BG = "#151B2B"
 TEXT_MUTED = "#8B9BB4"
 
+# Product branding (user-facing). Package/bundle IDs may still use ARIAKE_OCTA paths.
+APP_DISPLAY_NAME = "ARIAKE OCTA Pro"
+APP_WINDOW_TITLE = "ARIAKE OCTA Pro - Advanced Retinal Analysis"
+APP_LOGIN_TITLE = "ARIAKE OCTA Pro"
+APP_LOGIN_SUBTITLE = "Researcher Access"
+
 
 def session_discard(session, key: str) -> None:
     """Remove key if present. Flet SessionStorage has remove() only (no dict-like pop())."""

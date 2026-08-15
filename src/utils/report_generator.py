@@ -136,7 +136,7 @@ class AnalysisReport(FPDF):
         self.cell(
             30,
             10,
-            "ARIAKE OCTA - Quantitative Analysis Report",
+            "ARIAKE OCTA Pro - Quantitative Analysis Report",
             border=0,
             align=Align.C,
             new_x=XPos.RIGHT,

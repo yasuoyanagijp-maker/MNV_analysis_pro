@@ -6,7 +6,15 @@ from typing import List
 import shutil
 from datetime import datetime
 import asyncio
-from src.flet_ui.components.shared import PRIMARY, TEXT_MUTED, GLASS_BG, AppContext, session_discard, persist_client_storage_async
+from src.flet_ui.components.shared import (
+    PRIMARY,
+    TEXT_MUTED,
+    GLASS_BG,
+    AppContext,
+    session_discard,
+    persist_client_storage_async,
+    APP_DISPLAY_NAME,
+)
 from src.utils.app_paths import get_upload_dir, sanitize_path_component, default_picker_dir
 from src.utils.cv2_path import (
     BGR_READ_OK,
@@ -1652,7 +1660,7 @@ async def get_dashboard_view(ctx: AppContext):
                     [
                         ft.Icon(Icons.PEOPLE_ALT_ROUNDED, size=28, color=Colors.AMBER_400),
                         ft.Text(
-                            "第2リーダー（二重読影）モード — ARIAKE-OCTA-Pro / OCTA-MIC",
+                                "第2リーダー（二重読影）モード — ARIAKE OCTA Pro / OCTA-MIC",
                             size=15,
                             weight=FontWeight.BOLD,
                             color=Colors.WHITE,
@@ -1793,7 +1801,7 @@ async def get_dashboard_view(ctx: AppContext):
                     ft.Column(
                         [
                             ft.Text(
-                                "ARIAKE OCTA",
+                                APP_DISPLAY_NAME,
                                 size=26,
                                 weight=FontWeight.W_800,
                                 color=Colors.WHITE,

@@ -1,6 +1,14 @@
 import flet as ft
 from flet import Colors, Icons, FontWeight
-from src.flet_ui.components.shared import PRIMARY, PRIMARY_GLOW, TEXT_MUTED, GLASS_BG, AppContext
+from src.flet_ui.components.shared import (
+    PRIMARY,
+    PRIMARY_GLOW,
+    TEXT_MUTED,
+    GLASS_BG,
+    AppContext,
+    APP_LOGIN_TITLE,
+    APP_LOGIN_SUBTITLE,
+)
 from src.utils.institution_config import (
     INSTITUTION_PRESETS,
     client_storage_set_async,
@@ -191,8 +199,8 @@ async def get_login_view(ctx: AppContext):
             ft.Container(
                 content=ft.Column([
                     ft.Icon(Icons.SECURITY_ROUNDED, size=80, color=PRIMARY),
-                    ft.Text("Researcher Access", size=28, weight=FontWeight.BOLD, color=Colors.WHITE),
-                    ft.Text("ARIAKE OCTA ALPHA ACCESS", size=12, color=TEXT_MUTED),
+                    ft.Text(APP_LOGIN_TITLE, size=28, weight=FontWeight.BOLD, color=Colors.WHITE),
+                    ft.Text(APP_LOGIN_SUBTITLE, size=12, color=TEXT_MUTED),
                     ft.Container(height=20),
                     username_field,
                     password_field,
