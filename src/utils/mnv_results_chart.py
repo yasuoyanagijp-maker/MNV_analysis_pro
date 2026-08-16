@@ -33,6 +33,23 @@ SUMMARY_TABLE_COLUMNS = [
     "Fractal Dim",
 ]
 
+# Short on-screen header labels so long CSV column names don't overlap.
+# Keys are CSV column names; the full name stays available via tooltip.
+SUMMARY_TABLE_HEADER_LABELS: Dict[str, str] = {
+    "MNV present": "MNV",
+    "Pathophysiology": "Pathophys.",
+    "Maturity Index": "Maturity",
+    "Network Complexity Score": "Complexity",
+    "Caliber Uniformity Score": "Caliber",
+    "MNV Area (mm2)": "Area (mm2)",
+    "Fractal Dim": "FD",
+}
+
+
+def summary_table_header_label(col: str) -> str:
+    """Short display label for a Results Table (CSV) column header."""
+    return SUMMARY_TABLE_HEADER_LABELS.get(col, col)
+
 # On-screen PNG canvas (must match ft.Image aspect in results_screen).
 CHART_PNG_WIDTH_PX = 1180
 CHART_PNG_HEIGHT_PX = 640

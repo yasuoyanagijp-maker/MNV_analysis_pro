@@ -67,6 +67,24 @@ async def get_roi_view(ctx: AppContext):
         "computing_color": False,
     }
 
+    # Unified button metrics: every button on this screen shares the same
+    # height and corner radius; side-panel buttons share the same width so
+    # the control rail lines up as a single column.
+    BTN_H = 40
+    PANEL_BTN_W = 300
+    HALF_BTN_W = (PANEL_BTN_W - 8) // 2
+    btn_shape_style = ft.ButtonStyle(
+        shape=ft.RoundedRectangleBorder(radius=8),
+    )
+    panel_btn_style = ft.ButtonStyle(
+        shape=ft.RoundedRectangleBorder(radius=8),
+        alignment=ft.alignment.center_left,
+        padding=ft.padding.symmetric(horizontal=16),
+    )
+    # Faint fill for non-selected mode buttons so their clickable area stays
+    # visible (fully transparent buttons looked like plain text).
+    INACTIVE_BG = Colors.with_opacity(0.07, Colors.WHITE)
+
     # UI Controls
     status_text = ft.Text("ドラッグしてROI（抽出領域）の枠を作成してください", color=TEXT_MUTED)
     load_error_text = ft.Text("", color=Colors.RED_400, visible=False)
@@ -461,9 +479,27 @@ async def get_roi_view(ctx: AppContext):
             status_text.color = Colors.RED_400
         ctx.page.update()
 
-    # Define Top UI Toolbar
-    undo_button = ft.IconButton(Icons.UNDO, on_click=handle_undo, disabled=True, tooltip="Undo Last Action")
-    reset_button = ft.IconButton(Icons.REFRESH, on_click=handle_reset, tooltip="Reset All")
+    # Undo / Reset: labeled buttons sized to half the panel width each,
+    # matching the height and corner radius of the mode buttons above them.
+    undo_button = ft.OutlinedButton(
+        "Undo",
+        icon=Icons.UNDO,
+        width=HALF_BTN_W,
+        height=BTN_H,
+        style=btn_shape_style,
+        on_click=handle_undo,
+        disabled=True,
+        tooltip="直前の操作を取り消す",
+    )
+    reset_button = ft.OutlinedButton(
+        "Reset",
+        icon=Icons.REFRESH,
+        width=HALF_BTN_W,
+        height=BTN_H,
+        style=btn_shape_style,
+        on_click=handle_reset,
+        tooltip="ROIをすべてリセット",
+    )
 
     async def confirm_crop(e):
         if not state.get("crop_start") or not state.get("crop_end"):
@@ -521,33 +557,61 @@ async def get_roi_view(ctx: AppContext):
             ctx.page.go("/roi", rt=uuid.uuid4().hex[:12])
 
     crop_btn = ft.ElevatedButton(
-        "0. Crop Image", 
+        "0. Crop Image",
         icon=Icons.CROP,
-        bgcolor=Colors.TRANSPARENT, 
+        width=PANEL_BTN_W,
+        height=BTN_H,
+        style=panel_btn_style,
+        bgcolor=INACTIVE_BG,
         color=TEXT_MUTED,
-        on_click=lambda e: ctx.page.run_task(set_mode, "crop")
+        on_click=lambda e: ctx.page.run_task(set_mode, "crop"),
     )
-    
+
     draw_btn = ft.ElevatedButton(
-        "1. Draw ROI (フリーハンド)", 
+        "1. Draw ROI (フリーハンド)",
         icon=Icons.CROP_SQUARE,
-        bgcolor=PRIMARY, 
+        width=PANEL_BTN_W,
+        height=BTN_H,
+        style=panel_btn_style,
+        bgcolor=PRIMARY,
         color=Colors.BLACK,
-        on_click=lambda e: ctx.page.run_task(set_mode, "draw")
+        on_click=lambda e: ctx.page.run_task(set_mode, "draw"),
     )
-    
+
     erase_btn = ft.ElevatedButton(
-        "2. Erase Noise (長押し)", 
+        "2. Erase Noise (長押し)",
         icon=Icons.BACKSPACE,
-        bgcolor=Colors.TRANSPARENT, 
+        width=PANEL_BTN_W,
+        height=BTN_H,
+        style=panel_btn_style,
+        bgcolor=INACTIVE_BG,
         color=TEXT_MUTED,
-        on_click=lambda e: ctx.page.run_task(set_mode, "erase")
+        on_click=lambda e: ctx.page.run_task(set_mode, "erase"),
     )
-    
-    confirm_crop_btn = ft.ElevatedButton("クロップ確定", icon=Icons.CHECK, bgcolor=Colors.BLUE_400, color=Colors.WHITE, on_click=confirm_crop, visible=False)
-    
+
+    confirm_crop_btn = ft.ElevatedButton(
+        "クロップ確定",
+        icon=Icons.CHECK,
+        width=PANEL_BTN_W,
+        height=BTN_H,
+        style=panel_btn_style,
+        bgcolor=Colors.BLUE_400,
+        color=Colors.WHITE,
+        on_click=confirm_crop,
+        visible=False,
+    )
+
     has_orig = ctx.page.session.get("original_target_path") is not None
-    redo_crop_btn = ft.ElevatedButton("🔙 元画像に戻す", on_click=redo_crop, visible=has_orig, bgcolor=Colors.TRANSPARENT, color=TEXT_MUTED)
+    redo_crop_btn = ft.OutlinedButton(
+        "元画像に戻す（クロップ取消）",
+        icon=Icons.SETTINGS_BACKUP_RESTORE,
+        width=PANEL_BTN_W,
+        height=BTN_H,
+        style=panel_btn_style,
+        on_click=redo_crop,
+        visible=has_orig,
+        tooltip="クロップ前の元画像に戻します",
+    )
 
     color_progress = ft.ProgressRing(width=18, height=18, stroke_width=2, color=PRIMARY, visible=False)
     color_btn = ft.ElevatedButton(
@@ -631,9 +695,9 @@ async def get_roi_view(ctx: AppContext):
         if new_mode == "crop":
             crop_btn.bgcolor = Colors.BLUE_400
             crop_btn.color = Colors.WHITE
-            draw_btn.bgcolor = Colors.TRANSPARENT
+            draw_btn.bgcolor = INACTIVE_BG
             draw_btn.color = TEXT_MUTED
-            erase_btn.bgcolor = Colors.TRANSPARENT
+            erase_btn.bgcolor = INACTIVE_BG
             erase_btn.color = TEXT_MUTED
             status_text.value = "ドラッグして必要な部分（解析領域）を四角く囲んでください"
             confirm_crop_btn.visible = True
@@ -642,21 +706,21 @@ async def get_roi_view(ctx: AppContext):
             state["crop_start"] = None
             state["crop_end"] = None
         elif new_mode == "draw":
-            crop_btn.bgcolor = Colors.TRANSPARENT
+            crop_btn.bgcolor = INACTIVE_BG
             crop_btn.color = TEXT_MUTED
             draw_btn.bgcolor = PRIMARY
             draw_btn.color = Colors.BLACK
-            erase_btn.bgcolor = Colors.TRANSPARENT
+            erase_btn.bgcolor = INACTIVE_BG
             erase_btn.color = TEXT_MUTED
             status_text.value = "ドラッグしてROI（抽出領域）をフリーハンドで囲んでください"
             confirm_crop_btn.visible = False
             selection_box.visible = False
         else:
-            crop_btn.bgcolor = Colors.TRANSPARENT
+            crop_btn.bgcolor = INACTIVE_BG
             crop_btn.color = TEXT_MUTED
             erase_btn.bgcolor = Colors.RED_400
             erase_btn.color = Colors.WHITE
-            draw_btn.bgcolor = Colors.TRANSPARENT
+            draw_btn.bgcolor = INACTIVE_BG
             draw_btn.color = TEXT_MUTED
             status_text.value = "緑の領域内の「黒い隙間」を丸ごと長押ししてノイズを除去してください"
             confirm_crop_btn.visible = False
@@ -669,8 +733,8 @@ async def get_roi_view(ctx: AppContext):
             _sync_color_ui()
             ctx.page.update()
 
-    mode_tabs = ft.Column([crop_btn, draw_btn, erase_btn], spacing=6)
-    action_tabs = ft.Row([confirm_crop_btn, redo_crop_btn], wrap=True, spacing=10)
+    mode_tabs = ft.Column([crop_btn, draw_btn, erase_btn], spacing=8)
+    action_tabs = ft.Column([confirm_crop_btn, redo_crop_btn], spacing=8)
 
     # GestureDetector wrapping the image and selection frame
     image_stack = ft.Stack(
@@ -963,7 +1027,8 @@ async def get_roi_view(ctx: AppContext):
                         ft.OutlinedButton(
                             "Skip — MNV absent",
                             icon=Icons.SKIP_NEXT_ROUNDED,
-                            height=40,
+                            height=BTN_H,
+                            style=btn_shape_style,
                             tooltip=(
                                 "MNVがはっきり見えない場合。解析せず空マスク＋"
                                 "mnv_present=false を学習用に記録します。"
@@ -971,9 +1036,11 @@ async def get_roi_view(ctx: AppContext):
                             on_click=skip_mnv_absent,
                         ),
                         ft.ElevatedButton(
-                            "Confirm & Re-analyze" if is_reanalysis else "Confirm ROI & Proceed", 
+                            "Confirm & Re-analyze" if is_reanalysis else "Confirm ROI & Proceed",
                             icon=Icons.CHECK_CIRCLE,
-                            height=40, bgcolor=Colors.AMBER_400 if is_reanalysis else PRIMARY, 
+                            height=BTN_H,
+                            style=btn_shape_style,
+                            bgcolor=Colors.AMBER_400 if is_reanalysis else PRIMARY,
                             color=Colors.BLACK, on_click=confirm_roi
                         ),
                     ],
@@ -986,9 +1053,11 @@ async def get_roi_view(ctx: AppContext):
                 img_stack,
                 ft.Column([
                     status_text,
+                    ft.Text("編集モード", color=TEXT_MUTED, size=11, weight=FontWeight.BOLD),
                     mode_tabs,
                     action_tabs,
-                    ft.Row([undo_button, reset_button]),
+                    ft.Text("操作", color=TEXT_MUTED, size=11, weight=FontWeight.BOLD),
+                    ft.Row([undo_button, reset_button], spacing=8),
                     ft.Divider(height=8, color=Colors.TRANSPARENT),
                     ft.Row([color_btn, color_progress], spacing=8),
                     trim_disclaimer,
