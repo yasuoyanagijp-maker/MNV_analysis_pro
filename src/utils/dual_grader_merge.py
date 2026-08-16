@@ -17,6 +17,12 @@ Outputs (into the second reader's output folder):
   - ``{prefix}_adopted_values.csv``  … batch-CSV schema, adopted values
   - ``{prefix}_recheck_list.csv``    … discordant major metrics (RPD > threshold)
   - ``{prefix}_summary.md``          … counts + rule statement
+  - ``{prefix}_avg_fallback.csv``    … PROVISIONAL: adopted values with NA cells
+    filled by mean(Grader1, Reader2) — reference only, NOT the official values
+    (the official resolution of NA cells is the third-reader based
+    ``triad_median_resolver`` output). A plain CSV with the header on row 1
+    (Excel-safe); the provisional warning is written to the sibling
+    ``{prefix}_avg_fallback_README.txt``.
 """
 
 from __future__ import annotations
@@ -76,6 +82,39 @@ RECHECK_FIELDS = [
 ]
 
 _QUALITATIVE_META = ("Subtype", "Pathophysiology", "Quality of analysis")
+
+# Flag columns appended (only) to the provisional avg-fallback CSV.
+AVG_FILLED_FLAG_COL = "is_avg_filled"
+AVG_FILLED_COLS_COL = "avg_filled_columns"
+
+
+def _avg_fallback_readme_text(rpd_threshold: float, csv_name: str) -> str:
+    """Warning text written to ``{prefix}_avg_fallback_README.txt``.
+
+    The warning deliberately lives NEXT TO the CSV instead of as ``#``
+    comment lines above its header: Excel (the main viewer at the sites)
+    does not treat ``#`` lines as comments, so in-file comments would shift
+    the header row and misalign every column.
+    """
+    return "\n".join(
+        [
+            f"{csv_name} について",
+            "",
+            "PROVISIONAL / REFERENCE ONLY — NOT the official adopted values.",
+            f"NA cells (RPD > {rpd_threshold:g}% or undefined RPD) are filled with the",
+            "simple mean of Grader1 and Reader2.",
+            f"Filled cells are flagged per row: {AVG_FILLED_FLAG_COL}=TRUE and the filled",
+            f"column names are listed in {AVG_FILLED_COLS_COL}.",
+            "",
+            "この CSV は暫定平均で NA セルを補完した参考・簡易確認用ファイルです。",
+            "正式な確定値ではありません。",
+            "RPD閾値超過セルは両読影者が系統的にズレている可能性があり、",
+            "単純平均は真値の折衷にはなりません。",
+            "提出・二次解析には *_adopted_values.csv を使用し、NA の確定解決は",
+            "第3読影者ベースの解決結果（triad_median_resolver）を使用してください。",
+            "",
+        ]
+    )
 
 
 def match_stem(filename: str) -> str:
@@ -157,6 +196,7 @@ def merge_dual_grader_csvs(
 
     # Step 2 — RPD adoption per numeric column (existing RPD<=20% rule)
     adopted_rows: List[Dict[str, Any]] = []
+    avg_fallback_rows: List[Dict[str, Any]] = []
     recheck_rows: List[Dict[str, str]] = []
     for key in common:
         ra, rb = idx_a[key], idx_b[key]
@@ -169,10 +209,15 @@ def merge_dual_grader_csvs(
             vb = str(rb.get(meta) or "").strip()
             out[meta] = va if va == vb else ("NA" if (va or vb) else "")
 
+        # Provisional avg-fallback: NA cells where both readers have a value
+        # are filled with the simple mean (reference only — see module docstring).
+        avg_filled: Dict[str, str] = {}
         for col in numeric_cols:
             a, b = to_float(ra.get(col)), to_float(rb.get(col))
             val, status, rpd_s = adopt_pair(a, b, rpd_threshold)
             out[col] = val
+            if val == "NA" and a is not None and b is not None:
+                avg_filled[col] = f"{(a + b) / 2.0:.10g}"
             if col in MAJOR_METRICS_MERGE and status in ("RECHECK", "MISSING"):
                 rule = (
                     "MISSING"
@@ -194,16 +239,38 @@ def merge_dual_grader_csvs(
                 )
         adopted_rows.append(out)
 
+        avg_out = dict(out)
+        avg_out.update(avg_filled)
+        avg_out["Analyst"] = (
+            f"Dual-read mean (RPD<={rpd_threshold:g}%) + PROVISIONAL avg fill for NA (reference only)"
+        )
+        avg_out[AVG_FILLED_FLAG_COL] = "TRUE" if avg_filled else "FALSE"
+        avg_out[AVG_FILLED_COLS_COL] = ";".join(avg_filled)
+        avg_fallback_rows.append(avg_out)
+
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     if not prefix:
         prefix = f"MNV_integrated_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
     adopted_path = out_dir / f"{prefix}_adopted_values.csv"
+    avg_fallback_path = out_dir / f"{prefix}_avg_fallback.csv"
+    avg_fallback_readme_path = out_dir / f"{prefix}_avg_fallback_README.txt"
     recheck_path = out_dir / f"{prefix}_recheck_list.csv"
     summary_path = out_dir / f"{prefix}_summary.md"
 
     write_csv(adopted_path, fieldnames, adopted_rows)
+    # Plain CSV (header on row 1): Excel does not honour "#" comment lines,
+    # so the provisional warning lives in the sibling README instead.
+    write_csv(
+        avg_fallback_path,
+        fieldnames + [AVG_FILLED_FLAG_COL, AVG_FILLED_COLS_COL],
+        avg_fallback_rows,
+    )
+    avg_fallback_readme_path.write_text(
+        _avg_fallback_readme_text(rpd_threshold, avg_fallback_path.name),
+        encoding="utf-8",
+    )
     write_csv(recheck_path, RECHECK_FIELDS, recheck_rows)
 
     # NA list per case (File) — the final reader's RECHECK re-reading input
@@ -211,6 +278,10 @@ def merge_dual_grader_csvs(
     recheck_by_file: Dict[str, List[str]] = {}
     for r in recheck_rows:
         recheck_by_file.setdefault(r["File"], []).append(r["Metric"])
+    avg_filled_cells = sum(
+        len([c for c in r.get(AVG_FILLED_COLS_COL, "").split(";") if c])
+        for r in avg_fallback_rows
+    )
     summary = {
         "first_csv": str(first_csv),
         "second_csv": str(second_csv),
@@ -225,8 +296,11 @@ def merge_dual_grader_csvs(
         "recheck_cells": len(recheck_rows),
         "recheck_files": len(recheck_by_file),
         "recheck_by_file": recheck_by_file,
+        "avg_filled_cells": avg_filled_cells,
         "warnings": warnings,
         "adopted_csv": str(adopted_path),
+        "avg_fallback_csv": str(avg_fallback_path),
+        "avg_fallback_readme": str(avg_fallback_readme_path),
         "recheck_csv": str(recheck_path),
         "summary_md": str(summary_path),
     }
@@ -248,6 +322,9 @@ def _render_summary_md(s: Dict[str, Any]) -> str:
         "",
         "1. ファイル名（stem）で行を突合。",
         f"2. RPD ≤ {s['threshold_pct']:g}% → 採用値 = 算術平均、超過 → **NA**（再計測）。",
+        f"3. 参考出力 `{Path(s['avg_fallback_csv']).name}`: NA セルを G1/G2 の単純平均で"
+        f"補完した**暫定ファイル**（{s['avg_filled_cells']} セル補完）。正式な確定値ではなく、"
+        "確定値は第3読影者ベースの解決結果（triad_median_resolver）を使用すること。",
         "",
         "**根拠:** 20%は測定誤差を許容しつつ、過度な除外を避けるために設定した。",
         "",

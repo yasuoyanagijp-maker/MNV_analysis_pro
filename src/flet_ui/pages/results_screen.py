@@ -574,8 +574,14 @@ async def get_results_view(ctx: AppContext):
                 "",
                 "出力ファイル:",
                 f"  {summary['adopted_csv']}",
+                f"  {summary['avg_fallback_csv']}",
+                f"  {summary.get('avg_fallback_readme', '')}",
                 f"  {summary['recheck_csv']}",
                 f"  {summary['summary_md']}",
+                "",
+                "※ avg_fallback は NA セルを G1/G2 の単純平均で補完した暫定・参考用ファイルです"
+                f"（補完 {summary.get('avg_filled_cells', 0)} セル、is_avg_filled 列で識別可）。"
+                "正式な確定値ではありません。",
             ]
             for w in summary.get("warnings") or []:
                 lines.append(f"⚠ {w}")

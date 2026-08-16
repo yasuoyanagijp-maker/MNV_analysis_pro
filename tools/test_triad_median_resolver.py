@@ -339,11 +339,8 @@ class TestSummaryMdRoundTrip(unittest.TestCase):
             "second_only": [],
             "recheck_cells": 3,
             "recheck_files": 2,
-            "recheck_by_metric": {
-                "Vsl Area (mm2)": 1,
-                "MNV Area (mm2)": 1,
-                "Caliber Uniformity Score (U2)": 1,
-            },
+            "avg_fallback_csv": "MNV_integrated_test_avg_fallback.csv",
+            "avg_filled_cells": 0,
             "recheck_by_file": {
                 "102-001_Week04.png": ["Vsl Area (mm2)"],
                 "102-002_Week04.png": [
