@@ -233,7 +233,7 @@ async def get_roi_view(ctx: AppContext):
             )
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             binary, rgb, color_mask = await loop.run_in_executor(None, _compute)
         except Exception as ex:
             state["computing_color"] = False

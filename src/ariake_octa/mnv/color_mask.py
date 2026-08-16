@@ -17,7 +17,11 @@ import numpy as np
 from skimage.color import rgb2gray
 from skimage.filters import gaussian
 
-from core.mnv_pipeline import FILTER_PARAMS_SMALL
+from core.mnv_pipeline import (
+    FILTER_PARAMS_LARGE,
+    FILTER_PARAMS_SMALL,
+    SMALL_IMAGE_THRESHOLD,
+)
 from core.vessel_detection import MNVPreprocessor, VDProcessor
 
 from .visualization_rgb import VisualizationRGB
@@ -84,11 +88,20 @@ def extract_color_mask(
 
 
 def detect_fullfield_vessels(image_u8: np.ndarray) -> np.ndarray:
-    """Full-field vessel binary (same recipe as method_b ``_detect_vessels``)."""
+    """Full-field vessel binary (same recipe as method_b ``_detect_vessels``).
+
+    Filter params follow the same width gate as the analysis pipeline
+    (``MNVPipeline.analyze``: width < ``SMALL_IMAGE_THRESHOLD`` → SMALL,
+    else LARGE) so the trim preview matches the vessels the analysis sees.
+    """
+    width = int(image_u8.shape[1])
+    params = (
+        FILTER_PARAMS_SMALL if width < SMALL_IMAGE_THRESHOLD else FILTER_PARAMS_LARGE
+    )
     preprocessor = MNVPreprocessor(
         mexican_hat_sigma=1.0,
         tubeness_sigma=2.5,
-        filter_params=dict(FILTER_PARAMS_SMALL),
+        filter_params=dict(params),
     )
     out = preprocessor.preprocess_mnv(image_u8, roi_mask=np.ones_like(image_u8) * 255)
     binary = out["binary"]
