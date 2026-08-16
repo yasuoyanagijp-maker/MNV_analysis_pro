@@ -53,15 +53,23 @@ from src.utils.grdm_access import (
 )
 from src.utils.mnv_absent import is_mnv_absent_result
 from src.utils.second_reader import (
+    FR_ADOPTED_CSV_KEY,
+    FR_CSV_PATH_KEY,
+    FR_PREFIX_KEY,
+    FR_RECHECK_CSV_KEY,
+    FR_TARGETS_KEY,
     SR_FIRST_GRADER_CSV_KEY,
     SR_SCAN_ROOT_KEY,
     SR_CSV_PATH_KEY,
     find_first_grader_mnv_csvs,
     format_scale_dropdown_value,
     integrated_output_dir,
+    is_final_reader,
     is_second_reader,
 )
 from src.utils.dual_grader_merge import RPD_THRESHOLD_PCT, merge_dual_grader_csvs
+from src.utils.recheck_md_parser import RecheckTarget
+from src.utils.triad_median_resolver import resolve_triad_recheck
 from src.utils.mnv_results_chart import (
     CHART_METRIC_DEFAULT_REMAP,
     CHART_PNG_HEIGHT_PX,
@@ -97,6 +105,18 @@ async def get_results_view(ctx: AppContext):
     _sr_csv_saved = ctx.page.session.get(SR_CSV_PATH_KEY)
     _sr_csv_ready = bool(
         is_sr_session and _sr_csv_saved and Path(str(_sr_csv_saved)).is_file()
+    )
+
+    # 最終読影者: Save CSV 後、RECHECK文脈が揃っているときのみトライアッド確定を表示
+    is_fr_session = is_final_reader(ctx.page.session)
+    _fr_csv_saved = ctx.page.session.get(FR_CSV_PATH_KEY)
+    _fr_ready = bool(
+        is_fr_session
+        and _fr_csv_saved
+        and Path(str(_fr_csv_saved)).is_file()
+        and ctx.page.session.get(FR_TARGETS_KEY)
+        and ctx.page.session.get(FR_RECHECK_CSV_KEY)
+        and ctx.page.session.get(FR_ADOPTED_CSV_KEY)
     )
 
     # ログアウトは結果画面・サイドバーからいつでも可能（第1→第2交代動線）。
@@ -261,6 +281,22 @@ async def get_results_view(ctx: AppContext):
                         "第2リーダーCSVを保存しました。「統合解析データ」ボタンが利用できます。",
                         "INFO",
                     )
+
+            # 最終読影者: エキスポート実行時のみトライアッド確定ボタンを有効化
+            if is_fr_session:
+                fr_mnv_path = next((p for k, p in written if k == "MNV"), None)
+                if fr_mnv_path is not None:
+                    ctx.page.session.set(FR_CSV_PATH_KEY, str(fr_mnv_path))
+                    if (
+                        ctx.page.session.get(FR_TARGETS_KEY)
+                        and ctx.page.session.get(FR_RECHECK_CSV_KEY)
+                        and ctx.page.session.get(FR_ADOPTED_CSV_KEY)
+                    ):
+                        triad_resolve_btn.visible = True
+                        await ctx.add_to_console(
+                            "最終読影者CSVを保存しました。「トライアッド確定」ボタンが利用できます。",
+                            "INFO",
+                        )
 
             # エキスポート完了 → ログアウトして読影者を交代できる
             if written:
@@ -578,6 +614,234 @@ async def get_results_view(ctx: AppContext):
         ),
         visible=_sr_csv_ready,
         on_click=lambda _: ctx.page.run_task(on_create_integrated_data),
+    )
+
+    # ── 最終読影者: トライアッド確定（dry-runプレビュー → 本確定の2段階） ──
+
+    def _fr_session_targets():
+        raw = ctx.page.session.get(FR_TARGETS_KEY) or []
+        return [
+            RecheckTarget(
+                image_file=str(t.get("image_file") or ""),
+                image_stem=str(t.get("image_stem") or ""),
+                display_name=str(t.get("display_name") or ""),
+                column=str(t.get("column") or ""),
+            )
+            for t in raw
+            if isinstance(t, dict)
+        ]
+
+    async def _run_triad_resolver(dry_run: bool):
+        targets = _fr_session_targets()
+        recheck_csv = Path(str(ctx.page.session.get(FR_RECHECK_CSV_KEY)))
+        adopted_csv = Path(str(ctx.page.session.get(FR_ADOPTED_CSV_KEY)))
+        fr_csv = Path(str(ctx.page.session.get(FR_CSV_PATH_KEY)))
+        prefix = str(ctx.page.session.get(FR_PREFIX_KEY) or "triad")
+        fr_label = (ctx.page.session.get("username") or "").strip() or "FinalReader"
+        # triad出力は元の統合出力（recheck_list等）と同じフォルダに新規ファイルとして書く
+        out_dir = adopted_csv.parent
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: resolve_triad_recheck(
+                targets,
+                recheck_csv=recheck_csv,
+                adopted_csv=adopted_csv,
+                final_reader_csv=fr_csv,
+                out_dir=out_dir,
+                prefix=prefix,
+                threshold=RPD_THRESHOLD_PCT,
+                final_reader_label=fr_label,
+                dry_run=dry_run,
+            ),
+        )
+
+    def _triad_preview_table(records):
+        cols = [
+            "File",
+            "Metric",
+            "G1",
+            "G2",
+            "最終読影者",
+            "確定値(median)",
+            "CV%",
+            "要レビュー",
+            "状態",
+        ]
+        rows = []
+        for r in records:
+            review = r.get("needs_review") == "true"
+            rows.append(
+                ft.DataRow(
+                    cells=[
+                        ft.DataCell(ft.Text(str(r.get("File") or ""), size=11)),
+                        ft.DataCell(ft.Text(str(r.get("Metric") or ""), size=11)),
+                        ft.DataCell(ft.Text(r.get("g1_value") or "—", size=11)),
+                        ft.DataCell(ft.Text(r.get("g2_value") or "—", size=11)),
+                        ft.DataCell(ft.Text(r.get("final_reader_value") or "—", size=11)),
+                        ft.DataCell(
+                            ft.Text(
+                                r.get("final_value") or "—",
+                                size=11,
+                                weight=FontWeight.BOLD,
+                                color=Colors.WHITE,
+                            )
+                        ),
+                        ft.DataCell(ft.Text(r.get("cv_percent") or "—", size=11)),
+                        ft.DataCell(
+                            ft.Text(
+                                "⚠ 要レビュー" if review else "—",
+                                size=11,
+                                color=Colors.AMBER_400 if review else TEXT_MUTED,
+                            )
+                        ),
+                        ft.DataCell(
+                            ft.Text(
+                                str(r.get("status") or ""),
+                                size=11,
+                                color=Colors.RED_400
+                                if r.get("status") != "OK"
+                                else Colors.GREEN_400,
+                            )
+                        ),
+                    ]
+                )
+            )
+        return ft.DataTable(
+            columns=[
+                ft.DataColumn(ft.Text(c, size=11, weight=FontWeight.W_600)) for c in cols
+            ],
+            rows=rows,
+            bgcolor=Colors.with_opacity(0.02, Colors.WHITE),
+            border_radius=10,
+            column_spacing=14,
+            heading_row_height=40,
+            data_row_min_height=34,
+        )
+
+    async def on_triad_commit(preview_dlg):
+        ctx.page.close(preview_dlg)
+        try:
+            summary = await _run_triad_resolver(dry_run=False)
+            lines = [
+                f"対象セル: {summary['n_targets']} / 確定: {summary['n_resolved']}"
+                f"（要レビュー: {summary['n_needs_review']}） / 未解決: {summary['n_unresolved']}",
+                "",
+                "出力ファイル（既存の統合CSVは変更していません）:",
+                f"  {summary['triad_cells_csv']}",
+                f"  {summary['triad_adopted_csv']}",
+                f"  {summary['triad_summary_md']}",
+            ]
+            for w in summary.get("warnings") or []:
+                lines.append(f"⚠ {w}")
+            ctx.page.open(
+                ft.AlertDialog(
+                    title=ft.Text("トライアッド確定を書き出しました", color=Colors.WHITE),
+                    content=ft.Container(
+                        content=ft.Text(
+                            "\n".join(lines), selectable=True, size=12, color=TEXT_MUTED
+                        ),
+                        width=640,
+                    ),
+                    bgcolor=GLASS_BG,
+                )
+            )
+            await ctx.add_to_console(
+                f"トライアッド確定完了: {Path(summary['triad_adopted_csv']).name} "
+                f"(resolved={summary['n_resolved']}, needs_review={summary['n_needs_review']})",
+                "SUCCESS",
+            )
+        except ValueError as ex:
+            await ctx.add_to_console(f"トライアッド確定 エラー: {ex}", "ERROR")
+        except Exception as ex:
+            await ctx.add_to_console(f"トライアッド確定 失敗: {ex}", "ERROR")
+        ctx.page.update()
+
+    async def on_triad_resolve(_=None):
+        """dry-run で全セルの確定内容をプレビューし、確認後に本確定を実行する。"""
+        try:
+            fr_csv = ctx.page.session.get(FR_CSV_PATH_KEY)
+            if not fr_csv or not Path(str(fr_csv)).is_file():
+                await ctx.add_to_console(
+                    "トライアッド確定: 先に Save CSV で最終読影者CSVを保存してください。",
+                    "ERROR",
+                )
+                ctx.page.update()
+                return
+            summary = await _run_triad_resolver(dry_run=True)
+
+            header = ft.Text(
+                f"RECHECK対象 {summary['n_targets']} セル — 確定 {summary['n_resolved']}"
+                f"（要レビュー {summary['n_needs_review']}）/ 未解決 {summary['n_unresolved']}。"
+                f" 要レビュー = RPD(median, 最終読影者) > {summary['threshold_pct']:g}%"
+                "（既存のNA/採用判定と同一閾値）。値は確定され処理は継続します。",
+                size=12,
+                color=TEXT_MUTED,
+            )
+            warn_texts = [
+                ft.Text(f"⚠ {w}", size=11, color=Colors.AMBER_400)
+                for w in (summary.get("warnings") or [])
+            ]
+            preview_dlg = ft.AlertDialog(
+                title=ft.Text(
+                    "トライアッド確定 — dry-run プレビュー（まだ書き込みません）",
+                    color=Colors.WHITE,
+                ),
+                content=ft.Container(
+                    content=ft.Column(
+                        [header, *warn_texts,
+                         ft.Container(
+                             content=ft.Column(
+                                 [_triad_preview_table(summary["records"])],
+                                 scroll=ft.ScrollMode.AUTO,
+                             ),
+                             height=360,
+                         )],
+                        spacing=10,
+                        tight=True,
+                    ),
+                    width=980,
+                ),
+                actions=[
+                    ft.TextButton(
+                        "キャンセル",
+                        on_click=lambda _: ctx.page.close(preview_dlg),
+                    ),
+                    ft.ElevatedButton(
+                        "本確定を実行（CSV/サマリーを書き出す）",
+                        bgcolor=Colors.PURPLE_200,
+                        color=Colors.BLACK,
+                        on_click=lambda _: ctx.page.run_task(
+                            on_triad_commit, preview_dlg
+                        ),
+                    ),
+                ],
+                bgcolor=GLASS_BG,
+            )
+            ctx.page.open(preview_dlg)
+            await ctx.add_to_console(
+                f"トライアッド dry-run: resolved={summary['n_resolved']} "
+                f"needs_review={summary['n_needs_review']} unresolved={summary['n_unresolved']}",
+                "INFO",
+            )
+        except ValueError as ex:
+            await ctx.add_to_console(f"トライアッド dry-run エラー: {ex}", "ERROR")
+        except Exception as ex:
+            await ctx.add_to_console(f"トライアッド dry-run 失敗: {ex}", "ERROR")
+        ctx.page.update()
+
+    triad_resolve_btn = ft.ElevatedButton(
+        "トライアッド確定",
+        icon=Icons.GAVEL_ROUNDED,
+        bgcolor=Colors.PURPLE_200,
+        color=Colors.BLACK,
+        tooltip=(
+            "RECHECK指定セルを median(G1, G2, 最終読影者) で確定します。"
+            "まず dry-run プレビューを表示し、確認後に本確定を書き出します"
+            "（既存の統合CSVは上書きしません）。"
+        ),
+        visible=_fr_ready,
+        on_click=lambda _: ctx.page.run_task(on_triad_resolve),
     )
 
     async def on_logout(_=None):
@@ -1013,6 +1277,7 @@ async def get_results_view(ctx: AppContext):
                     ),
                     grdm_sync_btn,
                     integrated_data_btn,
+                    triad_resolve_btn,
                     logout_btn,
                 ],
                 spacing=8,
@@ -1855,6 +2120,7 @@ async def get_results_view(ctx: AppContext):
                                 on_click=lambda _: ctx.page.run_task(on_reanalyze_mnv, idx),
                             ),
                             integrated_data_btn,
+                            triad_resolve_btn,
                             logout_btn_detail,
                         ],
                         spacing=8,

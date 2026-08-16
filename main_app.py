@@ -120,7 +120,7 @@ async def main(page: ft.Page):
         print("!!! [SECURITY WARNING] DEV_MODE IS ACTIVE. LOGIN BYPASSED. !!!", flush=True)
         page.session.set("username", "DEV_USER")
         page.session.set("user", {"username": "DEV_USER", "is_admin": True})
-        # Optional: test reader role without the login screen (GRADER1 / READER2)
+        # Optional: test reader role without the login screen (GRADER1 / READER2 / FINAL)
         _dev_role = (os.environ.get("ARIAKE_READER_ROLE") or "").strip().upper()
         if _dev_role:
             page.session.set("reader_role", _dev_role)

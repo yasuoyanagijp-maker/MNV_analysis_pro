@@ -195,7 +195,8 @@ def merge_dual_grader_csvs(
     write_csv(adopted_path, fieldnames, adopted_rows)
     write_csv(recheck_path, RECHECK_FIELDS, recheck_rows)
 
-    # NA examples per case (File), not per metric
+    # NA list per case (File) — the final reader's RECHECK re-reading input
+    # (recheck_md_parser reads this format back from the summary MD).
     recheck_by_file: Dict[str, List[str]] = {}
     for r in recheck_rows:
         recheck_by_file.setdefault(r["File"], []).append(r["Metric"])
@@ -243,10 +244,12 @@ def _render_summary_md(s: Dict[str, Any]) -> str:
         "",
         f"- 主要指標セル: {s['recheck_cells']} 件（対象症例 {s['recheck_files']} 件）",
     ]
-    if s["recheck_by_file"]:
+    # 症例別（最終読影者が再読影する対象 — recheck_md_parser がこの形式を読む）
+    recheck_by_file = s.get("recheck_by_file") or {}
+    if recheck_by_file:
         lines.append("- 症例別（NA となった主要指標）:")
-        for f, metrics in s["recheck_by_file"].items():
-            lines.append(f"  - {f}: {', '.join(metrics)}")
+        for fname in sorted(recheck_by_file):
+            lines.append(f"  - {fname}: {', '.join(recheck_by_file[fname])}")
     else:
         lines.append("  - (なし)")
     if s["first_only"] or s["second_only"]:
