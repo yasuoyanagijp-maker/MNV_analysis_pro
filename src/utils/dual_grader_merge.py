@@ -45,6 +45,16 @@ from tools.reading_center_rpd.compute_adopted_from_dual_csv import (  # noqa: E4
 
 RPD_THRESHOLD_PCT = DEFAULT_RPD_PCT  # 20%
 
+# RECHECK flagging must survive a failed Standardized (U2) recompute
+# (_apply_u2_safe keeps the original values): older CSVs then still carry the
+# pre-rename "(U2)" columns, which would otherwise silently drop out of the
+# RECHECK list. A successful recompute removes the legacy columns, so this
+# never double-flags the same metric.
+MAJOR_METRICS_COMPAT = list(MAJOR_METRICS) + [
+    "Caliber Uniformity Score (U2)",
+    "Maturity Index (U2)",
+]
+
 RECHECK_FIELDS = [
     "File",
     "Metric",
@@ -174,7 +184,7 @@ def merge_dual_grader_csvs(
             a, b = to_float(ra.get(col)), to_float(rb.get(col))
             val, status, rpd_s = adopt_pair(a, b, rpd_threshold)
             out[col] = val
-            if col in MAJOR_METRICS and status in ("RECHECK", "MISSING"):
+            if col in MAJOR_METRICS_COMPAT and status in ("RECHECK", "MISSING"):
                 rule = (
                     "MISSING"
                     if status == "MISSING"
