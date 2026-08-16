@@ -18,12 +18,13 @@ Outputs (into the second reader's output folder):
   - ``{prefix}_avg_fallback.csv``    … PROVISIONAL: adopted values with NA cells
     filled by mean(Grader1, Reader2) — reference only, NOT the official values
     (the official resolution of NA cells is the third-reader based
-    ``triad_median_resolver`` output)
+    ``triad_median_resolver`` output). A plain CSV with the header on row 1
+    (Excel-safe); the provisional warning is written to the sibling
+    ``{prefix}_avg_fallback_README.txt``.
 """
 
 from __future__ import annotations
 
-import csv
 import re
 import sys
 from collections import Counter
@@ -69,37 +70,33 @@ AVG_FILLED_FLAG_COL = "is_avg_filled"
 AVG_FILLED_COLS_COL = "avg_filled_columns"
 
 
-def _avg_fallback_comment_lines(rpd_threshold: float) -> List[str]:
-    """Comment lines written above the header of the avg-fallback CSV.
+def _avg_fallback_readme_text(rpd_threshold: float, csv_name: str) -> str:
+    """Warning text written to ``{prefix}_avg_fallback_README.txt``.
 
-    Kept comma-free so naive CSV parsers do not see extra columns; readers that
-    honour comments can skip them (e.g. ``pandas.read_csv(..., comment='#')``).
+    The warning deliberately lives NEXT TO the CSV instead of as ``#``
+    comment lines above its header: Excel (the main viewer at the sites)
+    does not treat ``#`` lines as comments, so in-file comments would shift
+    the header row and misalign every column.
     """
-    return [
-        "# PROVISIONAL / REFERENCE ONLY — NOT the official adopted values.",
-        f"# NA cells (RPD > {rpd_threshold:g}% or undefined RPD) are filled here with the simple mean of Grader1 and Reader2.",
-        f"# Filled cells are flagged per row: {AVG_FILLED_FLAG_COL}=TRUE and the column names are listed in {AVG_FILLED_COLS_COL}.",
-        "# この値は暫定平均であり 正式な確定値ではありません。",
-        "# RPD閾値超過セルは両読影者が系統的にズレている可能性があり 単純平均は真値の折衷にはなりません。",
-        "# 正式な確定値は第3読影者ベースの解決結果（triad_median_resolver）を使用してください。",
-    ]
-
-
-def write_csv_with_comments(
-    path: Path,
-    fieldnames: List[str],
-    rows: List[Dict[str, Any]],
-    comment_lines: List[str],
-) -> None:
-    """Like ``write_csv`` but prepends ``#``-prefixed comment lines above the header."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", newline="", encoding="utf-8-sig") as f:
-        for line in comment_lines:
-            f.write(line.rstrip("\r\n") + "\r\n")
-        w = csv.DictWriter(f, fieldnames=list(fieldnames), extrasaction="ignore")
-        w.writeheader()
-        for row in rows:
-            w.writerow({k: row.get(k, "") for k in fieldnames})
+    return "\n".join(
+        [
+            f"{csv_name} について",
+            "",
+            "PROVISIONAL / REFERENCE ONLY — NOT the official adopted values.",
+            f"NA cells (RPD > {rpd_threshold:g}% or undefined RPD) are filled with the",
+            "simple mean of Grader1 and Reader2.",
+            f"Filled cells are flagged per row: {AVG_FILLED_FLAG_COL}=TRUE and the filled",
+            f"column names are listed in {AVG_FILLED_COLS_COL}.",
+            "",
+            "この CSV は暫定平均で NA セルを補完した参考・簡易確認用ファイルです。",
+            "正式な確定値ではありません。",
+            "RPD閾値超過セルは両読影者が系統的にズレている可能性があり、",
+            "単純平均は真値の折衷にはなりません。",
+            "提出・二次解析には *_adopted_values.csv を使用し、NA の確定解決は",
+            "第3読影者ベースの解決結果（triad_median_resolver）を使用してください。",
+            "",
+        ]
+    )
 
 
 def match_stem(filename: str) -> str:
@@ -257,15 +254,21 @@ def merge_dual_grader_csvs(
 
     adopted_path = out_dir / f"{prefix}_adopted_values.csv"
     avg_fallback_path = out_dir / f"{prefix}_avg_fallback.csv"
+    avg_fallback_readme_path = out_dir / f"{prefix}_avg_fallback_README.txt"
     recheck_path = out_dir / f"{prefix}_recheck_list.csv"
     summary_path = out_dir / f"{prefix}_summary.md"
 
     write_csv(adopted_path, fieldnames, adopted_rows)
-    write_csv_with_comments(
+    # Plain CSV (header on row 1): Excel does not honour "#" comment lines,
+    # so the provisional warning lives in the sibling README instead.
+    write_csv(
         avg_fallback_path,
         fieldnames + [AVG_FILLED_FLAG_COL, AVG_FILLED_COLS_COL],
         avg_fallback_rows,
-        _avg_fallback_comment_lines(rpd_threshold),
+    )
+    avg_fallback_readme_path.write_text(
+        _avg_fallback_readme_text(rpd_threshold, avg_fallback_path.name),
+        encoding="utf-8",
     )
     write_csv(recheck_path, RECHECK_FIELDS, recheck_rows)
 
@@ -293,6 +296,7 @@ def merge_dual_grader_csvs(
         "warnings": warnings,
         "adopted_csv": str(adopted_path),
         "avg_fallback_csv": str(avg_fallback_path),
+        "avg_fallback_readme": str(avg_fallback_readme_path),
         "recheck_csv": str(recheck_path),
         "summary_md": str(summary_path),
     }

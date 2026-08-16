@@ -328,7 +328,7 @@ GakuNin RDM（プロジェクト配下）/
 | 成果物 | 内容 |
 |--------|------|
 | `MNV_integrated_*_adopted_values.csv` | 採用値（提出・二次解析用） |
-| `*_avg_fallback.csv` | **参考・暫定**：NA セルを G1/G2 の単純平均で補完した簡易確認用。`is_avg_filled` / `avg_filled_columns` 列で補完セルを識別可。ヘッダー上のコメント行（`#`）に暫定である旨を明記。**正式な確定値ではない**（確定値は第3読影者ベースの `triad_median_resolver` 解決結果を使用） |
+| `*_avg_fallback.csv` | **参考・暫定**：NA セルを G1/G2 の単純平均で補完した簡易確認用。`is_avg_filled` / `avg_filled_columns` 列で補完セルを識別可。**正式な確定値ではない**（確定値は第3読影者ベースの `triad_median_resolver` 解決結果を使用）。暫定である旨は同名の `*_avg_fallback_README.txt` に明記（Excel でも列がずれないよう CSV 内にはコメント行を置かない） |
 | `*_recheck_list.csv` | NA になった主要指標の一覧（再計測対象） |
 | `*_summary.md` | RPD 等の要約 |
 
@@ -478,7 +478,7 @@ GakuNin RDM（プロジェクト配下）/
 
 | 日付 | 内容 |
 |------|------|
-| 2026-08-15 | 統合解析データに **`*_avg_fallback.csv`**（NA セルを G1/G2 単純平均で補完した**参考・暫定**ファイル。`is_avg_filled` 列とヘッダーコメントで暫定である旨を明示）を追加出力。§10.2.4・§13 を更新。 |
+| 2026-08-15 | 統合解析データに **`*_avg_fallback.csv`**（NA セルを G1/G2 単純平均で補完した**参考・暫定**ファイル。`is_avg_filled` 列と同名 `*_avg_fallback_README.txt` で暫定である旨を明示）を追加出力。§10.2.4・§13 を更新。 |
 | 2026-08-12 | Bugbot 指摘反映: アプリ統合と CLI の突合キー差、同期対象=`output_folder`（integrated 非対象）、`ARIAKE_INSTITUTION_ID` の同期への影響、`TEAM_YY`≠`YOKOHAMA_CITY_UNIV`、ROI ボタン正式名。 |
 | 2026-08-12 | **多施設二重読影＋GakuNin RDM** を操作マニュアルに詳細追記。§6（ログイン細分）、§6A（スキーム全体像・RPD20・ACL）、§10.2（施設内2名の手順）、§10.3（1名＋中央読影の同期／取得）、§10.4（GRDM 操作メモ）、トラブルシュート／関連ドキュメントを更新。 |
 | 2026-08-08 | 第2リーダー出力を第1グレーダーの出力フォルダと**同階層**（`second_reader_output_YYYY_MM_DD/`）に、統合解析データを同階層の **`integrated_output_YYYY_MM_DD/`** に変更。エキスポート後に **ログアウト** ボタンを追加（同一端末での第1グレーダー→第2リーダー交代動線）。§10.2 を更新。 |

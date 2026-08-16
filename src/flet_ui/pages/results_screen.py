@@ -538,6 +538,7 @@ async def get_results_view(ctx: AppContext):
                 "出力ファイル:",
                 f"  {summary['adopted_csv']}",
                 f"  {summary['avg_fallback_csv']}",
+                f"  {summary.get('avg_fallback_readme', '')}",
                 f"  {summary['recheck_csv']}",
                 f"  {summary['summary_md']}",
                 "",
