@@ -883,15 +883,18 @@ async def get_results_view(ctx: AppContext):
     def _detail_pipeline_metrics(r: dict) -> dict:
         return metrics_from_session_result_row(r)
 
-    def _detail_avdi(r: dict):
+    def _detail_vsl_density_pct(r: dict):
+        """ImageJ vessel_density is Vsl/MNV ratio (0–1); confirmation UI shows percent."""
         m = _detail_pipeline_metrics(r)
-        vd, mi = m.get("vessel_density"), m.get("mean_intensity")
-        if vd is not None and mi is not None:
-            try:
-                return safe_round(float(vd) * float(mi) * 100, 2)
-            except (TypeError, ValueError):
-                pass
-        return "—"
+        vd = m.get("vessel_density")
+        if vd is None:
+            vd = r.get("vessel_density")
+        if vd is None:
+            return "—"
+        try:
+            return f"{safe_round(float(vd) * 100, 2)}%"
+        except (TypeError, ValueError):
+            return "—"
 
     def _detail_float_metric(m: dict, key: str, digits: int = 2):
         v = m.get(key)
@@ -1938,7 +1941,7 @@ async def get_results_view(ctx: AppContext):
                         ),
                         metric_tile(
                             "Vsl Density",
-                            _detail_avdi(res),
+                            _detail_vsl_density_pct(res),
                             "",
                             Icons.BUBBLE_CHART_ROUNDED,
                             Colors.GREEN_400,

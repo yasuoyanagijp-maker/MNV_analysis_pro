@@ -55,6 +55,7 @@ class VisualizationRGB:
         lesion_mask: np.ndarray,
         metrics: Optional[Dict] = None,
         highskew_mask: Optional[np.ndarray] = None,
+        add_overlays: bool = True,
     ) -> np.ndarray:
         """
         RGB合成可視化を作成 (ImageJ createVisualizationRGB互換)
@@ -80,6 +81,9 @@ class VisualizationRGB:
             指定時は G 減算に使用。Blur で「中心濃・周囲薄」の勾配を保ったまま、
             最大値を 255 にスケールしてから減算するため赤がはっきり出る。
             未指定時は簡易版 _detect_dilated_vessels を使用。
+        add_overlays : bool
+            True（既定）でスケールバーと metrics テキストを描画。
+            差分抽出など画素比較では False にして着色画素だけを残す。
 
         Returns
         -------
@@ -135,12 +139,10 @@ class VisualizationRGB:
         # 病変境界の黄色枠は描画しない（ImageJ crop_reference は枠なし表示）
         # 従来: _draw_lesion_boundary で ROI 輪郭を黄色描画 → 削除
 
-        # スケールバー追加
-        rgb_image = self._add_scale_bar(rgb_image)
-
-        # 統計情報のテキストオーバーレイ
-        if metrics:
-            rgb_image = self._add_text_overlay(rgb_image, metrics)
+        if add_overlays:
+            rgb_image = self._add_scale_bar(rgb_image)
+            if metrics:
+                rgb_image = self._add_text_overlay(rgb_image, metrics)
 
         return rgb_image
 
@@ -320,8 +322,14 @@ class VisualizationRGB:
         if "lesion_area_mm2" in metrics:
             lines.append(f"Lesion: {metrics['lesion_area_mm2']:.3f} mm2")
 
-        if "vessel_density_percent" in metrics:
-            lines.append(f"VD: {metrics['vessel_density_percent']:.1f}%")
+        vd_pct = metrics.get("vessel_density_percent")
+        if vd_pct is None and metrics.get("vessel_density") is not None:
+            try:
+                vd_pct = float(metrics["vessel_density"]) * 100.0
+            except (TypeError, ValueError):
+                vd_pct = None
+        if vd_pct is not None:
+            lines.append(f"VD: {float(vd_pct):.1f}%")
 
         # テキスト描画
         margin = 10
