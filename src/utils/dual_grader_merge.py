@@ -4,12 +4,14 @@ Merge first-grader and second-reader MNV CSVs into one adopted-values CSV.
 Reuses the reading-center RPD adoption code
 (``tools/reading_center_rpd/compute_adopted_from_dual_csv.py``):
 
-1. Recompute Caliber Uniformity (U2) + Maturity (U2) on both CSVs.
-2. Match rows by image file stem (the second reader grades the exported
+1. Match rows by image file stem (the second reader grades the exported
    ``export/images/{institution}/{lesion_id}.png`` files, whose stems equal the
    first grader's original filenames after sanitization).
-3. Per numeric column, adopt the arithmetic mean when RPD <= threshold
+2. Per numeric column, adopt the arithmetic mean when RPD <= threshold
    (default 20%); otherwise NA (recheck) — via the existing ``adopt_pair``.
+
+CSV values are used as-is (no merge-time U2 recompute): the analysis pipeline
+already writes U2-based Caliber Uniformity / Maturity into the default columns.
 
 Outputs (into the second reader's output folder):
   - ``{prefix}_adopted_values.csv``  … batch-CSV schema, adopted values
@@ -21,7 +23,6 @@ from __future__ import annotations
 
 import re
 import sys
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -35,7 +36,6 @@ from tools.reading_center_rpd.compute_adopted_from_dual_csv import (  # noqa: E4
     DEFAULT_RPD_PCT,
     MAJOR_METRICS,
     adopt_pair,
-    apply_u2,
     is_numeric_column,
     read_csv,
     rpd_pct,
@@ -44,6 +44,13 @@ from tools.reading_center_rpd.compute_adopted_from_dual_csv import (  # noqa: E4
 )
 
 RPD_THRESHOLD_PCT = DEFAULT_RPD_PCT  # 20%
+
+# App batch CSVs carry the U2-based values in the default Caliber/Maturity
+# columns (no separate "(U2)" columns), so track those names as major too.
+MAJOR_METRICS_MERGE = list(MAJOR_METRICS) + [
+    "Caliber Uniformity Score",
+    "Maturity Index",
+]
 
 RECHECK_FIELDS = [
     "File",
@@ -81,19 +88,6 @@ def _index_rows(rows: List[Dict[str, Any]]) -> Tuple[Dict[str, Dict[str, Any]], 
     return idx, dup
 
 
-def _apply_u2_safe(
-    fieldnames: List[str],
-    rows: List[Dict[str, Any]],
-    warnings: List[str],
-    label: str,
-) -> Tuple[List[str], List[Dict[str, Any]]]:
-    try:
-        return apply_u2(list(fieldnames), [dict(r) for r in rows], None)
-    except (Exception, SystemExit) as ex:  # SystemExit: missing reference json
-        warnings.append(f"U2 recompute failed for {label}: {ex} — using original values.")
-        return list(fieldnames), [dict(r) for r in rows]
-
-
 def merge_dual_grader_csvs(
     first_csv: Path,
     second_csv: Path,
@@ -123,17 +117,13 @@ def merge_dual_grader_csvs(
         # Legacy callers / older tool builds may still raise SystemExit.
         raise ValueError(f"CSV read failed: {ex}") from ex
 
-    # Step 1 — U2 recompute (same fixed pipeline as the reading-center tool)
-    fields_a, rows_a = _apply_u2_safe(fields_a, rows_a, warnings, first_label)
-    fields_b, rows_b = _apply_u2_safe(fields_b, rows_b, warnings, second_label)
-
     # Union fieldnames: first-grader order, then extras from the second reader
     fieldnames = list(fields_a)
     for c in fields_b:
         if c not in fieldnames:
             fieldnames.append(c)
 
-    # Step 2 — match by file stem
+    # Step 1 — match by file stem
     idx_a, dup_a = _index_rows(rows_a)
     idx_b, dup_b = _index_rows(rows_b)
     for dup, label in ((dup_a, first_label), (dup_b, second_label)):
@@ -154,7 +144,7 @@ def merge_dual_grader_csvs(
 
     numeric_cols = [c for c in fieldnames if is_numeric_column(c, rows_a, rows_b)]
 
-    # Step 3 — RPD adoption per numeric column (existing RPD<=20% rule)
+    # Step 2 — RPD adoption per numeric column (existing RPD<=20% rule)
     adopted_rows: List[Dict[str, Any]] = []
     recheck_rows: List[Dict[str, str]] = []
     for key in common:
@@ -172,7 +162,7 @@ def merge_dual_grader_csvs(
             a, b = to_float(ra.get(col)), to_float(rb.get(col))
             val, status, rpd_s = adopt_pair(a, b, rpd_threshold)
             out[col] = val
-            if col in MAJOR_METRICS and status in ("RECHECK", "MISSING"):
+            if col in MAJOR_METRICS_MERGE and status in ("RECHECK", "MISSING"):
                 rule = (
                     "MISSING"
                     if status == "MISSING"
@@ -205,8 +195,10 @@ def merge_dual_grader_csvs(
     write_csv(adopted_path, fieldnames, adopted_rows)
     write_csv(recheck_path, RECHECK_FIELDS, recheck_rows)
 
-    recheck_by_metric = dict(Counter(r["Metric"] for r in recheck_rows))
-    files_recheck = len({r["File"] for r in recheck_rows})
+    # NA examples per case (File), not per metric
+    recheck_by_file: Dict[str, List[str]] = {}
+    for r in recheck_rows:
+        recheck_by_file.setdefault(r["File"], []).append(r["Metric"])
     summary = {
         "first_csv": str(first_csv),
         "second_csv": str(second_csv),
@@ -219,8 +211,8 @@ def merge_dual_grader_csvs(
         "first_only": only_a,
         "second_only": only_b,
         "recheck_cells": len(recheck_rows),
-        "recheck_files": files_recheck,
-        "recheck_by_metric": recheck_by_metric,
+        "recheck_files": len(recheck_by_file),
+        "recheck_by_file": recheck_by_file,
         "warnings": warnings,
         "adopted_csv": str(adopted_path),
         "recheck_csv": str(recheck_path),
@@ -242,19 +234,19 @@ def _render_summary_md(s: Dict[str, Any]) -> str:
         "",
         "## ルール",
         "",
-        "1. 両CSVで Caliber/Maturity **U2** を再計算。",
-        "2. ファイル名（stem）で行を突合。",
-        f"3. RPD ≤ {s['threshold_pct']:g}% → 採用値 = 算術平均、超過 → **NA**（再計測）。",
+        "1. ファイル名（stem）で行を突合。",
+        f"2. RPD ≤ {s['threshold_pct']:g}% → 採用値 = 算術平均、超過 → **NA**（再計測）。",
         "",
         "**根拠:** 20%は測定誤差を許容しつつ、過度な除外を避けるために設定した。",
         "",
         "## RECHECK",
         "",
-        f"- 主要指標セル: {s['recheck_cells']} 件（対象ファイル {s['recheck_files']} 件）",
+        f"- 主要指標セル: {s['recheck_cells']} 件（対象症例 {s['recheck_files']} 件）",
     ]
-    if s["recheck_by_metric"]:
-        for m, n in sorted(s["recheck_by_metric"].items(), key=lambda x: -x[1]):
-            lines.append(f"  - {m}: {n}")
+    if s["recheck_by_file"]:
+        lines.append("- 症例別（NA となった主要指標）:")
+        for f, metrics in s["recheck_by_file"].items():
+            lines.append(f"  - {f}: {', '.join(metrics)}")
     else:
         lines.append("  - (なし)")
     if s["first_only"] or s["second_only"]:
