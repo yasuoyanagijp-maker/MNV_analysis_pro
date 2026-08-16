@@ -4,7 +4,7 @@ Reading-center dual-CSV adoption (RPD threshold).
 
 Pipeline (fixed order)
 ----------------------
-1. Recompute Caliber Uniformity (U2) + Maturity (U2) on each input CSV
+1. Recompute Standardized Caliber Uniformity + Standardized Maturity on each input CSV
 2. Match rows between site CSV and 2nd-reader CSV (flexible keys)
 3. Adopt arithmetic mean when RPD <= threshold (default 20%); else NA
 
@@ -42,8 +42,8 @@ MAJOR_METRICS = [
     "MNV Area (mm2)",
     "Vsl Area (mm2)",
     "Vsl Density (Vessel Area/MNV (%))",
-    "Caliber Uniformity Score (U2)",
-    "Maturity Index (U2)",
+    "Standardized Caliber Uniformity Score",
+    "Standardized Maturity Index",
     "Network Complexity Score",
     "Fractal Dim",
     "Tortuosity",
@@ -435,7 +435,7 @@ def render_summary_md(summary: Dict[str, Any]) -> str:
         "",
         "## Rule",
         "",
-        "1. Recompute Caliber/Maturity **U2** on both CSVs (mandatory).",
+        "1. Recompute **Standardized** Caliber/Maturity on both CSVs (mandatory).",
         "2. Match by Case + Visit (flexible filename / column rules).",
         f"3. If RPD ≤ {summary['threshold_pct']:g}% → adopted = mean; else **NA** (recheck).",
         "",
@@ -499,7 +499,7 @@ def strip_internal(rows: List[Dict[str, Any]], fieldnames: List[str]) -> List[Di
 
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(
-        description="Reading-center dual CSV → U2 + RPD adoption (Micron 3-file set)"
+        description="Reading-center dual CSV → Standardized recompute + RPD adoption (Micron 3-file set)"
     )
     p.add_argument("--site-csv", type=Path, required=True, help="Facility / primary reader CSV")
     p.add_argument("--reader2-csv", type=Path, required=True, help="Second reader CSV")
@@ -539,7 +539,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     except ValueError as ex:
         raise SystemExit(str(ex)) from ex
 
-    print("Step1: U2 recompute (mandatory)", file=sys.stderr)
+    print("Step1: Standardized (U2) recompute (mandatory)", file=sys.stderr)
     fields_a, rows_a = apply_u2(fields_a, rows_a, args.size_class)
     fields_b, rows_b = apply_u2(fields_b, rows_b, args.size_class)
 

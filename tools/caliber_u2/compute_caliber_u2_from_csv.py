@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Standalone: compute Caliber Uniformity (U2) and Maturity from an MNV batch CSV.
+Standalone: compute Standardized Caliber Uniformity and Maturity from an MNV
+batch CSV (internal name U2).
 
 Inserts columns immediately to the right of existing Caliber Uniformity Score /
 Maturity Index (or appends if missing):
 
-  - Caliber Uniformity Score (U2)
-  - Maturity Index (U2)   [= 50 + (U2 − Network Complexity) / 2]
+  - Standardized Caliber Uniformity Score
+  - Standardized Maturity Index   [= 50 + (Standardized Caliber − Network Complexity) / 2]
 
 Usage
 -----
@@ -40,8 +41,11 @@ DIL_COL = "Dilated vessel (%)"
 COMPLEXITY_COL = "Network Complexity Score"
 CALIBER_COL = "Caliber Uniformity Score"
 MATURITY_COL = "Maturity Index"
-U2_COL = "Caliber Uniformity Score (U2)"
-MAT_U2_COL = "Maturity Index (U2)"
+U2_COL = "Standardized Caliber Uniformity Score"
+MAT_U2_COL = "Standardized Maturity Index"
+# Pre-rename column names ("(U2)" suffix) — dropped/replaced on recompute.
+LEGACY_U2_COL = "Caliber Uniformity Score (U2)"
+LEGACY_MAT_U2_COL = "Maturity Index (U2)"
 FILE_COL = "File"
 
 
@@ -84,8 +88,9 @@ def process_rows(
         if col not in fieldnames:
             raise SystemExit(f"Missing required column: {col}")
 
-    out_fields = list(fieldnames)
-    # Insert U2 next to Caliber; Maturity U2 next to Maturity
+    # Legacy "(U2)" columns are superseded by the recomputed Standardized ones.
+    out_fields = [c for c in fieldnames if c not in (LEGACY_U2_COL, LEGACY_MAT_U2_COL)]
+    # Insert Standardized Caliber next to Caliber; Standardized Maturity next to Maturity
     if CALIBER_COL in out_fields:
         out_fields = _insert_after(out_fields, CALIBER_COL, [U2_COL])
     else:
@@ -132,7 +137,9 @@ def _write_csv(path: Path, fieldnames: List[str], rows: List[Dict[str, Any]]) ->
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    p = argparse.ArgumentParser(description="Insert Caliber U2 + Maturity U2 into MNV CSV")
+    p = argparse.ArgumentParser(
+        description="Insert Standardized Caliber Uniformity + Standardized Maturity into MNV CSV"
+    )
     p.add_argument("input_csv", type=Path)
     p.add_argument("-o", "--output", type=Path, default=None)
     p.add_argument("--inplace", action="store_true", help="Overwrite input CSV")

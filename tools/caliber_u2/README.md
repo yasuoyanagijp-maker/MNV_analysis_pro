@@ -20,7 +20,7 @@ Reference JSON: `resources/reference_metrics/caliber_u2_device_ref.json`
 tools\caliber_u2\compute_caliber_u2_from_csv.bat INPUT.csv
 ```
 
-Inserts `Caliber Uniformity Score (U2)` and `Maturity Index (U2)` to the right of existing columns.
+Inserts `Standardized Caliber Uniformity Score` and `Standardized Maturity Index` to the right of existing columns (legacy `… (U2)` columns in old CSVs are replaced on recompute).
 
 ## Release kit checklist
 1. Include `resources/reference_metrics/caliber_u2_device_ref.json` (bundled via existing PyInstaller `resources/` datas).

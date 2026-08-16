@@ -54,18 +54,24 @@ def summary_table_header_label(col: str) -> str:
 CHART_PNG_WIDTH_PX = 1180
 CHART_PNG_HEIGHT_PX = 640
 
-# Chart dropdown labels for standardized (U2) series → ImageJ CSV columns.
-# Pipeline default Maturity/Caliber columns are already U2; (U2) is display-only.
+# Chart dropdown labels for the standardized (internal name U2) series →
+# ImageJ CSV columns. Pipeline default Maturity/Caliber columns are already
+# standardized; the "Standardized" prefix is display-only.
 CHART_METRIC_ALIASES: Dict[str, str] = {
+    "Standardized Maturity Index": "Maturity Index",
+    "Standardized Caliber Uniformity Score": "Caliber Uniformity Score",
+    # Legacy "(U2)" display labels (pre-rename sessions / callers).
     "Maturity Index (U2)": "Maturity Index",
     "Caliber Uniformity Score (U2)": "Caliber Uniformity Score",
 }
 
-# Prefer U2 only for legacy/bare session keys (no U2/PCA suffix).
+# Prefer Standardized for legacy/bare session keys (no Standardized/PCA marker).
 # Do NOT remap explicit PCA selections — users must keep Maturity/Caliber (PCA).
 CHART_METRIC_DEFAULT_REMAP: Dict[str, str] = {
-    "Maturity Index": "Maturity Index (U2)",
-    "Caliber Uniformity Score": "Caliber Uniformity Score (U2)",
+    "Maturity Index": "Standardized Maturity Index",
+    "Caliber Uniformity Score": "Standardized Caliber Uniformity Score",
+    "Maturity Index (U2)": "Standardized Maturity Index",
+    "Caliber Uniformity Score (U2)": "Standardized Caliber Uniformity Score",
 }
 
 _NON_NUMERIC_CSV = frozenset(
@@ -87,15 +93,15 @@ _NON_NUMERIC_CSV = frozenset(
 
 
 def resolve_chart_metric_col(metric_col: str) -> str:
-    """Map chart dropdown labels (e.g. U2) to ImageJ CSV column names."""
+    """Map chart dropdown labels (e.g. Standardized …) to ImageJ CSV column names."""
     return CHART_METRIC_ALIASES.get(str(metric_col or "").strip(), str(metric_col or ""))
 
 
 def chartable_numeric_columns() -> List[str]:
     """Numeric columns / chart labels suitable for batch comparison charts."""
     preferred = [
-        "Maturity Index (U2)",
-        "Caliber Uniformity Score (U2)",
+        "Standardized Maturity Index",
+        "Standardized Caliber Uniformity Score",
         "Network Complexity Score",
         "Maturity Index (PCA)",
         "Caliber Uniformity Score (PCA)",
@@ -107,7 +113,7 @@ def chartable_numeric_columns() -> List[str]:
         "Vsl Length (mm)",
         "Complexity Score",
     ]
-    # Bare U2 columns are shown as "(U2)" labels — skip duplicate bare names.
+    # Bare default columns are shown as "Standardized …" labels — skip duplicates.
     skip_bare_u2 = frozenset(CHART_METRIC_ALIASES.values())
     out: List[str] = []
     for col in preferred:

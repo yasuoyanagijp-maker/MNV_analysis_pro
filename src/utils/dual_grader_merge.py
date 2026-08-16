@@ -46,11 +46,22 @@ from tools.reading_center_rpd.compute_adopted_from_dual_csv import (  # noqa: E4
 RPD_THRESHOLD_PCT = DEFAULT_RPD_PCT  # 20%
 
 # App batch CSVs carry the U2-based values in the default Caliber/Maturity
-# columns (no separate "(U2)" columns), so track those names as major too.
-MAJOR_METRICS_MERGE = list(MAJOR_METRICS) + [
-    "Caliber Uniformity Score",
-    "Maturity Index",
-]
+# columns (no separate suffix), the reading-center CLI historically wrote
+# "... (U2)" columns, and newer CLI builds write "Standardized ..." columns
+# (MAJOR_METRICS). Any of these notations designates the same metric, so
+# RECHECK flagging must cover every variant — each CSV only ever carries one
+# of them, so a metric is never double-flagged.
+MAJOR_METRICS_MERGE = list(
+    dict.fromkeys(
+        list(MAJOR_METRICS)
+        + [
+            "Caliber Uniformity Score",
+            "Maturity Index",
+            "Caliber Uniformity Score (U2)",
+            "Maturity Index (U2)",
+        ]
+    )
+)
 
 RECHECK_FIELDS = [
     "File",

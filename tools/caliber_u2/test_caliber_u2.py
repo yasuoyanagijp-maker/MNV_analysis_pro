@@ -132,17 +132,20 @@ class TestCaliberU2(unittest.TestCase):
         out_fields, out_rows = mod.process_rows(
             fieldnames, rows[:3], size_class_override="small_3mm"
         )
-        self.assertIn("Caliber Uniformity Score (U2)", out_fields)
-        self.assertIn("Maturity Index (U2)", out_fields)
+        self.assertIn("Standardized Caliber Uniformity Score", out_fields)
+        self.assertIn("Standardized Maturity Index", out_fields)
+        # Legacy "(U2)" display labels must not survive a recompute.
+        self.assertNotIn("Caliber Uniformity Score (U2)", out_fields)
+        self.assertNotIn("Maturity Index (U2)", out_fields)
         i_cal = out_fields.index("Caliber Uniformity Score")
-        self.assertEqual(out_fields[i_cal + 1], "Caliber Uniformity Score (U2)")
+        self.assertEqual(out_fields[i_cal + 1], "Standardized Caliber Uniformity Score")
         i_mat = out_fields.index("Maturity Index")
-        self.assertEqual(out_fields[i_mat + 1], "Maturity Index (U2)")
+        self.assertEqual(out_fields[i_mat + 1], "Standardized Maturity Index")
         for r in out_rows:
-            self.assertTrue(r["Caliber Uniformity Score (U2)"])
-            u2 = float(r["Caliber Uniformity Score (U2)"])
+            self.assertTrue(r["Standardized Caliber Uniformity Score"])
+            u2 = float(r["Standardized Caliber Uniformity Score"])
             cx = float(r["Network Complexity Score"])
-            mat = float(r["Maturity Index (U2)"])
+            mat = float(r["Standardized Maturity Index"])
             self.assertAlmostEqual(mat, calculate_maturity_index(u2, cx), places=4)
 
         with tempfile.TemporaryDirectory() as td:

@@ -4,7 +4,7 @@
 
 ## 固定パイプライン
 
-1. **U2 再計算（必須）** — Caliber / Maturity を standardized U2 に更新  
+1. **Standardized 再計算（必須）** — Caliber / Maturity を Standardized スコア（内部名 U2）に更新  
 2. **突合** — Case + Visit（列指定 or ファイル名正規表現）  
 3. **採用** — RPD ≤ 20%（既定）→ 算術平均、それ以外 → `NA`（再計測）
 
@@ -66,8 +66,8 @@ cd /path/to/MNV_analysis_pro
 - MNV Area (mm2)
 - Vsl Area (mm2)
 - Vsl Density (Vessel Area/MNV (%))
-- Caliber Uniformity Score (U2)
-- Maturity Index (U2)
+- Standardized Caliber Uniformity Score
+- Standardized Maturity Index
 - Network Complexity Score
 - Fractal Dim
 - Tortuosity
