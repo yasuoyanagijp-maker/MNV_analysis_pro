@@ -13,6 +13,7 @@ Git で管理する **ユーザー向け・理論向けマニュアル** をこ�
 | Flet 版・詳細（理論・マクロとの差分） | [ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md)（**§6.3 Complexity / Caliber Uniformity**） |
 | マクロ版ベースの整理・要約（付録） | [ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md) |
 | 操作の要点（Confirm Selection 等） | [ARIAKE_OCTA_操作マニュアル_簡易版.md](ARIAKE_OCTA_操作マニュアル_簡易版.md) |
+| **最終読影者・トライアッド確定**（RECHECK再解析・確認事項3点・閾値・dry-run所見） | [triad_recheck/README.md](triad_recheck/README.md)（操作手順は [USER_MANUAL.md §10.5](../USER_MANUAL.md)） |
 | ImageJ マクロ正本の置き場（予定） | [imagej-macro/README.md](imagej-macro/README.md) |
 | **Graefe 改訂**（提出・ICC・Response・S1 等） | ブランチ `graefe/major-revision-analyses` の [`documentation/graefe_revision/`](graefe_revision/)（Textbook Editor／moumaku は別リポ `dr-yanagi-content-studio`＝`GA_Consensus`。こちらでは扱わない） |
 
