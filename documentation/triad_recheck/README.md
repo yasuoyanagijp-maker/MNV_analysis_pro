@@ -78,8 +78,9 @@ G1/G2の二重読影でRPDが採用基準を超えNA（RECHECK）となった主
 
 - RECHECK指定**外**のセルは、最終読影者が同じ画像を読影していても一切使用・上書きしない
   （テストで最終読影者の非対象値がリークしないことを検証済み）。
-- 最終読影者CSVにも既存パイプラインと同じ **U2再計算**を適用してから突合する
-  （`Caliber Uniformity Score (U2)` 等の比較整合性のため）。
+- 最終読影者CSVにも既存パイプラインと同じ **U2再計算**を適用してから突合する。
+  値の参照は素の既定列 / `… (U2)` / `Standardized …` の等価列名を順に試すため、
+  再計算が失敗した場合やビルド間の列名差があっても解決できる。
 - 最終読影者の値が無いセル・G1/G2が両方欠損のセルは `UNRESOLVED` として報告し、
   adopted 側は `NA` のまま（処理は継続）。
 
@@ -121,9 +122,11 @@ G1/G2の二重読影でRPDが採用基準を超えNA（RECHECK）となった主
 - 全角/半角の括弧・コロン・カンマ、箇条書き記号（`-` `*` `・` `•` 番号付き等）、
   見出しレベル（`##`/`###`）、`対象症例`/`対象ファイル` 表記の揺れに対応（NFKC正規化）。
 - パラメータ名マッピング表: `MAJOR_METRICS` の正式名に加え、
-  `Caliber Uniformity Score`→`(U2)`、`Maturity Index`→`(U2)`、
-  `Vsl Density`→`Vsl Density (Vessel Area/MNV (%))`、`Fractal Dimension`→`Fractal Dim` 等の
-  略記エイリアスを許容。**マッピング不能な表記は `UnknownParameterError` で処理を中止**。
+  Caliber / Maturity は **素の既定列名を正**とし、`… (U2)` / `Standardized …` を
+  同一指標の別名として等価扱い（`column_candidates` が CSV 側の実列名に
+  フォールバック）。`Vsl Density`→`Vsl Density (Vessel Area/MNV (%))`、
+  `Fractal Dimension`→`Fractal Dim` 等の略記エイリアスも許容。
+  **マッピング不能な表記は `UnknownParameterError` で処理を中止**。
 - `dual_grader_merge` の summary MD ライターも拡張し、統合時に
   「症例別（NA となった主要指標）」リストを自動出力するようにした
   （ライター→パーサーのラウンドトリップをテストで検証）。

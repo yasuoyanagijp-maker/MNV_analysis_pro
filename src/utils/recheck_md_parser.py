@@ -99,15 +99,51 @@ def _normalize_param(raw: str) -> str:
     return s.casefold()
 
 
+# Caliber / Maturity column-name equivalence. App batch CSVs (PR #10+) carry
+# the U2 values in the bare default columns; the reading-center CLI writes
+# "... (U2)" columns; newer builds rename those to "Standardized ...". Any of
+# these notations designates the same underlying metric, so lookups must try
+# every variant (see ``column_candidates``). The bare default name is the
+# canonical form because it is what the app CSVs / integrated summary use.
+_COLUMN_EQUIVALENCE_GROUPS: Tuple[Tuple[str, ...], ...] = (
+    (
+        "Caliber Uniformity Score",
+        "Caliber Uniformity Score (U2)",
+        "Standardized Caliber Uniformity Score",
+    ),
+    (
+        "Maturity Index",
+        "Maturity Index (U2)",
+        "Standardized Maturity Index",
+    ),
+)
+
+_EQUIVALENTS_BY_COLUMN: Dict[str, Tuple[str, ...]] = {
+    name: group for group in _COLUMN_EQUIVALENCE_GROUPS for name in group
+}
+
+
+def column_candidates(column: str) -> List[str]:
+    """All column names that designate the same metric, ``column`` first."""
+    group = _EQUIVALENTS_BY_COLUMN.get(column)
+    if not group:
+        return [column]
+    return [column] + [c for c in group if c != column]
+
+
 def _build_alias_table() -> Dict[str, str]:
     table: Dict[str, str] = {}
     for col in MAJOR_METRICS:
         table[_normalize_param(col)] = col
-    # Loose display names used in summaries / by humans. The recheck pipeline
-    # only ever flags the (U2) variants, so bare names map to them.
+    # Canonicalize every Caliber/Maturity notation to the bare default column
+    # (what app batch CSVs and the integrated summary use). "(U2)" /
+    # "Standardized" variants stay resolvable via column_candidates().
+    for group in _COLUMN_EQUIVALENCE_GROUPS:
+        canonical = group[0]
+        for name in group:
+            table[_normalize_param(name)] = canonical
+    # Loose display names used in summaries / by humans.
     aliases = {
-        "Caliber Uniformity Score": "Caliber Uniformity Score (U2)",
-        "Maturity Index": "Maturity Index (U2)",
         "Vsl Density": "Vsl Density (Vessel Area/MNV (%))",
         "Fractal Dimension": "Fractal Dim",
         "MNV Area": "MNV Area (mm2)",

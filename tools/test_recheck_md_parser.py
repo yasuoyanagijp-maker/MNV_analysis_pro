@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.utils.recheck_md_parser import (  # noqa: E402
     RecheckMdError,
     UnknownParameterError,
+    column_candidates,
     map_parameter_name,
     parse_recheck_md,
     parse_recheck_md_text,
@@ -35,20 +36,39 @@ class TestParameterMapping(unittest.TestCase):
     def test_exact_major_metrics(self):
         self.assertEqual(map_parameter_name("Vsl Area (mm2)"), "Vsl Area (mm2)")
         self.assertEqual(map_parameter_name("MNV Area (mm2)"), "MNV Area (mm2)")
-        self.assertEqual(
-            map_parameter_name("Caliber Uniformity Score (U2)"),
-            "Caliber Uniformity Score (U2)",
-        )
 
-    def test_loose_aliases_map_to_u2_columns(self):
-        self.assertEqual(
-            map_parameter_name("Caliber Uniformity Score"),
+    def test_caliber_maturity_variants_canonicalize_to_bare_columns(self):
+        # App batch CSVs carry U2 values in the bare default columns, so the
+        # bare name is canonical; "(U2)" / "Standardized" are aliases.
+        for variant in (
+            "Caliber Uniformity Score",
             "Caliber Uniformity Score (U2)",
-        )
-        self.assertEqual(map_parameter_name("Maturity Index"), "Maturity Index (U2)")
+            "Standardized Caliber Uniformity Score",
+        ):
+            self.assertEqual(
+                map_parameter_name(variant), "Caliber Uniformity Score"
+            )
+        for variant in (
+            "Maturity Index",
+            "Maturity Index (U2)",
+            "Standardized Maturity Index",
+        ):
+            self.assertEqual(map_parameter_name(variant), "Maturity Index")
         self.assertEqual(
             map_parameter_name("Vsl Density"), "Vsl Density (Vessel Area/MNV (%))"
         )
+
+    def test_column_candidates_cover_all_variants(self):
+        cands = column_candidates("Caliber Uniformity Score")
+        self.assertEqual(cands[0], "Caliber Uniformity Score")
+        self.assertIn("Caliber Uniformity Score (U2)", cands)
+        self.assertIn("Standardized Caliber Uniformity Score", cands)
+        # Requested name always comes first, even for an alias
+        cands_u2 = column_candidates("Maturity Index (U2)")
+        self.assertEqual(cands_u2[0], "Maturity Index (U2)")
+        self.assertIn("Maturity Index", cands_u2)
+        # Non-equivalenced columns pass through unchanged
+        self.assertEqual(column_candidates("Fractal Dim"), ["Fractal Dim"])
 
     def test_fullwidth_brackets_and_case(self):
         self.assertEqual(map_parameter_name("Vsl Area （mm2）"), "Vsl Area (mm2)")
@@ -73,7 +93,7 @@ class TestParseCanonical(unittest.TestCase):
             [
                 ("102-001_Week04.png", "Vsl Area (mm2)"),
                 ("102-002_Week04.png", "MNV Area (mm2)"),
-                ("102-002_Week04.png", "Caliber Uniformity Score (U2)"),
+                ("102-002_Week04.png", "Caliber Uniformity Score"),
             ],
         )
         self.assertEqual(res.targets[0].image_stem, "102-001_week04")
@@ -88,7 +108,7 @@ class TestParseCanonical(unittest.TestCase):
         res = parse_recheck_md_text(CANONICAL_MD)
         self.assertEqual(
             res.columns_for_stem("102-002_week04"),
-            ["MNV Area (mm2)", "Caliber Uniformity Score (U2)"],
+            ["MNV Area (mm2)", "Caliber Uniformity Score"],
         )
 
 

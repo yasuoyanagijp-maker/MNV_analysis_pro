@@ -1376,21 +1376,61 @@ async def get_dashboard_view(ctx: AppContext):
                     stem_to_image[s] = img
         missing = sorted(target_stems - set(stem_to_image))
         if missing:
-            # フォールバック: MD周辺を限定的に再帰検索
+            # フォールバック: export/images 配下のみを再帰検索。可視化PNG・QA
+            # オーバーレイ・staging 残骸など同名の別画像を拾わないため、
+            # 探索を export/images バンドルに限定し、同一 stem に複数の異なる
+            # ファイルが見つかった場合は中止する（先勝ちで別画像を解析しない）。
             search_root = md_path.parent.parent
+            candidates_by_stem: dict = {}
             for pat in ("*.png", "*.tif", "*.tiff", "*.jpg", "*.jpeg"):
                 for img in search_root.rglob(pat):
+                    parts = img.parts
+                    in_export_images = any(
+                        parts[i] == "export" and parts[i + 1] == "images"
+                        for i in range(len(parts) - 1)
+                    )
+                    if not in_export_images:
+                        continue
                     s = match_stem(img.name)
                     if s in target_stems and s not in stem_to_image:
-                        stem_to_image[s] = img
+                        candidates_by_stem.setdefault(s, []).append(img)
+            ambiguous = {
+                s: paths for s, paths in candidates_by_stem.items() if len(paths) > 1
+            }
+            if ambiguous:
+                detail = "\n".join(
+                    f"  {s}:\n" + "\n".join(f"    {p}" for p in paths)
+                    for s, paths in sorted(ambiguous.items())
+                )
+                _final_reader_error_dialog(
+                    "対象画像の候補が複数あります（処理を中止しました）",
+                    "同じ症例 stem に複数の画像ファイルが見つかりました。\n"
+                    "誤った画像を再読影しないため処理を中止します。\n"
+                    "不要な複製を整理するか、正しい export バンドルだけを"
+                    "残してから再実行してください。\n\n" + detail,
+                )
+                return False
+            for s, paths in candidates_by_stem.items():
+                stem_to_image[s] = paths[0]
             missing = sorted(target_stems - set(stem_to_image))
         if missing:
+            # 対象が欠けたまま進めると、そのセルが未確定のまま「確定済み」と
+            # 誤認されうるため、スキップ続行ではなく中止する。
             names = ", ".join(
                 t.image_file for t in parsed.targets if t.image_stem in set(missing)
             )
-            await ctx.add_to_console(
-                f"最終読影者: 対象画像が見つかりません（スキップ）: {names}", "WARN"
+            _final_reader_error_dialog(
+                "RECHECK対象画像が見つかりません（処理を中止しました）",
+                "次の対象症例の画像を探せませんでした:\n"
+                f"  {names}\n\n"
+                f"探索起点: {md_path.parent.parent}\n"
+                "第1グレーダーの export/images バンドルが同じ親フォルダ配下に"
+                "あるか確認してください。",
             )
+            await ctx.add_to_console(
+                f"最終読影者: 対象画像が見つからないため中止: {names}", "ERROR"
+            )
+            return False
         if not stem_to_image:
             _final_reader_error_dialog(
                 "対象画像が見つかりません",

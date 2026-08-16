@@ -364,9 +364,90 @@ class TestSummaryMdRoundTrip(unittest.TestCase):
             {
                 ("102-001_week04", "Vsl Area (mm2)"),
                 ("102-002_week04", "MNV Area (mm2)"),
-                ("102-002_week04", "Caliber Uniformity Score (U2)"),
+                # "(U2)" notation canonicalizes to the bare default column
+                ("102-002_week04", "Caliber Uniformity Score"),
             },
         )
+
+
+class TestColumnNameEquivalence(unittest.TestCase):
+    """Bare / "(U2)" / "Standardized" Caliber notations must interoperate.
+
+    App batch CSVs (PR #10+) hold the U2 values in the bare default columns,
+    while the reading-center CLI writes "... (U2)" columns. A recheck list
+    written by one build must resolve against CSVs written by another.
+    """
+
+    def test_u2_recheck_metric_resolves_against_bare_columns(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            prefix = "xcompat"
+            recheck_csv = d / f"{prefix}_recheck_list.csv"
+            adopted_csv = d / f"{prefix}_adopted_values.csv"
+            fr_csv = d / "MNV_final_reader.csv"
+
+            # CLI-style recheck list: Metric uses the "(U2)" notation
+            _write_csv(
+                recheck_csv,
+                ["File", "Metric", "Value_grader1", "Value_reader2"],
+                [
+                    {
+                        "File": "102-001_Week04.png",
+                        "Metric": "Caliber Uniformity Score (U2)",
+                        "Value_grader1": "50.0",
+                        "Value_reader2": "80.0",
+                    }
+                ],
+            )
+            # App-style adopted CSV / final-reader CSV: bare default column
+            _write_csv(
+                adopted_csv,
+                ["ID", "File", "Analyst", "Caliber Uniformity Score"],
+                [
+                    {
+                        "ID": "1",
+                        "File": "102-001_Week04.png",
+                        "Analyst": "Dual-read mean (RPD<=20%; else NA)",
+                        "Caliber Uniformity Score": "NA",
+                    }
+                ],
+            )
+            _write_csv(
+                fr_csv,
+                ["ID", "File", "Caliber Uniformity Score"],
+                [
+                    {
+                        "ID": "1",
+                        "File": "102-001_Week04.png",
+                        "Caliber Uniformity Score": "60.0",
+                    }
+                ],
+            )
+            # MD written with the "(U2)" notation → canonical bare column
+            targets = [
+                RecheckTarget(
+                    image_file="102-001_Week04.png",
+                    image_stem="102-001_week04",
+                    display_name="Caliber Uniformity Score (U2)",
+                    column="Caliber Uniformity Score",
+                )
+            ]
+            summary = resolve_triad_recheck(
+                targets,
+                recheck_csv=recheck_csv,
+                adopted_csv=adopted_csv,
+                final_reader_csv=fr_csv,
+                out_dir=d,
+                prefix=prefix,
+                dry_run=False,
+            )
+            self.assertEqual(summary["n_resolved"], 1)
+            self.assertEqual(summary["n_cells_applied"], 1)
+            rec = summary["records"][0]
+            # median(50, 80, 60) = 60
+            self.assertEqual(rec["final_value"], "60")
+            _, rows = _read_csv(Path(summary["triad_adopted_csv"]))
+            self.assertEqual(rows[0]["Caliber Uniformity Score"], "60")
 
 
 if __name__ == "__main__":

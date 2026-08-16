@@ -35,6 +35,14 @@ LOGOUT_SESSION_KEYS = (
     "second_reader_scan_root",
     "second_reader_first_grader_csv",
     "second_reader_csv_path",
+    # Final-reader (最終読影者) RECHECK context — must not leak into the next
+    # login on the same terminal (別読影者の integrated 出力へ書いてしまう).
+    "final_reader_md_path",
+    "final_reader_targets",
+    "final_reader_recheck_csv",
+    "final_reader_adopted_csv",
+    "final_reader_prefix",
+    "final_reader_csv_path",
     "export_logout_ready",
     "grdm_graded_institution_id",
     "grdm_pending_institution_id",

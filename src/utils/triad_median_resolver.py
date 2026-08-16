@@ -41,7 +41,11 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from src.utils.dual_grader_merge import match_stem  # noqa: E402
-from src.utils.recheck_md_parser import RecheckTarget  # noqa: E402
+from src.utils.recheck_md_parser import (  # noqa: E402
+    RecheckTarget,
+    column_candidates,
+    map_parameter_name,
+)
 
 # Existing RPD(20%) adoption implementation — thresholds reused, not redefined.
 from tools.reading_center_rpd.compute_adopted_from_dual_csv import (  # noqa: E402
@@ -183,15 +187,34 @@ def _recheck_row_g1_g2(row: Dict[str, Any]) -> Tuple[Optional[float], Optional[f
 def index_recheck_rows(
     rows: List[Dict[str, Any]],
 ) -> Dict[Tuple[str, str], Tuple[Optional[float], Optional[float]]]:
-    """(stem, metric column) → (g1, g2) from a recheck_list CSV."""
+    """(stem, canonical metric column) → (g1, g2) from a recheck_list CSV.
+
+    Metric names are canonicalized (bare / "(U2)" / "Standardized" Caliber
+    and Maturity notations all designate the same metric) so lookups match
+    regardless of which pipeline build wrote the recheck list.
+    """
     out: Dict[Tuple[str, str], Tuple[Optional[float], Optional[float]]] = {}
     for r in rows:
         stem = _recheck_row_stem(r)
         metric = str(r.get("Metric") or "").strip()
         if not stem or not metric:
             continue
-        out[(stem, metric)] = _recheck_row_g1_g2(r)
+        canonical = map_parameter_name(metric) or metric
+        out[(stem, canonical)] = _recheck_row_g1_g2(r)
     return out
+
+
+def _first_available_value(
+    row: Optional[Dict[str, Any]], column: str
+) -> Optional[float]:
+    """First finite value among the column's equivalent names in ``row``."""
+    if row is None:
+        return None
+    for cand in column_candidates(column):
+        v = to_float(row.get(cand))
+        if v is not None:
+            return v
+    return None
 
 
 def _apply_u2_safe(
@@ -208,12 +231,22 @@ def _apply_u2_safe(
         return list(fieldnames), [dict(r) for r in rows]
 
 
-def _index_rows_by_stem(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+def _index_rows_by_stem(
+    rows: List[Dict[str, Any]],
+    warnings: Optional[List[str]] = None,
+    label: str = "",
+) -> Dict[str, Dict[str, Any]]:
     idx: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         key = match_stem(r.get("File", "")) or match_stem(r.get("ID", ""))
-        if key:
-            idx[key] = r
+        if not key:
+            continue
+        if key in idx and warnings is not None:
+            warnings.append(
+                f"重複する行キーを検出（後の行を使用）: {key}"
+                + (f"（{label}）" if label else "")
+            )
+        idx[key] = r
     return idx
 
 
@@ -255,10 +288,11 @@ def resolve_triad_recheck(
     except (ValueError, SystemExit) as ex:
         raise ValueError(f"CSV read failed: {ex}") from ex
 
-    # Final-reader CSV needs the same mandatory U2 recompute as G1/G2 so that
-    # "(U2)" columns exist and are comparable.
+    # Final-reader CSV gets the same U2 recompute as G1/G2 so standardized
+    # columns exist when possible; value lookups additionally fall back to
+    # the equivalent column names (bare / "(U2)" / "Standardized").
     fr_fields, fr_rows = _apply_u2_safe(fr_fields, fr_rows, warnings)
-    fr_idx = _index_rows_by_stem(fr_rows)
+    fr_idx = _index_rows_by_stem(fr_rows, warnings, "最終読影者CSV")
     g1g2_idx = index_recheck_rows(recheck_rows)
 
     if not fr_idx:
@@ -274,12 +308,13 @@ def resolve_triad_recheck(
 
     for t in targets:
         fr_row = fr_idx.get(t.image_stem)
-        fr_val = to_float(fr_row.get(t.column)) if fr_row else None
+        fr_val = _first_available_value(fr_row, t.column)
         if fr_row is None:
             warnings.append(
                 f"最終読影者CSVに {t.image_file} の行がありません（未読影？）。"
             )
-        pair = g1g2_idx.get((t.image_stem, t.column))
+        canonical = map_parameter_name(t.column) or t.column
+        pair = g1g2_idx.get((t.image_stem, canonical))
         if pair is None:
             g1 = g2 = None
             warnings.append(
@@ -325,7 +360,8 @@ def resolve_triad_recheck(
     if NEEDS_REVIEW_COL not in out_fields:
         out_fields.append(NEEDS_REVIEW_COL)
     triad_rows = [dict(r) for r in adopted_rows]
-    triad_rows_idx = _index_rows_by_stem(triad_rows)
+    triad_rows_idx = _index_rows_by_stem(triad_rows, warnings, "adopted_values")
+    adopted_field_set = set(adopted_fields)
     n_cells_applied = 0
     for rec in records:
         if rec["status"] != "OK":
@@ -336,7 +372,20 @@ def resolve_triad_recheck(
                 f"adopted_valuesに {rec['File']} の行がありません（適用スキップ）。"
             )
             continue
-        row[rec["Metric"]] = rec["final_value"]
+        # Write into the equivalent column that actually exists in the
+        # adopted CSV — a name absent from its header would be dropped by
+        # the CSV writer and the resolution silently lost.
+        target_col = next(
+            (c for c in column_candidates(rec["Metric"]) if c in adopted_field_set),
+            None,
+        )
+        if target_col is None:
+            warnings.append(
+                f"adopted_valuesに列 {rec['Metric']} がありません（適用スキップ）: "
+                f"{rec['File']}"
+            )
+            continue
+        row[target_col] = rec["final_value"]
         row["Analyst"] = (
             f"Dual-read mean (RPD<={threshold:g}%; else NA); "
             f"RECHECK cells = triad median (G1, G2, {final_reader_label})"
