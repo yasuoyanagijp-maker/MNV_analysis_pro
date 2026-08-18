@@ -105,6 +105,7 @@ class MNVPreprocessor:
         image_for_mex = cv2.medianBlur(image, 3)
         # マルチスケール時: sigma 1,1.5,2 の max で太い血管ロス防止
         filter_start = time.time()
+        t_mh = time.perf_counter()
         print("    - Applying Mexican Hat filter...", end=" ", flush=True)
         _mh_params = {
             k: v
@@ -126,6 +127,8 @@ class MNVPreprocessor:
             remove_small_particles=True,
         )
         print(f"[{time.time() - filter_start:.2f}s]")
+        t_tub = time.perf_counter()
+        mh_s = t_tub - t_mh
 
         # 2. Tubeness Filter（ImageJ processTubenessImproved 互換）
         # ImageJ: Tubeness -> Sauvola(k=0.5) -> denoiseImproved(1)
@@ -167,6 +170,8 @@ class MNVPreprocessor:
                 remove_small_particles=True,
             )
         print(f"[{time.time() - filter_start:.2f}s]")
+        t_comb = time.perf_counter()
+        tub_s = t_comb - t_tub
 
         # 3. 結合（ImageJ createBinaryImageImproved 互換）
         # ImageJ: OR -> denoiseImproved(0) = Despeckle のみ
@@ -174,6 +179,7 @@ class MNVPreprocessor:
         print("    - Combining filters...", end=" ", flush=True)
         binary = self._combine_filters(mex_hat_binary, tubeness_binary)
         print(f"[{time.time() - filter_start:.2f}s]")
+        comb_s = time.perf_counter() - t_comb
 
         # 4. ROIマスク適用は行わない（バイナリ画像はROIクロップせず出力）
         # 注意: ImageJではOR結合後にdenoiseをかけない
@@ -184,6 +190,11 @@ class MNVPreprocessor:
             "binary": binary,
             "mex_hat_gray": mex_hat_binary,  # compatibility
             "tubeness_gray": tubeness_binary,  # compatibility (same as tubeness)
+            "_timing": {
+                "mexican_hat": round(mh_s, 4),
+                "tubeness": round(tub_s, 4),
+                "combine": round(comb_s, 4),
+            },
         }
 
     def _process_mexican_hat_with_gray(self, image: np.ndarray):

@@ -11,6 +11,13 @@ if str(ROOT) not in sys.path:
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+# Plan 1: pin BLAS/OpenMP before numpy/cv2 import (no-op if ARIAKE_WIN_PERF_PLAN1=0).
+try:
+    from utils.runtime_threads import apply_plan1_env, apply_plan1_imported_libs
+except ImportError:
+    from src.utils.runtime_threads import apply_plan1_env, apply_plan1_imported_libs
+apply_plan1_env()
+
 import asyncio
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
@@ -32,6 +39,8 @@ from utils.mnv_imagej_csv import metrics_for_csv_export
 import shutil
 import cv2
 import numpy as np
+
+apply_plan1_imported_libs()
 import uuid
 import uvicorn
 from datetime import datetime

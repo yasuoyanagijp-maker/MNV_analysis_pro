@@ -778,43 +778,53 @@ class BinaryPostProcessor:
         ImageJマクロの removeSmallParticlesImproved に相当
         平均面積より小さいパーティクルを除去
 
-        Parameters:
-        -----------
-        binary_img : np.ndarray
-            二値化画像
-
-        Returns:
-        --------
-        result : np.ndarray
-            処理後の画像
+        規則は従来どおり（8連結、面積 < 平均で削除）。塗りつぶしだけ
+        ラベル LUT で一括処理する（画素集合はループ実装と一致）。
         """
+        return BinaryPostProcessor._wipe_below_mean_area(binary_img)
+
+    @staticmethod
+    def remove_small_particles_improved_ref(binary_img: np.ndarray) -> np.ndarray:
+        """Loop reference used only to prove LUT identity. Do not call in pipeline."""
         from skimage import measure
 
         if binary_img is None or binary_img.size == 0:
             return binary_img
 
         result = binary_img.copy()
-
-        # 閾値200-255で二値化
         _, thresholded = cv2.threshold(result, 200, 255, cv2.THRESH_BINARY)
-
-        # パーティクル解析（connectivity=2は8近傍）
         labels = measure.label(thresholded > 0, connectivity=2)
         props = measure.regionprops(labels)
-
         if len(props) == 0:
             return result
-
-        # 総面積と平均面積を計算
         total_area = sum(prop.area for prop in props)
-        particle_count = len(props)
-        mean_area = total_area / particle_count
-
-        # 平均面積より小さいパーティクルを黒で塗りつぶし
+        mean_area = total_area / len(props)
         for prop in props:
             if prop.area < mean_area:
                 result[labels == prop.label] = 0
+        return result
 
+    @staticmethod
+    def _wipe_below_mean_area(binary_img: np.ndarray) -> np.ndarray:
+        """Same rule as remove_small_particles_improved_ref, vectorized."""
+        from skimage import measure
+
+        if binary_img is None or binary_img.size == 0:
+            return binary_img
+
+        result = binary_img.copy()
+        _, thresholded = cv2.threshold(result, 200, 255, cv2.THRESH_BINARY)
+        labels = measure.label(thresholded > 0, connectivity=2)
+        n_labels = int(labels.max())
+        if n_labels == 0:
+            return result
+
+        counts = np.bincount(labels.ravel(), minlength=n_labels + 1)
+        fg = counts[1:]
+        mean_area = fg.sum() / fg.size
+        remove = np.zeros(n_labels + 1, dtype=bool)
+        remove[1:] = fg < mean_area
+        result[remove[labels]] = 0
         return result
 
     @staticmethod

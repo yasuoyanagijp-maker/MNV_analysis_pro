@@ -46,6 +46,8 @@ from core.skeleton_analysis import (BranchAnalyzer, DiameterAnalyzer,
                                     TaggedSkeletonProcessor)
 from utils.image_utils import ScaleManager
 from utils.imagej_compatible_output import ImageJOutputManager
+from utils.runtime_threads import apply_plan1_imported_libs, use_filter_parallel
+from utils.step_timer import StepTimer
 
 from .vessel_detection import MNVPreprocessor
 
@@ -164,6 +166,14 @@ def validate_image(image: np.ndarray, step_name: str, logger: logging.Logger) ->
         return False
 
 
+def _record_step(timer: Optional[StepTimer], name: str, t_mark: float) -> float:
+    """Record elapsed seconds on timer (if present) and return a new mark."""
+    dt = time.perf_counter() - t_mark
+    if timer is not None:
+        timer.record(name, dt)
+    return time.perf_counter()
+
+
 class MNVPipeline:
     """
     MNV解析の完全パイプライン
@@ -256,7 +266,11 @@ class MNVPipeline:
         results : dict
             解析結果
         """
+        apply_plan1_imported_libs()
+        timer = StepTimer()
+        self._timer = timer
         start_time = time.time()
+        t_total = time.perf_counter()
         self.logger.info(f"\n=== Processing: {Path(image_path).name} ===")
         self.logger.info(f"Start Time: {datetime.now().strftime('%H:%M:%S')}\n")
 
@@ -275,8 +289,9 @@ class MNVPipeline:
             from utils.image_utils import ImageProcessor
 
             image_processor = ImageProcessor()
-            image = image_processor.load_image(image_path, as_gray=True)
-            image = image_processor.ensure_8bit(image)
+            with timer.measure("load_image"):
+                image = image_processor.load_image(image_path, as_gray=True)
+                image = image_processor.ensure_8bit(image)
 
             # 画像検証
             if not validate_image(image, "Input Image", self.logger):
@@ -306,6 +321,7 @@ class MNVPipeline:
 
             # Step 1: ROI検出
             step_start = time.time()
+            t_step = time.perf_counter()
             self.logger.info("-" * 60)
             self.logger.info("Step 1: ROI Detection")
 
@@ -379,6 +395,7 @@ class MNVPipeline:
             roi_coverage = (mnv_area_pixels / (w * h)) * 100
 
             step_time = time.time() - step_start
+            timer.record("step1_roi", time.perf_counter() - t_step)
             self.logger.debug(f"  Step 1 time: {step_time:.2f}s")
 
             self.logger.info("✓ ROI Detection completed")
@@ -430,6 +447,7 @@ class MNVPipeline:
 
             # Step 2: 前処理
             step_start = time.time()
+            t_step = time.perf_counter()
             self.logger.info("-" * 60)
             self.logger.info("Step 2: Image Preprocessing")
             self.logger.debug(f"  Mexican Hat sigma: {self.mexican_hat_sigma}")
@@ -444,14 +462,18 @@ class MNVPipeline:
                 mexican_hat_sigma=self.mexican_hat_sigma,
                 tubeness_sigma=self.tubeness_sigma,
                 filter_params=self.filter_params,
+                use_parallel=use_filter_parallel(),
             )
 
             preprocess_results = preprocessor.preprocess_mnv(image, roi_mask)
             binary = preprocess_results["binary"]
             mex_hat = preprocess_results.get("mex_hat")
             tubeness = preprocess_results.get("tubeness")
+            for _k, _v in (preprocess_results.get("_timing") or {}).items():
+                timer.record(f"step2_{_k}", _v)
 
             # デバッグ: 前処理中間画像を保存（output_dir 指定時）
+            t_io = time.perf_counter()
             if output_dir:
                 debug_dir = Path(output_dir)
                 debug_dir.mkdir(parents=True, exist_ok=True)
@@ -465,6 +487,7 @@ class MNVPipeline:
                     "  Saved: debug_mex_hat.png, debug_tubeness.png, "
                     "debug_binary_combined.png"
                 )
+            timer.record("step2_debug_png_write", time.perf_counter() - t_io)
 
             # バイナリ画像検証
             if not validate_image(binary, "Binary Image", self.logger):
@@ -483,6 +506,7 @@ class MNVPipeline:
             vessel_density = vessel_area_mm2 / mnv_area_mm2 if mnv_area_mm2 > 0 else 0
 
             step_time = time.time() - step_start
+            timer.record("step2_preprocess", time.perf_counter() - t_step)
             self.logger.debug(f"  Step 2 time: {step_time:.2f}s")
 
             self.logger.info("✓ Preprocessing completed")
@@ -507,6 +531,7 @@ class MNVPipeline:
 
             # Step 3: スケルトン解析
             step_start = time.time()
+            t_step = time.perf_counter()
             self.logger.info("-" * 60)
             self.logger.info("Step 3: Skeleton Analysis")
 
@@ -522,6 +547,7 @@ class MNVPipeline:
                     self.logger.warning("⚠ Skeleton is empty")
 
             step_time = time.time() - step_start
+            timer.record("step3_skeleton", time.perf_counter() - t_step)
             self.logger.debug(f"  Step 3 time: {step_time:.2f}s")
 
             self.logger.info("✓ Skeleton Analysis completed")
@@ -553,6 +579,7 @@ class MNVPipeline:
 
             # Step 4: 空間分布解析
             step_start = time.time()
+            t_step = time.perf_counter()
             self.logger.info("-" * 60)
             self.logger.info("Step 4: Spatial Distribution Analysis")
 
@@ -564,6 +591,7 @@ class MNVPipeline:
             )
 
             step_time = time.time() - step_start
+            timer.record("step4_spatial", time.perf_counter() - t_step)
             self.logger.debug(f"  Step 4 time: {step_time:.2f}s")
 
             self.logger.info("✓ Spatial Distribution Analysis completed")
@@ -598,6 +626,7 @@ class MNVPipeline:
 
             # Step 5: Flow Deficit解析
             step_start = time.time()
+            t_step = time.perf_counter()
             self.logger.info("-" * 60)
             self.logger.info("Step 5: Flow Deficit Analysis")
 
@@ -616,6 +645,7 @@ class MNVPipeline:
                 fd_results = self._get_default_fd_results()
 
             step_time = time.time() - step_start
+            timer.record("step5_flow_deficit", time.perf_counter() - t_step)
             self.logger.debug(f"  Step 5 time: {step_time:.2f}s")
 
             self.logger.info("✓ Flow Deficit Analysis completed")
@@ -623,6 +653,7 @@ class MNVPipeline:
 
             # Step 6: パターン分類
             step_start = time.perf_counter()
+            t_step = time.perf_counter()
             self.logger.info("-" * 60)
             self.logger.info("Step 6: Pattern Classification")
 
@@ -778,11 +809,13 @@ class MNVPipeline:
                     fd_vis = None
 
             # 保存（output_dir 指定時）
+            t_vis_io = time.perf_counter()
             if output_dir and vis_rgb is not None:
                 debug_dir = Path(output_dir)
                 debug_dir.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(debug_dir / "visualization_rgb.png"), cv2.cvtColor(vis_rgb, cv2.COLOR_RGB2BGR))
                 self.logger.debug(f"  Saved color-coded visualization: {debug_dir / 'visualization_rgb.png'}")
+            timer.record("step6_vis_png_write", time.perf_counter() - t_vis_io)
 
             self.logger.debug(
                 f"[Step6] Step 6 subtotal: {time.perf_counter()-step_start:.3f}s"
@@ -812,6 +845,23 @@ class MNVPipeline:
 
             step_time = time.perf_counter() - step_start
             total_time = time.time() - start_time
+            timer.record("step6_pattern_vis", step_time)
+            timer.record("total", time.perf_counter() - t_total)
+
+            self.logger.info("[ARIAKE timing]")
+            for line in timer.summary_lines():
+                self.logger.info("  %s", line)
+            timing_json = timer.to_json()
+            print(f"[ARIAKE timing json] {timing_json}", flush=True)
+            if output_dir:
+                try:
+                    outp = Path(output_dir)
+                    outp.mkdir(parents=True, exist_ok=True)
+                    (outp / "aria_timing.json").write_text(
+                        timing_json, encoding="utf-8"
+                    )
+                except OSError:
+                    pass
 
             self.logger.debug(f"  Step 6 time: {step_time:.2f}s")
 
@@ -863,32 +913,24 @@ class MNVPipeline:
         ImageJの performSkeletonAnalysisImproved に対応
         """
         t0 = time.perf_counter()
+        timer = getattr(self, "_timer", None)
 
         skeleton_analyzer = SkeletonAnalyzer(scale_manager.mm_per_pixel)
         skeleton = skeleton_analyzer.skeletonize(binary)
         skeleton = cv2.bitwise_and(skeleton, skeleton, mask=roi_mask)
-        self.logger.debug(
-            f"[Skeleton] 1. skeletonize: {time.perf_counter()-t0:.3f}s"
-        )
-        t1 = time.perf_counter()
+        t1 = _record_step(timer, "step3_skeletonize", t0)
 
         diameter_analyzer = DiameterAnalyzer(scale_manager.mm_per_pixel)
         distance_map = diameter_analyzer.create_distance_map(binary)
         distance_map_float = distance_map.astype(np.float32)
         distance_map_float[roi_mask == 0] = 0
         distance_map = distance_map_float.astype(distance_map.dtype)
-        self.logger.debug(
-            f"[Skeleton] 2. distance_map: {time.perf_counter()-t1:.3f}s"
-        )
-        t2 = time.perf_counter()
+        t2 = _record_step(timer, "step3_distance_map", t1)
 
         diameter_stats = diameter_analyzer.analyze_diameter_statistics(
             distance_map, skeleton
         )
-        self.logger.debug(
-            f"[Skeleton] 3. diameter_stats: {time.perf_counter()-t2:.3f}s"
-        )
-        t3 = time.perf_counter()
+        t3 = _record_step(timer, "step3_diameter_stats", t2)
 
         tagged_processor = TaggedSkeletonProcessor()
         tagged = tagged_processor.create_tagged_skeleton(skeleton)
@@ -898,10 +940,7 @@ class MNVPipeline:
         )
         self.logger.debug(f"  Max junction area: {max_junction_area}")
         refined_pixels = np.sum(refined_skeleton > 0)
-        self.logger.debug(
-            f"[Skeleton] 4. tagged+refined_skeleton: {time.perf_counter()-t3:.3f}s"
-        )
-        t4 = time.perf_counter()
+        t4 = _record_step(timer, "step3_tagged_refined", t3)
 
         skeleton_for_fractal = refined_skeleton if refined_pixels > 0 else skeleton
         if refined_pixels == 0:
@@ -926,27 +965,19 @@ class MNVPipeline:
         self.logger.debug(
             f"  Box counting: {len(box_sizes)} sizes, Fractal dim: {fractal_dim:.3f}"
         )
-        self.logger.debug(
-            f"[Skeleton] 5. fractal_dimension: {time.perf_counter()-t4:.3f}s"
-        )
-        t5 = time.perf_counter()
+        t5 = _record_step(timer, "step3_fractal_dimension", t4)
 
         euler_analyzer = EulerAnalyzer()
         euler_number, num_loops = euler_analyzer.calculate_euler_number(
             refined_skeleton
         )
-        self.logger.debug(
-            f"[Skeleton] 6. euler_number: {time.perf_counter()-t5:.3f}s"
-        )
-        t6 = time.perf_counter()
+        t6 = _record_step(timer, "step3_euler_number", t5)
 
         skeleton_for_analysis = refined_skeleton if refined_pixels > 0 else skeleton
         refined_skeleton_structure = skeleton_analyzer.analyze_skeleton_structure(
             skeleton_for_analysis
         )
-        self.logger.debug(
-            f"[Skeleton] 7. analyze_skeleton_structure: {time.perf_counter()-t6:.3f}s"
-        )
+        t7 = _record_step(timer, "step3_analyze_structure", t6)
 
         self.logger.debug(
             f"  Skeleton structure: branches={refined_skeleton_structure['num_branches']}, "
@@ -954,7 +985,6 @@ class MNVPipeline:
             f"endpoints={refined_skeleton_structure['num_endpoints']}"
         )
 
-        t7 = time.perf_counter()
         branch_analyzer = BranchAnalyzer(
             scale_manager.mm_per_pixel, diameter_stats["mean_diameter_um"]
         )
@@ -986,10 +1016,7 @@ class MNVPipeline:
             refined_skeleton_structure["num_triple_points"],
             refined_skeleton_structure["num_quadruple_points"],
         )
-        self.logger.debug(
-            f"[Skeleton] 8. tortuosity_densities: {time.perf_counter()-t7:.3f}s"
-        )
-        t8 = time.perf_counter()
+        t8 = _record_step(timer, "step3_tortuosity_densities", t7)
 
         high_skew_analyzer = HighSkewnessAnalyzer(
             scale_manager.mm_per_pixel, scale_manager.pixel_size_um
@@ -1000,22 +1027,14 @@ class MNVPipeline:
             dilated_highSkew_for_visualization,
             high_skew_stats,
         ) = high_skew_analyzer.detect_high_skewness_segments(distance_map, skeleton)
-        self.logger.debug(
-            f"[Skeleton] 9. high_skewness_segments: {time.perf_counter()-t8:.3f}s"
-        )
-        t9 = time.perf_counter()
+        t9 = _record_step(timer, "step3_high_skewness", t8)
 
         mnv_area_pixels = np.sum(roi_mask > 0)
         mnv_area_mm2 = mnv_area_pixels * (scale_manager.mm_per_pixel**2)
         arteriolarization_results = high_skew_analyzer.analyze_segments(
             high_skew_skeleton, mnv_area_mm2, total_length_mm
         )
-        self.logger.debug(
-            f"[Skeleton] 10. arteriolarization_analyze: {time.perf_counter()-t9:.3f}s"
-        )
-        self.logger.debug(
-            f"[Skeleton] Step 3 subtotal: {time.perf_counter()-t0:.3f}s"
-        )
+        _record_step(timer, "step3_arteriolarization", t9)
 
         # total_length_mm の扱い（キー競合なし）:
         # - vessel_length_mm: 全血管スケルトン長（上記 branch_analyzer 由来）
