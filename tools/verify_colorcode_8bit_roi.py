@@ -3,14 +3,15 @@
 using each folder's debug_roi_mask.png as ROI. Compare loop vs LUT particle wipe.
 
 Usage (from repo root):
-  python tools/verify_colorcode_8bit_roi.py
-  python tools/verify_colorcode_8bit_roi.py --size 1024
+  python tools/verify_colorcode_8bit_roi.py --root path/to/mnv_runs
+  ARIAKE_MNV_ROOT=path/to/mnv_runs python tools/verify_colorcode_8bit_roi.py --size 1024
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -25,7 +26,12 @@ if str(SRC) not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-MNV_ROOT = Path(r"C:\Users\Y\ARIAKE_OCTA_Data\output\mnv")
+
+def _default_mnv_root() -> Path:
+    env = (os.environ.get("ARIAKE_MNV_ROOT") or "").strip()
+    if env:
+        return Path(env)
+    return Path(r"C:\Users\Y\ARIAKE_OCTA_Data\output\mnv")
 
 
 def _to_gray8(bgr: np.ndarray) -> np.ndarray:
@@ -61,8 +67,19 @@ def main() -> int:
         default=0,
         help="If >0, upsample gray (linear) and ROI (nearest) to size×size.",
     )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help="Folder of MNV run directories (visualization_rgb.png + debug_roi_mask.png). "
+        "Defaults to $ARIAKE_MNV_ROOT or a local developer path.",
+    )
     args = parser.parse_args()
     size = int(args.size)
+    mnv_root = args.root if args.root is not None else _default_mnv_root()
+    if not mnv_root.is_dir():
+        print(f"MNV ROOT MISSING: {mnv_root}", flush=True)
+        return 2
 
     from utils.cv2_path import imread_bgr, imread_grayscale
     from core.preprocessing import BinaryPostProcessor, FilterBank
@@ -83,8 +100,8 @@ def main() -> int:
     gray_dir.mkdir(parents=True, exist_ok=True)
 
     cases = []
-    folders = sorted(p for p in MNV_ROOT.iterdir() if p.is_dir())
-    print(f"Found {len(folders)} MNV run folders under {MNV_ROOT}", flush=True)
+    folders = sorted(p for p in mnv_root.iterdir() if p.is_dir())
+    print(f"Found {len(folders)} MNV run folders under {mnv_root}", flush=True)
 
     for folder in folders:
         vis = folder / "visualization_rgb.png"
@@ -202,7 +219,7 @@ def main() -> int:
 
     all_equal = all(c["wipe_equal"] for c in cases) if cases else False
     report = {
-        "source": str(MNV_ROOT),
+        "source": str(mnv_root),
         "upsample_px": size,
         "n_cases": len(cases),
         "all_wipe_equal": all_equal,

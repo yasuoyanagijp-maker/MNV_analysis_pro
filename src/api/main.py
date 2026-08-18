@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-# Plan 1: pin BLAS/OpenMP before numpy/cv2 import (no-op if ARIAKE_WIN_PERF_PLAN1=0).
+# Plan 1: pin BLAS/OpenMP before numpy/cv2 import (opt-in: ARIAKE_WIN_PERF_PLAN1=1).
 try:
     from utils.runtime_threads import apply_plan1_env, apply_plan1_imported_libs
 except ImportError:

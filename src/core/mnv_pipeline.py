@@ -473,8 +473,8 @@ class MNVPipeline:
                 timer.record(f"step2_{_k}", _v)
 
             # デバッグ: 前処理中間画像を保存（output_dir 指定時）
-            t_io = time.perf_counter()
             if output_dir:
+                t_io = time.perf_counter()
                 debug_dir = Path(output_dir)
                 debug_dir.mkdir(parents=True, exist_ok=True)
                 if mex_hat is not None:
@@ -487,7 +487,7 @@ class MNVPipeline:
                     "  Saved: debug_mex_hat.png, debug_tubeness.png, "
                     "debug_binary_combined.png"
                 )
-            timer.record("step2_debug_png_write", time.perf_counter() - t_io)
+                timer.record("step2_debug_png_write", time.perf_counter() - t_io)
 
             # バイナリ画像検証
             if not validate_image(binary, "Binary Image", self.logger):
@@ -809,13 +809,13 @@ class MNVPipeline:
                     fd_vis = None
 
             # 保存（output_dir 指定時）
-            t_vis_io = time.perf_counter()
             if output_dir and vis_rgb is not None:
+                t_vis_io = time.perf_counter()
                 debug_dir = Path(output_dir)
                 debug_dir.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(debug_dir / "visualization_rgb.png"), cv2.cvtColor(vis_rgb, cv2.COLOR_RGB2BGR))
                 self.logger.debug(f"  Saved color-coded visualization: {debug_dir / 'visualization_rgb.png'}")
-            timer.record("step6_vis_png_write", time.perf_counter() - t_vis_io)
+                timer.record("step6_vis_png_write", time.perf_counter() - t_vis_io)
 
             self.logger.debug(
                 f"[Step6] Step 6 subtotal: {time.perf_counter()-step_start:.3f}s"
@@ -857,7 +857,7 @@ class MNVPipeline:
                 try:
                     outp = Path(output_dir)
                     outp.mkdir(parents=True, exist_ok=True)
-                    (outp / "aria_timing.json").write_text(
+                    (outp / "ariake_timing.json").write_text(
                         timing_json, encoding="utf-8"
                     )
                 except OSError:

@@ -5,11 +5,16 @@ OpenMP pick up the worker cap. apply_plan1_imported_libs() caps OpenCV after
 those imports.
 
 ARIAKE_WIN_PERF_PLAN1:
-  unset on Windows -> enabled (product default after this change)
+  unset            -> disabled (opt-in; Hessian ThreadPool stays on)
   1 / true / on    -> enabled
   0 / false / off  -> disabled (baseline for A/B benches)
 
 ARIAKE_BLAS_THREADS: integer worker cap (default 1).
+
+Existing OMP_NUM_THREADS / OPENBLAS_NUM_THREADS / etc. are left in place
+(setdefault). Keep the enablement logic in sync with wrapper_win.py
+(_plan1_enabled / _apply_plan1_env_early), which cannot import this module
+before numpy.
 """
 
 from __future__ import annotations
@@ -37,7 +42,7 @@ def plan1_requested() -> bool:
         return False
     if raw in _TRUTHY:
         return True
-    return sys.platform == "win32"
+    return False
 
 
 def blas_thread_count() -> int:
@@ -58,7 +63,7 @@ def apply_plan1_env() -> Dict[str, Any]:
         return info
     n = str(blas_thread_count())
     for key in _BLAS_ENV_KEYS:
-        os.environ[key] = n
+        os.environ.setdefault(key, n)
     info["enabled"] = True
     info["threads"] = int(n)
     return info
@@ -92,5 +97,5 @@ def apply_plan1_imported_libs() -> Dict[str, Any]:
 
 
 def use_filter_parallel() -> bool:
-    """Extra Hessian ThreadPoolExecutor. Off under plan 1 to avoid oversubscribe."""
+    """Hessian ThreadPoolExecutor. Off only when plan 1 is explicitly enabled."""
     return not plan1_requested()

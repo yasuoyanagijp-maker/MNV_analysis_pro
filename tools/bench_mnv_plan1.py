@@ -83,7 +83,7 @@ def _run_worker(plan1: bool, image: Path, roi: Path, out_dir: Path) -> dict:
         errors="replace",
     )
     wall = time.perf_counter() - t0
-    timing_path = out_dir / "aria_timing.json"
+    timing_path = out_dir / "ariake_timing.json"
     timing = {}
     if timing_path.is_file():
         timing = json.loads(timing_path.read_text(encoding="utf-8"))

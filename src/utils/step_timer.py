@@ -24,10 +24,11 @@ class StepTimer:
         self.records.append((name, float(seconds)))
 
     def as_dict(self) -> Dict[str, float]:
+        """Seconds per step name. Duplicate names are summed, then rounded."""
         out: Dict[str, float] = {}
         for name, sec in self.records:
-            out[name] = round(sec, 4)
-        return out
+            out[name] = out.get(name, 0.0) + float(sec)
+        return {name: round(sec, 4) for name, sec in out.items()}
 
     def summary_lines(self) -> List[str]:
         rows = self.as_dict()
