@@ -15,16 +15,21 @@ import logging
 
 
 def _plan1_enabled() -> bool:
+    """Keep in sync with src.utils.runtime_threads.plan1_requested (opt-in)."""
     raw = (os.environ.get("ARIAKE_WIN_PERF_PLAN1") or "").strip().lower()
     if raw in ("0", "false", "no", "off"):
         return False
     if raw in ("1", "true", "yes", "on"):
         return True
-    return sys.platform == "win32"
+    return False
 
 
 def _apply_plan1_env_early() -> bool:
-    """Pin BLAS/OpenMP before numpy is imported (spawned API child re-imports this file)."""
+    """Pin BLAS/OpenMP before numpy is imported (spawned API child re-imports this file).
+
+    Cannot import src.utils.runtime_threads yet; keep setdefault behavior in
+    sync with apply_plan1_env so user-set OMP_NUM_THREADS etc. are preserved.
+    """
     if not _plan1_enabled():
         return False
     n = (os.environ.get("ARIAKE_BLAS_THREADS") or "1").strip()
@@ -38,12 +43,11 @@ def _apply_plan1_env_early() -> bool:
         "VECLIB_MAXIMUM_THREADS",
         "BLIS_NUM_THREADS",
     ):
-        os.environ[key] = n
+        os.environ.setdefault(key, n)
     return True
 
 
-_PLAN1 = _apply_plan1_env_early()
-_LOG_BUFFERING = 8192 if _PLAN1 else 1
+_apply_plan1_env_early()
 
 
 def _launcher_log_path() -> Path:
@@ -82,13 +86,13 @@ _log = _launcher_log_path()
 _stdio_mode = "a" if multiprocessing.parent_process() is not None else "w"
 if getattr(sys, "frozen", False) and sys.platform == "win32":
     if not (_stream_is_console(sys.stdout) and _stream_is_console(sys.stderr)):
-        sys.stdout = open(_log, _stdio_mode, encoding="utf-8", buffering=_LOG_BUFFERING)
-        sys.stderr = open(_log, "a", encoding="utf-8", buffering=_LOG_BUFFERING)
+        sys.stdout = open(_log, _stdio_mode, encoding="utf-8", buffering=1)
+        sys.stderr = open(_log, "a", encoding="utf-8", buffering=1)
 else:
     if sys.stdout is None:
-        sys.stdout = open(_log, _stdio_mode, encoding="utf-8", buffering=_LOG_BUFFERING)
+        sys.stdout = open(_log, _stdio_mode, encoding="utf-8", buffering=1)
     if sys.stderr is None:
-        sys.stderr = open(_log, "a", encoding="utf-8", buffering=_LOG_BUFFERING)
+        sys.stderr = open(_log, "a", encoding="utf-8", buffering=1)
 
 def get_free_port() -> int:
     """Finds an available ephemeral port (shared with src.utils.local_ports)."""

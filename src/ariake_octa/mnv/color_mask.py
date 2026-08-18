@@ -23,6 +23,7 @@ from core.mnv_pipeline import (
     SMALL_IMAGE_THRESHOLD,
 )
 from core.vessel_detection import MNVPreprocessor, VDProcessor
+from utils.runtime_threads import use_filter_parallel
 
 from .visualization_rgb import VisualizationRGB
 
@@ -102,6 +103,7 @@ def detect_fullfield_vessels(image_u8: np.ndarray) -> np.ndarray:
         mexican_hat_sigma=1.0,
         tubeness_sigma=2.5,
         filter_params=dict(params),
+        use_parallel=use_filter_parallel(),
     )
     out = preprocessor.preprocess_mnv(image_u8, roi_mask=np.ones_like(image_u8) * 255)
     binary = out["binary"]

@@ -2,14 +2,15 @@
 """Prove LUT particle wipe matches the previous Python loop (bitwise).
 
 Usage (from repo root):
-  python tools/verify_particle_wipe_identity.py
-  python tools/verify_particle_wipe_identity.py --image "C:\\path\\to.tif"
+  python tools/verify_particle_wipe_identity.py --image path/to.tif
+  ARIAKE_VERIFY_IMAGE=path/to.tif python tools/verify_particle_wipe_identity.py
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -25,6 +26,13 @@ DEFAULT_IMAGE = (
     r"C:\Users\Y\OneDrive - Yokohama City University\デスクトップ"
     r"\normal_sample_folder\999-99-9999_20240729_101347_Angio (3)_R_001.tif"
 )
+
+
+def _default_image() -> Path:
+    env = (os.environ.get("ARIAKE_VERIFY_IMAGE") or "").strip()
+    if env:
+        return Path(env)
+    return Path(DEFAULT_IMAGE)
 
 
 def _load_gray(path: Path):
@@ -72,7 +80,7 @@ def _compare(name: str, src, ref_fn, lut_fn) -> dict:
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--image", type=Path, default=Path(DEFAULT_IMAGE))
+    p.add_argument("--image", type=Path, default=_default_image())
     p.add_argument(
         "--out",
         type=Path,
