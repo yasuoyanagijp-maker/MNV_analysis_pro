@@ -65,6 +65,9 @@ async def get_roi_view(ctx: AppContext):
         "confirm_mask_full": None,  # analyze-res mask after Accept, until next edit
         "trim_preview": False,
         "computing_color": False,
+        # Hide green ROI fill while the color-coded image is on the canvas
+        # (the fill otherwise covers yellow/red vessels).
+        "hide_roi_overlay": False,
     }
 
     # Unified button metrics: every button on this screen shares the same
@@ -146,6 +149,7 @@ async def get_roi_view(ctx: AppContext):
         state["confirm_mask_full"] = None
         state["trim_preview"] = False
         state["computing_color"] = False
+        state["hide_roi_overlay"] = False
 
     def _sync_color_ui():
         sync = state.get("_sync_color_ui")
@@ -171,6 +175,9 @@ async def get_roi_view(ctx: AppContext):
                 overlay[removed] = [0, 0, 255]
                 overlay[kept] = [0, 255, 0]
             blended = cv2.addWeighted(overlay, 0.45, base, 0.55, 0)
+        elif state.get("hide_roi_overlay") and state.get("display_base") is not None:
+            # Color-coded viz is already yellow/red; a green ROI wash hides it.
+            blended = base
         else:
             mask = state["current_mask"]
             overlay[mask == 255] = [0, 255, 0]
@@ -223,11 +230,9 @@ async def get_roi_view(ctx: AppContext):
             return
 
         state["computing_color"] = True
-        color_btn.disabled = True
-        trim_btn.disabled = True
         status_text.value = "着色画像を作成中（血管検出）..."
         status_text.color = Colors.AMBER_400
-        color_progress.visible = True
+        _sync_color_ui()
         ctx.page.update()
 
         full_roi = _display_to_full(state["current_mask"])
@@ -270,11 +275,11 @@ async def get_roi_view(ctx: AppContext):
             rgb_bgr, (state["new_w"], state["new_h"]), interpolation=cv2.INTER_AREA
         )
         state["computing_color"] = False
-        color_progress.visible = False
-        status_text.value = "着色画像を表示しています。マスクは未変更です。余白trim、またはこれまでどおり手動で編集できます。"
+        state["hide_roi_overlay"] = True
+        status_text.value = "着色画像を表示しています（ROIの緑は非表示）。黄=血管、赤=拡張。余白trim、または手動編集できます。"
         status_text.color = TEXT_MUTED
         await render_mask()
-        await ctx.add_to_console("着色画像を表示（ROIマスクは未変更）。", "INFO")
+        await ctx.add_to_console("着色画像を表示（ROIオーバーレイ非表示、マスクは未変更）。", "INFO")
 
     async def handle_trim(e):
         if state.get("trim_preview") or state.get("computing_color"):
@@ -319,6 +324,7 @@ async def get_roi_view(ctx: AppContext):
         if refined is None:
             return
         state["trim_preview"] = False
+        state["hide_roi_overlay"] = False
         state["confirm_mask_full"] = state.get("trim_refined_full")
         await save_state(refined, from_trim=True)
         status_text.value = "余白をtrimしました。必要なら手動で削る／追加してください。"
@@ -356,6 +362,8 @@ async def get_roi_view(ctx: AppContext):
     async def on_pan_start(e: ft.DragStartEvent):
         if state.get("trim_preview") or state.get("computing_color"):
             return
+        if state.get("hide_roi_overlay") and state["mode"] in ("draw", "erase"):
+            state["hide_roi_overlay"] = False
         if state["mode"] == "crop":
             state["drag_start"] = True
             state["crop_start"] = (e.local_x, e.local_y)
@@ -455,6 +463,8 @@ async def get_roi_view(ctx: AppContext):
         if state.get("trim_preview") or state.get("computing_color"):
             return
         if state["mode"] != "erase" or state["base_img"] is None: return
+        if state.get("hide_roi_overlay"):
+            state["hide_roi_overlay"] = False
         x, y = int(e.local_x), int(e.local_y)
         
         await ctx.add_to_console(f"Erase clicked at: {x}, {y}", "INFO")
@@ -667,8 +677,18 @@ async def get_roi_view(ctx: AppContext):
         crop = state.get("mode") == "crop"
         has_color = state.get("color_mask_full") is not None
         color_btn.disabled = (not has_roi) or computing or preview or crop
-        color_btn.bgcolor = PRIMARY if has_color and not crop else Colors.TRANSPARENT
-        color_btn.color = Colors.BLACK if has_color and not crop else TEXT_MUTED
+        if computing:
+            color_btn.text = "着色中..."
+            color_btn.bgcolor = Colors.AMBER_400
+            color_btn.color = Colors.BLACK
+        elif has_color and not crop:
+            color_btn.text = "着色画像"
+            color_btn.bgcolor = PRIMARY
+            color_btn.color = Colors.BLACK
+        else:
+            color_btn.text = "着色画像"
+            color_btn.bgcolor = Colors.TRANSPARENT
+            color_btn.color = TEXT_MUTED
         trim_btn.visible = has_color and not crop
         trim_btn.disabled = (not has_color) or (not has_roi) or computing or preview or crop
         trim_btn.bgcolor = Colors.AMBER_400 if preview else Colors.TRANSPARENT
@@ -727,6 +747,10 @@ async def get_roi_view(ctx: AppContext):
             selection_box.visible = False
             
         status_text.color = TEXT_MUTED
+        if new_mode in ("draw", "erase") and state.get("hide_roi_overlay"):
+            state["hide_roi_overlay"] = False
+            await render_mask()
+            return
         if cancelled_preview:
             await render_mask()
         else:
@@ -1059,18 +1083,20 @@ async def get_roi_view(ctx: AppContext):
                     ft.Text("操作", color=TEXT_MUTED, size=11, weight=FontWeight.BOLD),
                     ft.Row([undo_button, reset_button], spacing=8),
                     ft.Divider(height=8, color=Colors.TRANSPARENT),
-                    ft.Row([color_btn, color_progress], spacing=8),
+                    ft.Row(
+                        [color_btn, color_progress, trim_btn, accept_trim_btn, undo_trim_btn],
+                        spacing=8,
+                        wrap=True,
+                    ),
                     trim_disclaimer,
-                    trim_btn,
                     after_caption,
-                    ft.Row([accept_trim_btn, undo_trim_btn], spacing=8),
                     ft.Divider(height=8, color=Colors.TRANSPARENT),
                     ft.Container(
                         content=ft.Column([
                             ft.Row([ft.Icon(Icons.CROP_SQUARE, color=PRIMARY, size=18), ft.Text("1. ドラッグして囲む", color=Colors.WHITE, size=12)]),
                             ft.Row([ft.Icon(Icons.BACKSPACE, color=Colors.RED_400, size=18), ft.Text("2. 黒い背景をクリックして削る", color=Colors.WHITE, size=12)]),
                             ft.Row([ft.Icon(Icons.UNDO, color=Colors.AMBER_400, size=18), ft.Text("3. ミスしたらUndoで戻る", color=Colors.WHITE, size=12)]),
-                            ft.Row([ft.Icon(Icons.PALETTE, color=PRIMARY, size=18), ft.Text("4. 着色画像 → 余白trim（任意）", color=Colors.WHITE, size=12)]),
+                            ft.Row([ft.Icon(Icons.PALETTE, color=PRIMARY, size=18), ft.Text("4. 着色画像（緑ROIは非表示）→ 余白trim（任意）", color=Colors.WHITE, size=12)]),
                         ], spacing=6),
                         padding=12,
                         bgcolor=Colors.with_opacity(0.05, Colors.WHITE),
