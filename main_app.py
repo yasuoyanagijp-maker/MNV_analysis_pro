@@ -207,6 +207,7 @@ async def main(page: ft.Page):
                 border=ft.border.only(right=ft.border.BorderSide(1, Colors.with_opacity(0.1, Colors.WHITE))),
             )
 
+            content_padding = 8 if base_route == "/login" else 20
             page.views.append(
                 ft.View(
                     route_full,
@@ -217,12 +218,12 @@ async def main(page: ft.Page):
                                 content=view_content,
                                 expand=True,
                                 bgcolor=BG_DARK,
-                                padding=20
+                                padding=content_padding,
                             )
                         ], expand=True, spacing=0)
                     ],
                     padding=0,
-                    bgcolor=BG_DARK
+                    bgcolor=BG_DARK,
                 )
             )
             page.update()

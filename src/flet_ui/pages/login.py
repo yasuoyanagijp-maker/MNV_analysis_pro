@@ -199,37 +199,64 @@ async def get_login_view(ctx: AppContext):
 
     ctx.page.run_task(_hydrate_institution_dropdown)
 
+    win_h = getattr(ctx.page.window, "height", None) or ctx.page.height or 900
+    try:
+        compact = float(win_h) < 820
+    except (TypeError, ValueError):
+        compact = False
+    icon_size = 48 if compact else 64
+    title_size = 22 if compact else 28
+    card_pad = 24 if compact else 36
+    field_gap = 8 if compact else 12
+
+    card = ft.Container(
+        content=ft.Column(
+            [
+                ft.Icon(Icons.SECURITY_ROUNDED, size=icon_size, color=PRIMARY),
+                ft.Text(
+                    APP_LOGIN_TITLE,
+                    size=title_size,
+                    weight=FontWeight.BOLD,
+                    color=Colors.WHITE,
+                ),
+                ft.Text(APP_LOGIN_SUBTITLE, size=12, color=TEXT_MUTED),
+                username_field,
+                password_field,
+                institution_dd,
+                institution_custom,
+                role_dd,
+                ft.Text(
+                    "Institution code tags export folders for multi-site datasets "
+                    "(rater_id = Researcher Name).",
+                    size=10,
+                    color=TEXT_MUTED,
+                    width=350,
+                ),
+                error_text,
+                login_btn,
+                ft.Text("Forgot Password? ariake2024", size=10, color=TEXT_MUTED),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=field_gap,
+            tight=True,
+        ),
+        padding=card_pad,
+        bgcolor=GLASS_BG,
+        border_radius=25,
+        border=ft.border.all(1, Colors.with_opacity(0.1, Colors.WHITE)),
+        shadow=ft.BoxShadow(blur_radius=50, color=Colors.with_opacity(0.1, PRIMARY)),
+    )
+
+    # Bounded + scrollable so the login button is always reachable when the
+    # window is shorter than the card (Windows DPI / taskbar / small laptop).
     return ft.Container(
-        content=ft.Column([
-            ft.Container(
-                content=ft.Column([
-                    ft.Icon(Icons.SECURITY_ROUNDED, size=80, color=PRIMARY),
-                    ft.Text(APP_LOGIN_TITLE, size=28, weight=FontWeight.BOLD, color=Colors.WHITE),
-                    ft.Text(APP_LOGIN_SUBTITLE, size=12, color=TEXT_MUTED),
-                    ft.Container(height=20),
-                    username_field,
-                    password_field,
-                    institution_dd,
-                    institution_custom,
-                    role_dd,
-                    ft.Text(
-                        "Institution code tags export folders for multi-site datasets "
-                        "(rater_id = Researcher Name).",
-                        size=10,
-                        color=TEXT_MUTED,
-                        width=350,
-                    ),
-                    error_text,
-                    ft.Container(height=10),
-                    login_btn,
-                    ft.Text("Forgot Password? ariake2024", size=10, color=TEXT_MUTED),
-                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),
-                padding=60,
-                bgcolor=GLASS_BG,
-                border_radius=25,
-                border=ft.border.all(1, Colors.with_opacity(0.1, Colors.WHITE)),
-                shadow=ft.BoxShadow(blur_radius=50, color=Colors.with_opacity(0.1, PRIMARY)),
-            )
-        ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+        content=ft.Column(
+            [card],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            scroll=ft.ScrollMode.AUTO,
+            expand=True,
+        ),
         expand=True,
+        alignment=ft.alignment.center,
     )
