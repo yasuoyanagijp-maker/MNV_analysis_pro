@@ -30,6 +30,7 @@ from src.utils.institution_config import (
     persist_institution_id,
 )
 from src.utils.grdm_config import (
+    DEFAULT_GRDM_PROJECT_ID,
     load_persisted_grdm_destination,
     persist_grdm_destination,
 )
@@ -302,8 +303,11 @@ async def get_dashboard_view(ctx: AppContext):
         text_size=12,
         height=40,
         value=_grdm_project,
-        hint_text="OSF/GakuNin RDM node id",
-        tooltip="アップロード先プロジェクトID（ハードコード不可・設定で変更）",
+        hint_text=f"英数字5〜8文字（既定 {DEFAULT_GRDM_PROJECT_ID}）",
+        tooltip=(
+            "OSF/GakuNin RDM の node id。プロジェクト名は不可。"
+            f" 未設定時は {DEFAULT_GRDM_PROJECT_ID}。設定で変更可。"
+        ),
     )
     grdm_folder_input = ft.TextField(
         label="GakuNin RDM folder_id (optional)",
@@ -317,17 +321,19 @@ async def get_dashboard_view(ctx: AppContext):
     )
 
     def _sync_grdm_destination(_=None):
-        persist_grdm_destination(
+        proj, fold = persist_grdm_destination(
             grdm_project_input.value or "",
             grdm_folder_input.value or "",
             ctx.page.session,
             None,
         )
+        if proj and proj != (grdm_project_input.value or "").strip():
+            grdm_project_input.value = proj
         persist_client_storage_async(
             ctx.page,
             {
-                "grdm_project_id": grdm_project_input.value or "",
-                "grdm_folder_id": grdm_folder_input.value or "",
+                "grdm_project_id": proj,
+                "grdm_folder_id": fold,
             },
         )
 
@@ -2060,8 +2066,10 @@ async def get_dashboard_view(ctx: AppContext):
             ft.Text(
                 "GakuNin RDM 同期先ベース: project_id / folder_id "
                 "(env: GRDM_PROJECT_ID / GRDM_FOLDER_ID)。"
+                f" project_id 未設定時の既定は {DEFAULT_GRDM_PROJECT_ID}。"
                 " 実パスは第1→{folder}/{institution}/、"
-                "第2→{folder}/second_reading/{institution}/。"
+                "第2→{folder}/second_reading/{institution}/、"
+                "最終→{folder}/final_reading/{institution}/。"
                 " Team YY は全施設データを選択可。PAT は OS 安全領域へ保存"
                 "（client_storage には保存しません）。",
                 size=11, color=TEXT_MUTED,
