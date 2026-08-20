@@ -9,11 +9,13 @@ Flet UI helpers for GakuNin RDM 同期 / 取得.
 - Team YY（中央読影）: 全施設の第1読影フォルダを横断選択可能
 - 第1同期先: ``{base}/{institution_id}/``
 - 第2同期先: ``{base}/second_reading/{institution_id}/``
+- 最終読影同期先: ``{base}/final_reading/{institution_id}/``
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextvars
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -27,15 +29,22 @@ from src.utils.app_paths import get_base_data_dir, sanitize_path_component
 from src.utils.grdm_access import (
     TEAM_YY_INSTITUTION_ID,
     filter_institution_datasets,
+    final_reader_remote_segments,
     first_grader_remote_segments,
     is_team_yy,
     login_institution_id,
+    looks_like_institution_folder,
     second_reader_remote_segments,
 )
-from src.utils.grdm_config import persist_grdm_destination, resolve_grdm_destination
+from src.utils.grdm_config import (
+    DEFAULT_GRDM_PROJECT_ID,
+    normalize_grdm_project_id,
+    persist_grdm_destination,
+    resolve_grdm_destination,
+)
 from src.utils.grdm_secure_storage import GRDM_TOKEN_STORAGE_KEY, SecureStorage
-from src.utils.institution_config import resolve_institution_id
-from src.utils.second_reader import is_second_reader
+from src.utils.institution_config import normalize_institution_id, resolve_institution_id
+from src.utils.second_reader import is_final_reader, is_second_reader
 
 _GRDM_LOG = Path("/tmp/ariake_flet.log")
 
@@ -50,7 +59,26 @@ def _grdm_log(message: str) -> None:
         pass
 
 
+# When set, _show_snack routes to the results-row status instead of a SnackBar.
+_notify_override: contextvars.ContextVar[Optional[Callable[..., None]]] = (
+    contextvars.ContextVar("grdm_notify", default=None)
+)
+
+_BTN_IDLE_BG = Colors.with_opacity(0.25, Colors.TEAL_ACCENT_400)
+_BTN_IDLE_FG = Colors.TEAL_ACCENT_100
+_BTN_OK_BG = Colors.GREEN_700
+_BTN_OK_FG = Colors.WHITE
+_BTN_ERR_BG = Colors.RED_700
+_BTN_ERR_FG = Colors.WHITE
+_BTN_BUSY_BG = Colors.AMBER_700
+_BTN_BUSY_FG = Colors.BLACK
+
+
 def _show_snack(page: ft.Page, message: str, *, error: bool = False) -> None:
+    cb = getattr(page, "_grdm_sync_notify", None) or _notify_override.get()
+    if cb is not None:
+        cb(message, error=error)
+        return
     bar = ft.SnackBar(
         content=ft.Text(message, color=Colors.WHITE),
         bgcolor=Colors.RED_700 if error else Colors.GREEN_700,
@@ -241,26 +269,60 @@ async def ensure_grdm_token(page: ft.Page, *, write_scope_hint: bool = True) -> 
 
 
 async def ensure_grdm_destination(page: ft.Page) -> Optional[tuple]:
-    """Resolve project_id/folder_id from settings; prompt for project_id if missing."""
+    """Resolve project_id/folder_id; default or re-prompt when missing/invalid."""
     cs = getattr(page, "client_storage", None)
     project_id, folder_id = resolve_grdm_destination(page.session, cs)
-    if not project_id:
-        project_id = await _prompt_text(
-            page,
-            title="GakuNin RDM プロジェクトID",
-            label="project_id",
-            hint="ダッシュボード Advanced Settings でも変更できます",
+    raw = (project_id or "").strip()
+    normalized = normalize_grdm_project_id(raw)
+
+    if not raw:
+        persist_grdm_destination(
+            DEFAULT_GRDM_PROJECT_ID, folder_id, page.session, cs
         )
-        if not project_id:
-            _grdm_log("project_id missing")
+        _grdm_log(
+            f"project_id empty; using default {DEFAULT_GRDM_PROJECT_ID}"
+        )
+        return DEFAULT_GRDM_PROJECT_ID, folder_id
+
+    if normalized:
+        if normalized != raw:
+            persist_grdm_destination(normalized, folder_id, page.session, cs)
+        return normalized, folder_id
+
+    _grdm_log(f"project_id invalid (not an OSF node id): {raw[:40]!r}")
+    while True:
+        entered = await _prompt_text(
+            page,
+            title="GakuNin RDM プロジェクトIDが不正です",
+            label="project_id",
+            hint=(
+                "node id（英数字5〜8文字）。プロジェクト名は不可。"
+                f" 空欄なら既定 {DEFAULT_GRDM_PROJECT_ID}"
+            ),
+            initial=DEFAULT_GRDM_PROJECT_ID,
+        )
+        if not entered:
+            _grdm_log("project_id re-entry cancelled")
             _show_snack(
                 page,
-                "GakuNin RDM の project_id が未設定です。ダッシュボード Advanced Settings で設定してください。",
+                "GakuNin RDM の project_id が未設定です。"
+                " 英数字5〜8文字の node id を入力してください"
+                f"（既定: {DEFAULT_GRDM_PROJECT_ID}）。",
                 error=True,
             )
             return None
-        persist_grdm_destination(project_id, folder_id, page.session, cs)
-    return project_id, folder_id
+        normalized = normalize_grdm_project_id(entered)
+        if normalized:
+            persist_grdm_destination(normalized, folder_id, page.session, cs)
+            _grdm_log(f"project_id accepted after re-entry: {normalized}")
+            return normalized, folder_id
+        _grdm_log(f"project_id re-entry still invalid: {entered.strip()[:40]!r}")
+        _show_snack(
+            page,
+            "project_id は英数字5〜8文字の node id です"
+            f"（例: {DEFAULT_GRDM_PROJECT_ID}）。プロジェクト名は使えません。",
+            error=True,
+        )
 
 
 def _viewer_institution(page: ft.Page) -> str:
@@ -275,6 +337,45 @@ def _sync_institution_for_first_grader(page: ft.Page) -> str:
     return resolve_institution_id(
         page.session, getattr(page, "client_storage", None)
     )
+
+
+async def _institution_for_role_upload(
+    page: ft.Page, *, role_label: str
+) -> Optional[str]:
+    """Facility code for second/final uploads. Team YY must pick a site."""
+    graded = (page.session.get("grdm_graded_institution_id") or "").strip()
+    if graded and looks_like_institution_folder(graded):
+        return graded
+
+    if is_team_yy(page.session, getattr(page, "client_storage", None)):
+        prompted = await _prompt_text(
+            page,
+            title=f"{role_label}のアップロード先施設",
+            label="institution_id",
+            hint="読影した施設コード（例: ARIAKE_OHANACHAYA）。TEAM_YY は不可。",
+            initial="",
+        )
+        if not prompted:
+            _grdm_log(f"upload institution missing ({role_label}, Team YY)")
+            _show_snack(page, "アップロード先施設が未指定です", error=True)
+            return None
+        inst = normalize_institution_id(prompted)
+        if not looks_like_institution_folder(inst):
+            _grdm_log(
+                f"upload institution invalid ({role_label}): {prompted.strip()[:40]!r}"
+            )
+            _show_snack(
+                page,
+                "施設コードが不正です。TEAM_YY ではなく参加施設コードを指定してください。",
+                error=True,
+            )
+            return None
+        return inst
+
+    inst = _sync_institution_for_first_grader(page)
+    if not inst or inst in ("UNKNOWN", TEAM_YY_INSTITUTION_ID):
+        inst = _viewer_institution(page)
+    return inst
 
 
 def isolated_download_dir(project_id: str, institution_id: str) -> Path:
@@ -357,11 +458,35 @@ async def _prompt_institution_dataset(
     return result["value"]
 
 
-async def run_grdm_sync(page: ft.Page, local_folder: str) -> None:
+async def run_grdm_sync(
+    page: ft.Page,
+    local_folder: str,
+    *,
+    on_status: Optional[Callable[..., None]] = None,
+) -> None:
     """Upload local export folder (recursive) to role-/institution-scoped GRDM path."""
     _grdm_log(f"sync requested folder={local_folder}")
+    token_cv = None
+    prev_notify = getattr(page, "_grdm_sync_notify", None)
+    if on_status is not None:
+        bound = lambda message, error=False: on_status(
+            message, error=error, busy=False
+        )
+        page._grdm_sync_notify = bound
+        token_cv = _notify_override.set(bound)
+        on_status("GakuNin RDM へ同期中…", error=False, busy=True)
+    try:
+        await _run_grdm_sync_body(page, local_folder)
+    finally:
+        page._grdm_sync_notify = prev_notify
+        if token_cv is not None:
+            _notify_override.reset(token_cv)
+
+
+async def _run_grdm_sync_body(page: ft.Page, local_folder: str) -> None:
     folder = Path(local_folder) if local_folder else None
     if folder is None or not folder.is_dir():
+        _grdm_log(f"local folder missing: {local_folder}")
         _show_snack(
             page,
             f"エクスポート先フォルダが見つかりません: {local_folder}",
@@ -371,49 +496,38 @@ async def run_grdm_sync(page: ft.Page, local_folder: str) -> None:
 
     token = await ensure_grdm_token(page, write_scope_hint=True)
     if not token:
+        _grdm_log("sync aborted: no PAT")
         return
 
     dest = await ensure_grdm_destination(page)
     if not dest:
+        _grdm_log("sync aborted: no project_id")
         return
     project_id, base_folder_id = dest
 
     sr = is_second_reader(page.session)
-    if sr:
-        # Prefer institution of the scanned / downloaded first-grader data
-        graded = (page.session.get("grdm_graded_institution_id") or "").strip()
-        from src.utils.grdm_access import looks_like_institution_folder
-
-        if graded and looks_like_institution_folder(graded):
-            inst = graded
-        elif is_team_yy(page.session, getattr(page, "client_storage", None)):
-            prompted = await _prompt_text(
-                page,
-                title="第2リーダー結果のアップロード先施設",
-                label="institution_id",
-                hint="読影した施設コード（例: ARIAKE_OHANACHAYA）",
-                initial="",
-            )
-            if not prompted:
-                _show_snack(page, "アップロード先施設が未指定です", error=True)
-                return
-            inst = prompted
-        else:
-            # Facility second reader: use site-lock / login institution
-            inst = _sync_institution_for_first_grader(page)
-            if not inst or inst in ("UNKNOWN", TEAM_YY_INSTITUTION_ID):
-                inst = _viewer_institution(page)
+    fr = is_final_reader(page.session)
+    if fr:
+        inst = await _institution_for_role_upload(page, role_label="最終読影結果")
+        if not inst:
+            return
+        segment_fn = final_reader_remote_segments
+        scope = "最終読影データ"
+    elif sr:
+        inst = await _institution_for_role_upload(page, role_label="第2リーダー結果")
+        if not inst:
+            return
+        segment_fn = second_reader_remote_segments
+        scope = "第2リーダー結果"
     else:
-        # First grader: same resolution as metadata export (env site-lock wins)
         inst = _sync_institution_for_first_grader(page)
+        segment_fn = first_grader_remote_segments
+        scope = "第1読影データ"
 
     try:
-        segments = (
-            second_reader_remote_segments(inst)
-            if sr
-            else first_grader_remote_segments(inst)
-        )
+        segments = segment_fn(inst)
     except ValueError as ex:
+        _grdm_log(f"sync rejected: {ex}")
         _show_snack(page, str(ex), error=True)
         return
 
@@ -436,13 +550,16 @@ async def run_grdm_sync(page: ft.Page, local_folder: str) -> None:
         return
 
     if count == 0:
+        _grdm_log(f"sync uploaded 0 files path={'/'.join(segments)}")
         _show_snack(
             page,
             "同期対象のファイルはありません（空フォルダ）",
             error=True,
         )
     else:
-        scope = "第2リーダー結果" if sr else "第1読影データ"
+        _grdm_log(
+            f"sync ok n={count} project={project_id} path={'/'.join(segments)}"
+        )
         _show_snack(
             page,
             f"GakuNin RDMへの同期が完了しました（{scope} / {inst} / {count}件）",
@@ -457,10 +574,12 @@ async def run_grdm_download(
     """ACL-aware download of one institution's first-grader dataset for second readers."""
     token = await ensure_grdm_token(page, write_scope_hint=False)
     if not token:
+        _grdm_log("download aborted: no PAT")
         return None
 
     dest = await ensure_grdm_destination(page)
     if not dest:
+        _grdm_log("download aborted: no project_id")
         return None
     project_id, base_folder_id = dest
 
@@ -494,11 +613,13 @@ async def run_grdm_download(
                 f"自施設（{viewer_inst}）の第1読影データが GakuNin 上にありません。"
                 " 他施設のデータにはアクセスできません。"
             )
+        _grdm_log(f"download rejected: {msg}")
         _show_snack(page, msg, error=True)
         return None
 
     chosen = await _prompt_institution_dataset(page, allowed, central=central)
     if not chosen:
+        _grdm_log("download cancelled: no institution selected")
         _show_snack(page, "データ選択がキャンセルされました", error=True)
         return None
 
@@ -568,22 +689,71 @@ async def run_grdm_download(
     return str(target)
 
 
-def make_grdm_sync_button(page: ft.Page, get_local_folder: Callable[[], Path]) -> ft.ElevatedButton:
-    """Factory for the results-screen sync button (does not alter local export)."""
+def _apply_sync_status(
+    page: ft.Page,
+    btn: ft.ElevatedButton,
+    label: ft.Text,
+    message: str,
+    *,
+    error: bool = False,
+    busy: bool = False,
+) -> None:
+    label.value = message or ""
+    if busy:
+        btn.bgcolor = _BTN_BUSY_BG
+        btn.color = _BTN_BUSY_FG
+        label.color = Colors.AMBER_200
+    elif error:
+        btn.bgcolor = _BTN_ERR_BG
+        btn.color = _BTN_ERR_FG
+        label.color = Colors.RED_300
+    else:
+        btn.bgcolor = _BTN_OK_BG
+        btn.color = _BTN_OK_FG
+        label.color = Colors.GREEN_300
+    try:
+        page.update()
+    except Exception:
+        pass
 
-    async def _on_click(_=None):
-        await run_grdm_sync(page, str(get_local_folder()))
 
-    return ft.ElevatedButton(
+def make_grdm_sync_button(page: ft.Page, get_local_folder: Callable[[], Path]) -> ft.Control:
+    """Factory for the results-screen sync button + inline status (no SnackBar)."""
+    btn = ft.ElevatedButton(
         "GakuNin RDMへ同期",
         icon=Icons.CLOUD_UPLOAD_ROUNDED,
-        bgcolor=Colors.with_opacity(0.25, Colors.TEAL_ACCENT_400),
-        color=Colors.TEAL_ACCENT_100,
+        bgcolor=_BTN_IDLE_BG,
+        color=_BTN_IDLE_FG,
         tooltip=(
             "ローカル保存済みフォルダを施設スコープでアップロード。"
-            " 第1→{institution}/、第2→second_reading/{institution}/"
+            " 第1→{institution}/、第2→second_reading/{institution}/、"
+            "最終→final_reading/{institution}/"
         ),
-        on_click=lambda _: page.run_task(_on_click),
+    )
+    status = ft.Text(
+        "",
+        size=12,
+        color=TEXT_MUTED,
+        selectable=True,
+        width=520,
+        max_lines=3,
+    )
+
+    def _on_status(message: str, *, error: bool = False, busy: bool = False) -> None:
+        _apply_sync_status(page, btn, status, message, error=error, busy=busy)
+
+    async def _on_click(_=None):
+        await run_grdm_sync(
+            page, str(get_local_folder()), on_status=_on_status
+        )
+
+    btn.on_click = lambda _: page.run_task(_on_click)
+    return ft.Row(
+        [btn, status],
+        spacing=12,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        wrap=False,
+        tight=True,
     )
 
 

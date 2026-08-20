@@ -8,6 +8,7 @@ GakuNin RDM 上の施設別データへのアクセス制御（OCTA-MIC）。
 - 第1グレーダー同期先: ``{base}/{institution_id}/``
 - 第2リーダー同期先: ``{base}/second_reading/{institution_id}/``
   （第1データと物理的に分離し、次の取得と混ざらないようにする）
+- 最終読影同期先: ``{base}/final_reading/{institution_id}/``
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ _INST_STORAGE_KEY = "institution_id"
 _RESERVED_TOP_LEVEL = frozenset(
     {
         "second_reading",
+        "final_reading",
         "raw_images",
         "measurements",  # legacy container; peeked into separately
         "logs",
@@ -260,5 +262,21 @@ def second_reader_remote_segments(institution_id: str) -> Tuple[str, ...]:
     inst = normalize_institution_id(institution_id)
     if not inst or inst == "UNKNOWN":
         raise ValueError("institution_id が未設定のため第2リーダー同期先を決定できません")
+    if inst == TEAM_YY_INSTITUTION_ID:
+        raise ValueError(
+            "Team YY（中央読影）では第2リーダーの同期先施設を指定してください。"
+        )
     # Team YY may upload under the facility being graded — callers pass that id
     return ("second_reading", inst)
+
+
+def final_reader_remote_segments(institution_id: str) -> Tuple[str, ...]:
+    """Path segments under GRDM base for final-reader result uploads."""
+    inst = normalize_institution_id(institution_id)
+    if not inst or inst == "UNKNOWN":
+        raise ValueError("institution_id が未設定のため最終読影の同期先を決定できません")
+    if inst == TEAM_YY_INSTITUTION_ID:
+        raise ValueError(
+            "Team YY（中央読影）では最終読影の同期先施設を指定してください。"
+        )
+    return ("final_reading", inst)

@@ -3,18 +3,34 @@ GakuNin RDM アップロード先設定 (project_id / folder_id)。
 
 PAT とは異なりプロジェクトID・フォルダIDは秘密情報ではないため、
 環境変数および Flet client_storage に保存してよい。
-ハードコードはしない。
+既定の node id は空／不正値のときのフォールバックのみ。上書き可能。
 """
 
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Optional, Tuple
 
 _PROJECT_ENV = "GRDM_PROJECT_ID"
 _FOLDER_ENV = "GRDM_FOLDER_ID"
 _PROJECT_STORAGE_KEY = "grdm_project_id"
 _FOLDER_STORAGE_KEY = "grdm_folder_id"
+
+# OCTA-MIC 本番ノード。秘密ではない（アクセスは PAT + メンバーシップ）。
+DEFAULT_GRDM_PROJECT_ID = "w5sb9"
+# OSF/GakuNin short ids are typically 5 chars; allow a little headroom.
+_NODE_ID_RE = re.compile(r"^[a-z0-9]{5,8}$")
+
+
+def normalize_grdm_project_id(value: Optional[str]) -> str:
+    """Return lowercase node id if it looks like an OSF short id, else ''."""
+    s = (value or "").strip().lower()
+    return s if _NODE_ID_RE.fullmatch(s) else ""
+
+
+def is_valid_grdm_project_id(value: Optional[str]) -> bool:
+    return bool(normalize_grdm_project_id(value))
 
 
 def resolve_grdm_destination(
@@ -46,6 +62,9 @@ def persist_grdm_destination(
     """Normalize and persist destination ids. Returns stored (project_id, folder_id)."""
     project_id = (project_id or "").strip()
     folder_id = (folder_id or "").strip()
+    canonical = normalize_grdm_project_id(project_id)
+    if canonical:
+        project_id = canonical
     if session is not None:
         try:
             session.set(_PROJECT_STORAGE_KEY, project_id)

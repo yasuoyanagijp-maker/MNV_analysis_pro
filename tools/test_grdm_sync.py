@@ -6,17 +6,25 @@ import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.utils.grdm_config import persist_grdm_destination, resolve_grdm_destination
+from src.utils.grdm_config import (
+    DEFAULT_GRDM_PROJECT_ID,
+    is_valid_grdm_project_id,
+    normalize_grdm_project_id,
+    persist_grdm_destination,
+    resolve_grdm_destination,
+)
 from src.utils import grdm_client as grdm
 from src.utils import grdm_secure_storage as gss
 from src.utils.grdm_access import (
     TEAM_YY_INSTITUTION_ID,
     filter_institution_datasets,
+    final_reader_remote_segments,
     first_grader_remote_segments,
     is_team_yy,
+    looks_like_institution_folder,
     second_reader_remote_segments,
 )
-from src.utils.grdm_sync_ui import isolated_download_dir
+from src.utils.grdm_sync_ui import ensure_grdm_destination, isolated_download_dir
 
 
 def test_resolve_grdm_destination_from_env(monkeypatch):
@@ -44,6 +52,96 @@ def test_persist_and_resolve_via_session():
     project_id, folder_id = resolve_grdm_destination(session=session)
     assert project_id == "node1"
     assert folder_id == "dir2"
+
+
+def test_normalize_grdm_project_id_accepts_osf_short_ids():
+    assert normalize_grdm_project_id("w5sb9") == "w5sb9"
+    assert normalize_grdm_project_id(" W5SB9 ") == "w5sb9"
+    assert normalize_grdm_project_id("abcde1") == "abcde1"
+    assert normalize_grdm_project_id("abcdefgh") == "abcdefgh"
+    assert is_valid_grdm_project_id("projABC") is True
+    assert normalize_grdm_project_id("projABC") == "projabc"
+
+
+def test_normalize_grdm_project_id_rejects_names_and_odd_lengths():
+    assert normalize_grdm_project_id("OCTA-MIC-App") == ""
+    assert normalize_grdm_project_id("OCTA collaboration") == ""
+    assert normalize_grdm_project_id("abcd") == ""
+    assert normalize_grdm_project_id("abcdefghi") == ""
+    assert normalize_grdm_project_id("from-session") == ""
+    assert normalize_grdm_project_id("") == ""
+    assert is_valid_grdm_project_id(None) is False
+
+
+def test_persist_lowercases_valid_project_id():
+    session = MagicMock()
+    store = {}
+    session.set.side_effect = lambda k, v: store.__setitem__(k, v)
+    session.get.side_effect = store.get
+    persist_grdm_destination("W5SB9", "", session=session, client_storage=None)
+    assert store["grdm_project_id"] == "w5sb9"
+
+
+class _Sess:
+    def __init__(self, d):
+        self.d = d
+
+    def get(self, k):
+        return self.d.get(k)
+
+    def set(self, k, v):
+        self.d[k] = v
+
+
+class _Page:
+    def __init__(self, d):
+        self.session = _Sess(d)
+        self.client_storage = None
+
+    def open(self, _bar):
+        return None
+
+    def update(self):
+        return None
+
+
+def test_ensure_grdm_destination_empty_uses_default():
+    async def _go():
+        page = _Page({})
+        dest = await ensure_grdm_destination(page)
+        assert dest == (DEFAULT_GRDM_PROJECT_ID, "")
+        assert page.session.d["grdm_project_id"] == DEFAULT_GRDM_PROJECT_ID
+
+    asyncio.run(_go())
+
+
+def test_ensure_grdm_destination_invalid_reprompts_to_default():
+    async def _go():
+        page = _Page({"grdm_project_id": "OCTA-MIC-App", "grdm_folder_id": ""})
+
+        async def _prompt(*_a, **_k):
+            return DEFAULT_GRDM_PROJECT_ID
+
+        with patch("src.utils.grdm_sync_ui._prompt_text", _prompt):
+            dest = await ensure_grdm_destination(page)
+        assert dest == (DEFAULT_GRDM_PROJECT_ID, "")
+        assert page.session.d["grdm_project_id"] == DEFAULT_GRDM_PROJECT_ID
+
+    asyncio.run(_go())
+
+
+def test_ensure_grdm_destination_invalid_cancel_returns_none():
+    async def _go():
+        page = _Page({"grdm_project_id": "OCTA-MIC-App"})
+
+        async def _prompt(*_a, **_k):
+            return None
+
+        with patch("src.utils.grdm_sync_ui._prompt_text", _prompt):
+            dest = await ensure_grdm_destination(page)
+        assert dest is None
+
+    asyncio.run(_go())
 
 
 def test_resolve_grdm_destination_skips_client_storage_when_session_set():
@@ -412,6 +510,8 @@ def test_looks_like_institution_folder_rejects_layout_and_timestamps():
     assert looks_like_institution_folder("export") is False
     assert looks_like_institution_folder("meta") is False
     assert looks_like_institution_folder("TEAM_YY") is False
+    assert looks_like_institution_folder("second_reading") is False
+    assert looks_like_institution_folder("final_reading") is False
     assert looks_like_institution_folder("ARIAKE_OHANACHAYA_20260812_153045") is False
     assert looks_like_institution_folder("second_reader_output_2026_08_12") is False
 
@@ -439,14 +539,31 @@ def test_filter_institution_datasets_acl():
     assert empty == []
 
 
-def test_remote_segments_separate_first_and_second():
+def test_remote_segments_separate_first_second_and_final():
     assert first_grader_remote_segments("ARIAKE_OHANACHAYA") == ("ARIAKE_OHANACHAYA",)
     assert second_reader_remote_segments("TOKYO_UNIV") == ("second_reading", "TOKYO_UNIV")
+    assert final_reader_remote_segments("ARIAKE_OHANACHAYA") == (
+        "final_reading",
+        "ARIAKE_OHANACHAYA",
+    )
 
 
 def test_first_grader_segments_reject_team_yy():
     try:
         first_grader_remote_segments(TEAM_YY_INSTITUTION_ID)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_second_and_final_segments_reject_team_yy():
+    try:
+        second_reader_remote_segments(TEAM_YY_INSTITUTION_ID)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+    try:
+        final_reader_remote_segments(TEAM_YY_INSTITUTION_ID)
         assert False, "expected ValueError"
     except ValueError:
         pass
