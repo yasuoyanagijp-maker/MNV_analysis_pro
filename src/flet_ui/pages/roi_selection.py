@@ -10,6 +10,7 @@ from src.flet_ui.components.shared import (
     PRIMARY,
     TEXT_MUTED,
     AppContext,
+    batch_queue_name_column,
     session_discard,
     viewport_fit_side,
 )
@@ -1023,55 +1024,78 @@ async def get_roi_view(ctx: AppContext):
     batch_paths = ctx.page.session.get("mnv_batch_paths") or []
     batch_idx = int(ctx.page.session.get("mnv_batch_index") or 0)
     preview_names = ctx.page.session.get("mnv_batch_names_preview")
-    batch_caption = ""
-    if batch_paths:
-        batch_caption = f"MNV folder batch — image {batch_idx + 1}/{len(batch_paths)}"
-        if isinstance(preview_names, list) and preview_names:
-            batch_caption += "\nキュー · " + " · ".join(str(n) for n in preview_names) + " （いずれも MNV）"
-
+    if not (isinstance(preview_names, list) and preview_names) and batch_paths:
+        preview_names = [Path(p).name for p in batch_paths]
     is_reanalysis = ctx.page.session.get("is_reanalysis_mode")
     if is_reanalysis:
         batch_caption = "Re-analysis Mode\nROIを再指定すると、古い結果が新しい解析結果に上書きされます。"
-        
+        queue_column = None
+    elif batch_paths:
+        batch_caption = f"MNV folder batch — image {batch_idx + 1}/{len(batch_paths)}"
+        queue_column = batch_queue_name_column(
+            preview_names,
+            batch_idx,
+            heading="キュー（いずれも MNV）",
+        )
+    else:
+        batch_caption = "Draw ROI and click dark areas to erase background noise."
+        queue_column = None
+
     return ft.Container(
         content=ft.Column([
-            ft.Row([
-                ft.Column([
-                    ft.Text("Step 1: ROI selection", size=22, weight=FontWeight.BOLD, color=PRIMARY),
+            ft.Column(
+                [
+                    ft.Row(
+                        [
+                            ft.Text(
+                                "Step 1: ROI selection",
+                                size=22,
+                                weight=FontWeight.BOLD,
+                                color=PRIMARY,
+                            ),
+                            ft.Row(
+                                [
+                                    ft.OutlinedButton(
+                                        "Skip — MNV absent",
+                                        icon=Icons.SKIP_NEXT_ROUNDED,
+                                        height=BTN_H,
+                                        style=btn_shape_style,
+                                        tooltip=(
+                                            "MNVがはっきり見えない場合。解析せず空マスク＋"
+                                            "mnv_present=false を学習用に記録します。"
+                                        ),
+                                        on_click=skip_mnv_absent,
+                                    ),
+                                    ft.ElevatedButton(
+                                        "Confirm & Re-analyze"
+                                        if is_reanalysis
+                                        else "Confirm ROI & Proceed",
+                                        icon=Icons.CHECK_CIRCLE,
+                                        height=BTN_H,
+                                        style=btn_shape_style,
+                                        bgcolor=Colors.AMBER_400 if is_reanalysis else PRIMARY,
+                                        color=Colors.BLACK,
+                                        on_click=confirm_roi,
+                                    ),
+                                ],
+                                spacing=8,
+                                wrap=True,
+                            ),
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.START,
+                    ),
                     ft.Text(
-                        batch_caption or "Draw ROI and click dark areas to erase background noise.",
+                        batch_caption,
                         color=Colors.AMBER_400 if is_reanalysis else TEXT_MUTED,
                         size=12,
                         max_lines=2,
                         overflow=ft.TextOverflow.ELLIPSIS,
                     ),
-                ], expand=True, spacing=2),
-                ft.Row(
-                    [
-                        ft.OutlinedButton(
-                            "Skip — MNV absent",
-                            icon=Icons.SKIP_NEXT_ROUNDED,
-                            height=BTN_H,
-                            style=btn_shape_style,
-                            tooltip=(
-                                "MNVがはっきり見えない場合。解析せず空マスク＋"
-                                "mnv_present=false を学習用に記録します。"
-                            ),
-                            on_click=skip_mnv_absent,
-                        ),
-                        ft.ElevatedButton(
-                            "Confirm & Re-analyze" if is_reanalysis else "Confirm ROI & Proceed",
-                            icon=Icons.CHECK_CIRCLE,
-                            height=BTN_H,
-                            style=btn_shape_style,
-                            bgcolor=Colors.AMBER_400 if is_reanalysis else PRIMARY,
-                            color=Colors.BLACK, on_click=confirm_roi
-                        ),
-                    ],
-                    spacing=8,
-                    wrap=True,
-                ),
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    *([queue_column] if queue_column is not None else []),
+                ],
+                spacing=6,
+            ),
             ft.Divider(height=8, color=Colors.TRANSPARENT),
             ft.Row([
                 img_stack,

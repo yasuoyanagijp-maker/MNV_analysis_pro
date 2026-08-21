@@ -15,6 +15,7 @@ from src.flet_ui.components.shared import (
     TEXT_MUTED,
     GLASS_BG,
     AppContext,
+    batch_queue_name_column,
     safe_round,
     session_discard,
     logout_to_login,
@@ -1579,27 +1580,22 @@ async def get_results_view(ctx: AppContext):
         # Sidebar is hidden on individual detail — show source filename here.
         _vd_src = str(res.get("source_filename") or f"Item {idx + 1}")
         ctrls = [
-            ft.Row(
+            ft.Column(
                 [
-                    ft.Column(
-                        [
-                            ft.Text(
-                                _vd_src,
-                                color=Colors.WHITE,
-                                size=18,
-                                weight=ft.FontWeight.W_600,
-                                max_lines=2,
-                                overflow=ft.TextOverflow.ELLIPSIS,
-                            ),
-                            ft.Text(
-                                f"Analysis type: VD | Timestamp: {res.get('analysis_timestamp', 'N/A')} — "
-                                + _vd_detail_blurb,
-                                color=TEXT_MUTED,
-                                size=12,
-                            ),
-                        ],
-                        expand=True,
-                        spacing=4,
+                    ft.Text(
+                        _vd_src,
+                        color=Colors.WHITE,
+                        size=18,
+                        weight=ft.FontWeight.W_600,
+                        max_lines=1,
+                        no_wrap=True,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
+                    ft.Text(
+                        f"Analysis type: VD | Timestamp: {res.get('analysis_timestamp', 'N/A')} — "
+                        + _vd_detail_blurb,
+                        color=TEXT_MUTED,
+                        size=12,
                     ),
                     ft.Row(
                         [
@@ -1635,8 +1631,7 @@ async def get_results_view(ctx: AppContext):
                         wrap=True,
                     ),
                 ],
-                vertical_alignment=ft.CrossAxisAlignment.START,
-                spacing=12,
+                spacing=6,
             ),
             ft.Divider(height=20, color=Colors.TRANSPARENT),
         ]
@@ -2077,26 +2072,21 @@ async def get_results_view(ctx: AppContext):
         )
         _mnv_src = str(res.get("source_filename") or f"Item {idx + 1}")
         ctrls = [
-            ft.Row(
+            ft.Column(
                 [
-                    ft.Column(
-                        [
-                            ft.Text(
-                                _mnv_src,
-                                color=Colors.WHITE,
-                                size=18,
-                                weight=ft.FontWeight.W_600,
-                                max_lines=2,
-                                overflow=ft.TextOverflow.ELLIPSIS,
-                            ),
-                            ft.Text(
-                                f"Analysis type: MNV | Timestamp: {res.get('analysis_timestamp', 'N/A')}",
-                                color=TEXT_MUTED,
-                                size=12,
-                            ),
-                        ],
-                        expand=True,
-                        spacing=4,
+                    ft.Text(
+                        _mnv_src,
+                        color=Colors.WHITE,
+                        size=18,
+                        weight=ft.FontWeight.W_600,
+                        max_lines=1,
+                        no_wrap=True,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
+                    ft.Text(
+                        f"Analysis type: MNV | Timestamp: {res.get('analysis_timestamp', 'N/A')}",
+                        color=TEXT_MUTED,
+                        size=12,
                     ),
                     ft.Row(
                         [
@@ -2133,8 +2123,7 @@ async def get_results_view(ctx: AppContext):
                         wrap=True,
                     ),
                 ],
-                vertical_alignment=ft.CrossAxisAlignment.START,
-                spacing=12,
+                spacing=6,
             )
         ]
 
@@ -2367,9 +2356,12 @@ async def get_results_view(ctx: AppContext):
                         size=18,
                     ),
                     title=ft.Text(
-                        r.get("source_filename", f"Item {idx+1}")[:28] + "...",
+                        str(r.get("source_filename", f"Item {idx+1}")),
                         size=13,
                         color=Colors.WHITE if selected_index == idx else TEXT_MUTED,
+                        max_lines=1,
+                        no_wrap=True,
+                        overflow=ft.TextOverflow.ELLIPSIS,
                     ),
                     selected=selected_index == idx,
                     on_click=lambda _, i=idx: ctx.page.run_task(select_result, i),
@@ -2390,8 +2382,14 @@ async def get_results_view(ctx: AppContext):
                 ft.ListTile(
                     leading=ft.Icon(Icons.CHECK_CIRCLE if "error" not in r else Icons.ERROR,
                                    color=Colors.GREEN_400 if "error" not in r else Colors.RED_400, size=18),
-                    title=ft.Text(r.get("source_filename", f"Item {idx+1}")[:20] + "...", size=13,
-                                 color=Colors.WHITE if selected_index == idx else TEXT_MUTED),
+                    title=ft.Text(
+                        str(r.get("source_filename", f"Item {idx+1}")),
+                        size=13,
+                        color=Colors.WHITE if selected_index == idx else TEXT_MUTED,
+                        max_lines=1,
+                        no_wrap=True,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
                     selected=selected_index == idx,
                     on_click=lambda _, i=idx: ctx.page.run_task(select_result, i),
                     hover_color=Colors.with_opacity(0.1, PRIMARY),
@@ -2420,6 +2418,9 @@ async def get_results_view(ctx: AppContext):
             else "Review this result. OK continues to the next image (ROI again). Redo ROI reopens the ROI editor for the same file without keeping this run."
         )
     if awaiting_mnv_batch_qc and paths_mnv:
+        preview_names = ctx.page.session.get("mnv_batch_names_preview")
+        if not (isinstance(preview_names, list) and preview_names):
+            preview_names = [Path(p).name for p in paths_mnv]
         qc_banner = ft.Container(
             content=ft.Column(
                 [
@@ -2430,6 +2431,11 @@ async def get_results_view(ctx: AppContext):
                         color=PRIMARY,
                     ),
                     ft.Text(qc_help_text, size=12, color=TEXT_MUTED),
+                    batch_queue_name_column(
+                        preview_names,
+                        idx_mnv,
+                        heading="キュー（いずれも MNV）",
+                    ),
                     ft.Row(
                         [
                             ft.ElevatedButton(
