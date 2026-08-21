@@ -50,6 +50,7 @@ if str(_REPO_ROOT) not in sys.path:
 from src.utils.dual_grader_merge import (  # noqa: E402
     AVG_FILLED_COLS_COL,
     AVG_FILLED_FLAG_COL,
+    MAJOR_METRICS_MERGE,
     match_stem,
 )
 from src.utils.recheck_md_parser import (  # noqa: E402
@@ -103,6 +104,9 @@ _AVG_FALLBACK_SKIP_COLS = {
     AVG_FILLED_COLS_COL,
     NEEDS_REVIEW_COL,
 }
+_MAJOR_REMAINDER_SKIP = frozenset(
+    cand for metric in MAJOR_METRICS_MERGE for cand in column_candidates(metric)
+)
 
 
 def triad_median(values: Sequence[Optional[float]]) -> Optional[float]:
@@ -632,6 +636,9 @@ def _fill_reread_remainder(
                 continue
 
             if not _looks_numeric_col(col, g1_row, g2_row, fr_row, g1_rows, g2_rows):
+                continue
+            if col in _MAJOR_REMAINDER_SKIP:
+                # Major metrics are filled only via the RECHECK target list.
                 continue
             a = _first_available_value(g1_row, col)
             b = _first_available_value(g2_row, col)

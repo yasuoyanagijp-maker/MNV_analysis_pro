@@ -155,8 +155,6 @@ def discover_dual_source_csvs(
     """
     integ = Path(adopted_csv).expanduser().resolve().parent
     parent = integ.parent
-    g1: Optional[Path] = None
-    g2: Optional[Path] = None
     if not parent.is_dir():
         return None, None
 
@@ -173,6 +171,9 @@ def discover_dual_source_csvs(
             return None
         return max(csvs, key=lambda p: p.stat().st_mtime)
 
+    g1_hits: List[Tuple[float, Path]] = []
+    g2_hits: List[Tuple[float, Path]] = []
+    g1_fallback: List[Tuple[float, Path]] = []
     try:
         children = list(parent.iterdir())
     except OSError:
@@ -184,15 +185,20 @@ def discover_dual_source_csvs(
         if name.startswith(_SECOND_READER_DIR_PREFIX):
             found = _newest_batch(child)
             if found is not None:
-                g2 = found
+                g2_hits.append((found.stat().st_mtime, found))
             continue
         if name.startswith((_INTEGRATED_DIR_PREFIX, _FINAL_READER_DIR_PREFIX)):
             continue
         found = _newest_batch(child)
         if found is None:
             continue
-        if g1 is None or name.startswith("output_folder"):
-            g1 = found
+        stamp = found.stat().st_mtime
+        if name.startswith("output_folder"):
+            g1_hits.append((stamp, found))
+        else:
+            g1_fallback.append((stamp, found))
+    g1 = max(g1_hits or g1_fallback, default=(0.0, None))[1]
+    g2 = max(g2_hits, default=(0.0, None))[1]
     return g1, g2
 
 

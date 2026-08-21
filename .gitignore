@@ -1,5 +1,6 @@
 # Python / Build artifacts
 .venv/
+.venv-intel/
 venv/
 env/
 __pycache__/

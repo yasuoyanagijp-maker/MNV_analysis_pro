@@ -752,6 +752,31 @@ class TestDiscoverDualSourceCsvs(unittest.TestCase):
             self.assertEqual(found_g1, (g1_dir / "MNV_batch_g1.csv").resolve())
             self.assertEqual(found_g2, (g2_dir / "MNV_batch_g2.csv").resolve())
 
+    def test_picks_newest_among_duplicate_workflow_folders(self):
+        from src.utils.second_reader import discover_dual_source_csvs
+        import os
+        import time
+
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            old_g2 = parent / "second_reader_output_2026_08_01"
+            new_g2 = parent / "second_reader_output_2026_08_21"
+            g1_dir = parent / "output_folder_2026_08_21"
+            integ = parent / "integrated_output_2026_08_21"
+            for p in (old_g2, new_g2, g1_dir, integ):
+                p.mkdir()
+            old_csv = old_g2 / "MNV_batch_old.csv"
+            new_csv = new_g2 / "MNV_batch_new.csv"
+            g1_csv = g1_dir / "MNV_batch_g1.csv"
+            for p in (old_csv, new_csv, g1_csv):
+                p.write_text("ID,File\n1,a.png\n", encoding="utf-8")
+            old_ts = time.time() - 3600
+            os.utime(old_csv, (old_ts, old_ts))
+            adopted = integ / "MNV_integrated_x_adopted_values.csv"
+            adopted.write_text("ID,File\n", encoding="utf-8")
+            _, found_g2 = discover_dual_source_csvs(adopted)
+            self.assertEqual(found_g2, new_csv.resolve())
+
 
 if __name__ == "__main__":
     unittest.main()
