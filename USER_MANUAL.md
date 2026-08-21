@@ -2,7 +2,7 @@
 
 加齢黄斑変性症（MNV）および血管密度（VD）解析向けのデスクトップ／ブラウザ UI です。本書は**研究・臨床オペレーター**向けの操作説明です。
 
-**二重読影・多施設データ共有（GakuNin RDM）** の手順は **§6A** および **§10.2〜§10.4** にまとめています。フォルダ選択の最短手順は [簡易版](documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md)、指標定義は [詳細マニュアル V2](documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md) を参照してください。
+**二重読影・多施設データ共有（GakuNin RDM）** の手順は **§6A** および **§10.2〜§10.4** にまとめています。各サイト／Team YY 向けの協働通知は [collaboration.md](documentation/collaboration.md)、ROI の指定（手動囲み・Erase・血管同定）は [roi_method.md](documentation/roi_method.md)、フォルダ選択の最短手順は [簡易版](documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md)、指標定義は [詳細マニュアル V2](documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md) を参照してください。
 
 ---
 
@@ -151,7 +151,7 @@ Web モードでは、フォルダ／画像の指定に **手動パス入力**�
 
 ## 6A. 多施設・二重読影スキーム（研究運用の全体像）
 
-本アプリの二重読影機能は、**複数施設・複数観察者間で定量手法を揃える**ための運用を支援します。研究プロトコル上の解析は、おおむね次の二段構えで進めます（詳細な統計計画は別文書）。
+本アプリの二重読影機能は、**複数施設・複数観察者間で定量手法を揃える**ための運用を支援します。各サイト／Team YY 向けの協働通知（ルート設計・GakuNin フォルダ・ACL）は **[documentation/collaboration.md](documentation/collaboration.md)** です。研究プロトコル上の解析は、おおむね次の二段構えで進めます（詳細な統計計画は別文書）。
 
 1. **各観察時点での MNV（および関連指標）の定量** — 本アプリでの読影・CSV／メタデータ出力。  
 2. **治療前後の形態変化と関連因子の探索** — 統合解析データ（採用値）や施設横断データを用いた二次解析。
@@ -248,6 +248,7 @@ GakuNin RDM（プロジェクト配下）/
 ## 9. ROI 画面（`/roi`）と MNV ウィザード（`/mnv`）
 
 - **MNV** 系のフローでは、画像と解析設定に応じて **ROI（関心領域）** の指定やウィザード画面が表示されます。
+- 従来の **Draw ROI（フリーハンドで取り囲む）** と **Erase Noise（長押しで削る）** に加え、**着色画像**で血管同定（黄＝血管、赤＝拡張）を確認し、**余白trim** で着色のない余白だけを除けます。手順の正本は **[documentation/roi_method.md](documentation/roi_method.md)** です。
 - 画面の指示に従い、**戻る／次へ**や**解析開始**を行ってください。
 - **Skip — MNV absent**: MNV がはっきり見えない場合に使います。形態計測は実行せず、学習用に **空（全黒）マスク** と **`mnv_present=false`** を残します。CSV では数値は空、`MNV present=0`、`Quality of analysis=N/A`（Fail ではありません。QC と病変有無は別フィールドです）。
 
@@ -509,6 +510,8 @@ GakuNin RDM（プロジェクト配下）/
 ## 14. 関連ドキュメント
 
 - **操作の要点（Confirm Selection 等）:** [documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md](documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md)
+- **多施設グレーディング通知（各サイト／Team YY）:** [documentation/collaboration.md](documentation/collaboration.md)
+- **ROI の指定方法（手動囲み・Erase・着色画像／余白trim）:** [documentation/roi_method.md](documentation/roi_method.md)
 - **理論・出力定義・Complexity / Caliber Uniformity:** [documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md)（§6.3）
 - **RPD20 採用（CLI 手順）:** [tools/reading_center_rpd/PROCEDURE_JA.md](tools/reading_center_rpd/PROCEDURE_JA.md)
 - **開発者向け（実装・拡張）:** [DEVELOPER.md](DEVELOPER.md)
@@ -519,6 +522,7 @@ GakuNin RDM（プロジェクト配下）/
 
 | 日付 | 内容 |
 |------|------|
+| 2026-08-21 | 各サイト／Team YY 向け協働通知 [collaboration.md](documentation/collaboration.md)、ROI 手順 [roi_method.md](documentation/roi_method.md) を公開文書として追加。§9 に着色画像／余白trim への案内を追記。 |
 | 2026-08-15 | **最終読影者（RECHECK再読影・トライアッド確定）機能**を追加：ログイン Role に最終読影者、RECHECK対象MDの選択→対象症例のみ再読影、median(G1, G2, 最終読影者) による確定、要レビューRPD 20%（既存閾値流用）、CV% 保持、dry-run プレビュー→本確定の2段階。§6・§10.5・トラブルシュートを追記。 |
 | 2026-08-15 | 統合解析データに **`*_avg_fallback.csv`**（NA セルを G1/G2 単純平均で補完した**参考・暫定**ファイル。`is_avg_filled` 列と同名 `*_avg_fallback_README.txt` で暫定である旨を明示）を追加出力。§10.2.4・§13 を更新。 |
 | 2026-08-12 | Bugbot 指摘反映: アプリ統合と CLI の突合キー差、同期対象=`output_folder`（integrated 非対象）、`ARIAKE_INSTITUTION_ID` の同期への影響、`TEAM_YY`≠`YOKOHAMA_CITY_UNIV`、ROI ボタン正式名。 |

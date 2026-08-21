@@ -183,7 +183,7 @@ ROI・ウィザード上の **Confirm & Start Analysis** 等で解析を開始�
 - 第1同期先のフォルダ名は `resolve_institution_id`（env `ARIAKE_INSTITUTION_ID` 優先可）  
 - PAT は OS ネイティブ安全領域へ保存（リポジトリの `.env` への平文コミットは非推奨）
 
-ボタン単位の操作手順・フォルダ配置・トラブルシュートは **[USER_MANUAL.md](../USER_MANUAL.md) §6A・§10.2〜§10.4** を正とします。CLI 手順は [tools/reading_center_rpd/PROCEDURE_JA.md](../tools/reading_center_rpd/PROCEDURE_JA.md)。
+ボタン単位の操作手順・フォルダ配置・トラブルシュートは **[USER_MANUAL.md](../USER_MANUAL.md) §6A・§10.2〜§10.4** を正とします。各サイト／Team YY 向けの協働通知は **[collaboration.md](collaboration.md)**。CLI 手順は [tools/reading_center_rpd/PROCEDURE_JA.md](../tools/reading_center_rpd/PROCEDURE_JA.md)。
 
 ---
 
@@ -499,6 +499,7 @@ Trunk 正規化は Complexity と同じく **`complexity_ref` の `trunk_scale_c
 
 | 日付 | 内容 |
 |------|------|
+| 2026-08-21 | §3.6 から各サイト／Team YY 向け協働通知 [collaboration.md](collaboration.md) への案内を追加。 |
 | 2026-08-12 | §3.6 を精緻化: アプリ/CLI 突合差、同期対象、`TEAM_YY`≠横浜市大プリセット、env の同期への影響。 |
 | 2026-08-12 | **§3.6** 新設: 二重読影（RPD20）・施設内2名／GakuNin×中央読影・ACL の要約。操作の正本は USER_MANUAL §6A・§10.2〜§10.4。 |
 | 2026-08-07 | **§6.3** 新設: Network Complexity / Caliber Uniformity の現行定義（層別 PCA・入力特徴量・EVR／0.7·(−PC1)+0.2·PC2+0.1·Trunk・size_class・Trunk 正規化・Maturity・Uniformity=25.0 警告）。冒頭差分表・§3.2・文書情報を更新。操作マニュアル側の施設コード／Export Metadata と整合。 |
