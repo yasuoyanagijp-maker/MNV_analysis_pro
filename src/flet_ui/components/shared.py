@@ -126,6 +126,41 @@ def viewport_fit_side(
     return int(max(min_side, min(max_side, side)))
 
 
+def batch_queue_name_column(
+    names,
+    current_idx: int = 0,
+    *,
+    heading: str = "キュー",
+) -> ft.Column:
+    """One filename per line (column). Do not join names into a single wrapping row.
+
+    A joined ``" · ".join(names)`` string in a narrow left pane wraps
+    character-by-character on Windows Flet and looks like a tall strip.
+    """
+    items: List = []
+    if heading:
+        items.append(
+            ft.Text(heading, size=11, color=TEXT_MUTED, weight=FontWeight.BOLD)
+        )
+    for i, raw in enumerate(names or []):
+        name = str(raw).strip()
+        if not name:
+            continue
+        is_cur = i == int(current_idx)
+        items.append(
+            ft.Text(
+                f"{i + 1}. {name}",
+                size=12,
+                color=PRIMARY if is_cur else TEXT_MUTED,
+                weight=FontWeight.BOLD if is_cur else FontWeight.NORMAL,
+                max_lines=1,
+                no_wrap=True,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            )
+        )
+    return ft.Column(items, spacing=2, tight=True)
+
+
 async def logout_to_login(page: ft.Page) -> None:
     """Discard auth/analysis session and navigate to /login.
 
