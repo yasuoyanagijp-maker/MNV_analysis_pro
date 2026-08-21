@@ -13,6 +13,8 @@ Git で管理する **ユーザー向け・理論向けマニュアル** をこ�
 | Flet 版・詳細（理論・マクロとの差分） | [ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md)（**§6.3 Complexity / Caliber Uniformity**） |
 | マクロ版ベースの整理・要約（付録） | [ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md](ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md) |
 | 操作の要点（Confirm Selection 等） | [ARIAKE_OCTA_操作マニュアル_簡易版.md](ARIAKE_OCTA_操作マニュアル_簡易版.md) |
+| **多施設グレーディング通知**（各サイト／Team YY・GakuNin 設計） | [collaboration.md](collaboration.md) |
+| **ROI の指定方法**（手動囲み・Erase・着色画像／余白trim） | [roi_method.md](roi_method.md) |
 | **最終読影者・トライアッド確定**（RECHECK再解析・確認事項3点・閾値・dry-run所見） | [triad_recheck/README.md](triad_recheck/README.md)（操作手順は [USER_MANUAL.md §10.5](../USER_MANUAL.md)） |
 | ImageJ マクロ正本の置き場（予定） | [imagej-macro/README.md](imagej-macro/README.md) |
 | **Graefe 改訂**（提出・ICC・Response・S1 等） | ブランチ `graefe/major-revision-analyses` の [`documentation/graefe_revision/`](graefe_revision/)（Textbook Editor／moumaku は別リポ `dr-yanagi-content-studio`＝`GA_Consensus`。こちらでは扱わない） |
@@ -35,8 +37,10 @@ Git で管理する **ユーザー向け・理論向けマニュアル** をこ�
 | 詳細マニュアル（Flet） | [ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md §15.1](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md) |
 | 付録（マクロ整理） | [付録・変更履歴](ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md#付録変更履歴) |
 | 操作マニュアル（簡易版） | [§7](ARIAKE_OCTA_操作マニュアル_簡易版.md#7-変更履歴) |
+| 多施設グレーディング通知 | [collaboration.md](collaboration.md) 末尾 |
+| ROI の指定方法 | [roi_method.md](roi_method.md) 末尾 |
 
-直近のまとまった更新: **2026-08-07**（Complexity／Caliber Uniformity PCA 定義、施設コード、Export Metadata & Data）。
+直近のまとまった更新: **2026-08-21**（各サイト／Team YY 向け `collaboration.md`、ROI 手順 `roi_method.md` を公開文書として追加）。
 
 ## PDF にして配布する（印刷）
 

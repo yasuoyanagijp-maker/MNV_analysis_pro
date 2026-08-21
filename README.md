@@ -5,6 +5,7 @@ OCTA 画像を用いた **MNV（脈絡膜新生血管）解析**および **VD�
 ## 文書の位置づけ
 
 - **操作の詳細**（起動モード、ログイン、ダッシュボード、トラブルシューティング）は **[USER_MANUAL.md](USER_MANUAL.md)** を参照してください。
+- **各サイト／Team YY のグレーディング設計**は **[documentation/collaboration.md](documentation/collaboration.md)**、**ROI の指定方法**は **[documentation/roi_method.md](documentation/roi_method.md)** を参照してください。
 - **ARIAKE 向けマニュアル一式**（詳細版・付録・簡易版・PDF 印刷の案内）は **[documentation/README.md](documentation/README.md)** を参照してください。
 - 旧 RTF のみをお持ちの場合は、その内容と **[documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md)** および付録を突合してください。
 

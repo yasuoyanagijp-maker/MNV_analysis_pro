@@ -14,6 +14,8 @@
 - **ダウンロード**: https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/releases
 - **操作マニュアル**: https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/USER_MANUAL.md
 - **簡易版**: https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md
+- **多施設グレーディング通知（各サイト／Team YY）**: https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/collaboration.md
+- **ROI の指定方法**: https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/roi_method.md
 
 ## 初回セットアップ（1回だけ）
 
@@ -79,4 +81,10 @@ https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/releases
 
 操作マニュアル:
 https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md
+
+多施設グレーディング（各サイト／Team YY）:
+https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/collaboration.md
+
+ROI の指定方法:
+https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/roi_method.md
 ```

@@ -50,6 +50,7 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
    - **（任意）0. Crop Image** — **横に広い画像**では、最初からこのモードが選ばれることがあります。ドラッグで四角く囲み、**「クロップ確定」** で切り出します。やり直すときは **「元画像に戻す」** があります。  
    - **1. Draw ROI（フリーハンド）** — 画像上でドラッグし、**MNV を含む領域をなぞって囲みます**（指を離すと、選んだ部分が緑の半透明で重なります）。囲み終えると、**自動的に「2. Erase Noise」のモード**に切り替わります。  
    - **2. Erase Noise（長押し）** — **緑で示した領域の内側**で、不要な暗いノイズや背景の隙間の上を **長押し**して取り除きます。  
+   - **着色画像**（任意）— アプリが同定した血管を表示します（**黄＝血管、赤＝拡張**。このあいだ緑の ROI 塗りは非表示）。**余白trim → 採用** で、着色のない余白だけを ROI から除けます。背景血管の削除と、切り落とした血管の追加は、これまでどおり Draw / Erase です。手順の正本は **[roi_method.md](roi_method.md)**。  
    - 操作のやり直しは **Undo**（直前のみ戻る）や **Reset**（マスクをまっさらに戻す）を使います。  
    - 緑の領域が問題なければ、右上の **「Confirm ROI & Proceed」**（再解析のときは **「Confirm & Re-analyze」**）で次の画面へ進みます。**ROI が空のままでは進めません。**  
 3. **MNV ウィザード**でプレビューを確認し、案内に従い **解析の実行**（**Confirm & Start Analysis** 等）へ進みます。  
@@ -75,6 +76,7 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 - 一般施設の GakuNin 取得は **自施設のみ**。横断選択は **`TEAM_YY` のみ**。  
 - アプリの統合は `File`/`ID` stem 突合。CLI（Case+Visit）とは別経路。  
 - ボタン名やフォルダ配置の手順書: [USER_MANUAL.md](../USER_MANUAL.md) §6A・§10.2〜§10.4  
+- 各サイト／Team YY への協働通知: [collaboration.md](collaboration.md)  
 
 ---
 
@@ -89,6 +91,8 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 | 内容 | リンク |
 |------|--------|
 | 起動・ログイン・二重読影・GakuNin | [USER_MANUAL.md](../USER_MANUAL.md)（§6A・§10.2〜§10.4） |
+| 各サイト／Team YY グレーディング通知 | [collaboration.md](collaboration.md) |
+| ROI の指定（手動囲み・Erase・着色画像／余白trim） | [roi_method.md](roi_method.md) |
 | Complexity / Caliber Uniformity（パラメータ含む） | [詳細マニュアル §6.3](ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md#63-network-complexity--caliber-uniformity現行-flet-版--正) |
 | RPD20 採用（CLI） | [tools/reading_center_rpd/PROCEDURE_JA.md](../tools/reading_center_rpd/PROCEDURE_JA.md) |
 
@@ -98,6 +102,7 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 
 | 日付 | 内容 |
 |------|------|
+| 2026-08-21 | ROI に着色画像／余白trim を追記。[collaboration.md](collaboration.md)・[roi_method.md](roi_method.md) へのリンクを追加。 |
 | 2026-08-12 | 1名ルート: 同期前にログアウトしない旨を明記（「同上」の誤解を解消）。 |
 | 2026-08-12 | Bugbot 指摘反映: 同期は `output_folder` のみ・integrated 非対象、`TEAM_YY` 明示、ROI 正式ボタン名。 |
 | 2026-08-12 | **§4A** 二重読影・GakuNin 早見を追加。結果画面ボタンと USER_MANUAL 詳細節へのリンクを更新。 |

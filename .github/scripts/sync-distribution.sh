@@ -22,6 +22,8 @@ cp "${WORKROOT}/documentation/README.md" "${CONTENT}/documentation/"
 cp "${WORKROOT}/documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md" "${CONTENT}/documentation/"
 cp "${WORKROOT}/documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md" "${CONTENT}/documentation/"
 cp "${WORKROOT}/documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md" "${CONTENT}/documentation/"
+cp "${WORKROOT}/documentation/collaboration.md" "${CONTENT}/documentation/"
+cp "${WORKROOT}/documentation/roi_method.md" "${CONTENT}/documentation/"
 
 cat > "${CONTENT}/README.md" <<'EOF'
 # ARIAKE OCTA — 配布・マニュアル
@@ -46,6 +48,8 @@ cat > "${CONTENT}/README.md" <<'EOF'
 | 操作・起動（詳細） | [USER_MANUAL.md](USER_MANUAL.md) |
 | 操作の要点（Confirm Selection 等） | [documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md](documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md) |
 | 詳細ユーザーマニュアル V2 | [documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md) |
+| 多施設グレーディング通知（各サイト／Team YY） | [documentation/collaboration.md](documentation/collaboration.md) |
+| ROI の指定方法（手動囲み・血管同定） | [documentation/roi_method.md](documentation/roi_method.md) |
 
 ## ログイン（初回起動時）
 
