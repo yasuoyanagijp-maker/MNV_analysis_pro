@@ -143,6 +143,65 @@ def _is_merged_csv(path: Path) -> bool:
     return any(marker in name for marker in _MERGED_CSV_MARKERS)
 
 
+def discover_dual_source_csvs(
+    adopted_csv: Path,
+) -> Tuple[Optional[Path], Optional[Path]]:
+    """
+    Find the G1 / G2 batch CSVs that produced ``adopted_csv``.
+
+    Looks in sibling folders of ``integrated_output_*`` (the usual layout:
+    ``output_folder_*`` + ``second_reader_output_*``). Newest ``MNV_*.csv``
+    in each folder wins. Returns ``(g1, g2)``; either side may be None.
+    """
+    integ = Path(adopted_csv).expanduser().resolve().parent
+    parent = integ.parent
+    if not parent.is_dir():
+        return None, None
+
+    def _newest_batch(folder: Path) -> Optional[Path]:
+        try:
+            csvs = [
+                p
+                for p in folder.glob("MNV_*.csv")
+                if p.is_file() and not _is_merged_csv(p)
+            ]
+        except OSError:
+            return None
+        if not csvs:
+            return None
+        return max(csvs, key=lambda p: p.stat().st_mtime)
+
+    g1_hits: List[Tuple[float, Path]] = []
+    g2_hits: List[Tuple[float, Path]] = []
+    g1_fallback: List[Tuple[float, Path]] = []
+    try:
+        children = list(parent.iterdir())
+    except OSError:
+        return None, None
+    for child in children:
+        if not child.is_dir():
+            continue
+        name = child.name
+        if name.startswith(_SECOND_READER_DIR_PREFIX):
+            found = _newest_batch(child)
+            if found is not None:
+                g2_hits.append((found.stat().st_mtime, found))
+            continue
+        if name.startswith((_INTEGRATED_DIR_PREFIX, _FINAL_READER_DIR_PREFIX)):
+            continue
+        found = _newest_batch(child)
+        if found is None:
+            continue
+        stamp = found.stat().st_mtime
+        if name.startswith("output_folder"):
+            g1_hits.append((stamp, found))
+        else:
+            g1_fallback.append((stamp, found))
+    g1 = max(g1_hits or g1_fallback, default=(0.0, None))[1]
+    g2 = max(g2_hits, default=(0.0, None))[1]
+    return g1, g2
+
+
 def find_first_grader_mnv_csvs(
     scan_root: Path,
     *,

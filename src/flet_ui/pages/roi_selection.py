@@ -10,7 +10,6 @@ from src.flet_ui.components.shared import (
     PRIMARY,
     TEXT_MUTED,
     AppContext,
-    batch_queue_name_column,
     session_discard,
     viewport_fit_side,
 )
@@ -1031,12 +1030,15 @@ async def get_roi_view(ctx: AppContext):
         batch_caption = "Re-analysis Mode\nROIを再指定すると、古い結果が新しい解析結果に上書きされます。"
         queue_column = None
     elif batch_paths:
+        cur = ""
+        if isinstance(preview_names, list) and 0 <= batch_idx < len(preview_names):
+            cur = str(preview_names[batch_idx]).strip()
+        if not cur:
+            cur = Path(batch_paths[batch_idx]).name
         batch_caption = f"MNV folder batch — image {batch_idx + 1}/{len(batch_paths)}"
-        queue_column = batch_queue_name_column(
-            preview_names,
-            batch_idx,
-            heading="キュー（いずれも MNV）",
-        )
+        if cur:
+            batch_caption = f"{batch_caption} — {cur}"
+        queue_column = None
     else:
         batch_caption = "Draw ROI and click dark areas to erase background noise."
         queue_column = None

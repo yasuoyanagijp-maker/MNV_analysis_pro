@@ -76,8 +76,9 @@ G1/G2の二重読影でRPDが採用基準を超えNA（RECHECK）となった主
 | `g1_value` / `g2_value` / `final_reader_value` | 監査用に3値とも保持 |
 | `cv_percent` | 3値の CV% = SD/平均×100（標本SD, ddof=1）。トライアッドの再現性報告（CV%/ICC）に使用 |
 
-- RECHECK指定**外**のセルは、最終読影者が同じ画像を読影していても一切使用・上書きしない
-  （テストで最終読影者の非対象値がリークしないことを検証済み）。
+- RECHECK指定セルは `median(G1, G2, 最終読影者)` で確定する。
+- 最終読影者が再読影した画像に残った**数値 NA**（主要指標外の RPD 超過）も同じ中央値で埋める。既採用値は上書きしない。
+- 再読影像の **Subtype / Pathophysiology が NA** のとき、**Vsl Area (mm2) のトライアッド中央値を出したグレーダー**の分類を採用する（同値なら最終読影者優先）。
 - 最終読影者CSVにも既存パイプラインと同じ **U2再計算**を適用してから突合する。
   値の参照は素の既定列 / `… (U2)` / `Standardized …` の等価列名を順に試すため、
   再計算が失敗した場合やビルド間の列名差があっても解決できる。
@@ -89,7 +90,9 @@ G1/G2の二重読影でRPDが採用基準を超えNA（RECHECK）となった主
 | ファイル | 内容 |
 |---|---|
 | `{prefix}_triad_resolved_cells.csv` | セル別監査レコード（上表の全フィールド + RPD + 状態） |
-| `{prefix}_triad_adopted_values.csv` | adopted CSV のコピーに RECHECK セルのみ median を適用したもの + `Triad Needs Review (metrics)` 列 |
+| `{prefix}_triad_adopted_values.csv` | adopted CSV に RECHECK 中央値 + 再読影像の残数値NA中央値 + Subtype/Pathophysiology（Vsl Area中央値グレーダー）を適用 + `Triad Needs Review (metrics)` 列 |
+| `{prefix}_triad_avg_fallback.csv` | **暫定**: トライアッド後の残NAを dual-read `avg_fallback`（G1/G2平均）からコピー。正本ではない |
+| `{prefix}_triad_avg_fallback_README.txt` | 上記が暫定である旨（Excel で列がずれないよう CSV 内にコメント行は置かない） |
 | `{prefix}_triad_summary.md` | ルール・集計・セル別テーブル |
 
 **元の `{prefix}_adopted_values.csv` / `{prefix}_recheck_list.csv` は一切変更しません。**
@@ -137,6 +140,6 @@ G1/G2の二重読影でRPDが採用基準を超えNA（RECHECK）となった主
 python3 -m unittest tools.test_recheck_md_parser tools.test_triad_median_resolver
 ```
 
-31テスト（パーサー16 + リゾルバー15）。既存の
+既存の
 `tools/reading_center_rpd/test_compute_adopted.py` / `tools/test_second_reader_fov.py`
 も回帰なしを確認済み。

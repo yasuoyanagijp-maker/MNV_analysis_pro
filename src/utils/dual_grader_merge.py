@@ -23,10 +23,12 @@ Outputs (into the second reader's output folder):
     ``triad_median_resolver`` output). A plain CSV with the header on row 1
     (Excel-safe); the provisional warning is written to the sibling
     ``{prefix}_avg_fallback_README.txt``.
+  - ``{prefix}_source_csvs.json`` … G1/G2 batch CSV paths (for triad leftover-NA fill)
 """
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from datetime import datetime
@@ -258,6 +260,7 @@ def merge_dual_grader_csvs(
     avg_fallback_readme_path = out_dir / f"{prefix}_avg_fallback_README.txt"
     recheck_path = out_dir / f"{prefix}_recheck_list.csv"
     summary_path = out_dir / f"{prefix}_summary.md"
+    source_csvs_path = out_dir / f"{prefix}_source_csvs.json"
 
     write_csv(adopted_path, fieldnames, adopted_rows)
     # Plain CSV (header on row 1): Excel does not honour "#" comment lines,
@@ -272,6 +275,18 @@ def merge_dual_grader_csvs(
         encoding="utf-8",
     )
     write_csv(recheck_path, RECHECK_FIELDS, recheck_rows)
+    source_csvs_path.write_text(
+        json.dumps(
+            {
+                "first_csv": str(Path(first_csv).expanduser().resolve()),
+                "second_csv": str(Path(second_csv).expanduser().resolve()),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     # NA list per case (File) — the final reader's RECHECK re-reading input
     # (recheck_md_parser reads this format back from the summary MD).
@@ -303,6 +318,7 @@ def merge_dual_grader_csvs(
         "avg_fallback_readme": str(avg_fallback_readme_path),
         "recheck_csv": str(recheck_path),
         "summary_md": str(summary_path),
+        "source_csvs_json": str(source_csvs_path),
     }
     summary_path.write_text(_render_summary_md(summary), encoding="utf-8")
     return summary
@@ -313,7 +329,9 @@ def _render_summary_md(s: Dict[str, Any]) -> str:
         f"# 統合解析データ (dual-read adoption) — {datetime.now().date().isoformat()}",
         "",
         f"- 第1グレーダー CSV: `{Path(s['first_csv']).name}`",
+        f"- 第1グレーダー CSV（フルパス）: `{s['first_csv']}`",
         f"- 第2リーダー CSV: `{Path(s['second_csv']).name}`",
+        f"- 第2リーダー CSV（フルパス）: `{s['second_csv']}`",
         f"- RPD 閾値: **{s['threshold_pct']:g}%**",
         f"- 突合成功: **{s['n_matched']}** 行"
         f"（第1のみ: {s['n_first_only']} / 第2のみ: {s['n_second_only']}）",
