@@ -450,15 +450,19 @@ GakuNin RDM（プロジェクト配下）/
 | 成果物 | 内容 |
 |--------|------|
 | `*_triad_resolved_cells.csv` | セル別監査レコード（`g1_value` / `g2_value` / `final_reader_value` / `final_value` / `needs_review` / `cv_percent` 等） |
-| `*_triad_adopted_values.csv` | adopted CSV に RECHECK セルの中央値を適用したもの + `Triad Needs Review (metrics)` 列 |
+| `*_triad_adopted_values.csv` | adopted CSV に RECHECK 中央値・再読影像の残数値NA中央値・Subtype/Pathophysiology（Vsl Area中央値グレーダー）を適用 + `Triad Needs Review (metrics)` 列 |
+| `*_triad_avg_fallback.csv` | **参考・暫定**：トライアッド後も残った NA を既存の G1/G2 単純平均（`*_avg_fallback.csv`）で埋めたもの。`is_avg_filled` で識別。**正本ではない**（同名 `*_triad_avg_fallback_README.txt`） |
 | `*_triad_summary.md` | ルール・集計・セル別テーブル |
 
 #### 10.5.3 確定ルール
 
 - `final_value = median(G1, G2, 最終読影者)`（G1/G2 の一方が欠損なら2値の中央値=平均）。  
+- **最終読影者が再読影した画像**に残っている数値 NA（主要指標以外で RPD>20% だったセル）も、同じ三人中央値で埋めます。**すでに採用済みの値（RPD≤20% の平均）は上書きしません。** 最終読影 CSV に無い画像（RECHECK 対象外）は触りません。  
+- **Subtype / Pathophysiology が NA** の再読影像は、**Vsl Area (mm2) のトライアッド中央値を出したグレーダー**の分類を採用します（3値が異なるときは中央値そのものを出した1人。同値なら最終読影者を優先）。  
 - **RPD(median, 最終読影者値) > 20%**（既存のNA/採用判定と同一閾値）の場合、`needs_review = true` フラグが付きます。**値は確定され、処理はブロックされません**（プロトコルに従い事後レビュー）。  
 - 3値の **CV%**（SD/平均×100）を保持します（トライアッドの再現性はペアワイズRPDではなく CV%/ICC で報告する方針）。  
-- **RECHECK指定外のセルは、最終読影者が同じ画像を読影していても一切上書きされません。** 元の `*_adopted_values.csv` / `*_recheck_list.csv` も変更されません。
+- 元の `*_adopted_values.csv` / `*_recheck_list.csv` は変更されません。  
+- 参考出力 `*_triad_avg_fallback.csv` は、トライアッド後も残った NA を既存の G1/G2 平均で埋えた**暫定ファイル**です。新しい解析はしません。提出には `*_triad_adopted_values.csv` を使ってください。
 
 詳細仕様は [documentation/triad_recheck/README.md](documentation/triad_recheck/README.md) を参照してください。
 
@@ -503,7 +507,7 @@ GakuNin RDM（プロジェクト配下）/
 - 本アプリの利用は、施設の**情報セキュリティ方針**と**臨床研究倫理**に従ってください。
 - 解析の医学的解釈は、**専門家の判断**を前提とし、本マニュアルはソフトの操作手順の説明に限ります。
 - GakuNin RDM の PAT や施設データを、チャット・メール・リポジトリに貼り付けないでください。
-- 統合解析データの **NA（再計測）** を、無断で平均値に置き換えないでください。自動出力される `*_avg_fallback.csv` は参考・簡易確認用の**暫定補完**であり、提出・二次解析には `*_adopted_values.csv`（NA の確定解決は第3読影者ベースの結果）を使用してください。
+- 統合解析データの **NA（再計測）** を、無断で平均値に置き換えないでください。自動出力される `*_avg_fallback.csv` およびトライアッド後の `*_triad_avg_fallback.csv` は参考・簡易確認用の**暫定補完**であり、提出・二次解析には `*_adopted_values.csv` / `*_triad_adopted_values.csv` を使用してください。
 
 ---
 
@@ -522,6 +526,8 @@ GakuNin RDM（プロジェクト配下）/
 
 | 日付 | 内容 |
 |------|------|
+| 2026-08-21 | トライアッド確定時に **`*_triad_avg_fallback.csv`**（残NAを既存 G1/G2 平均で埋めた参考・暫定）を追加出力。§10.5.2・§10.5.3 を更新。 |
+| 2026-08-21 | 最終読影者が再読影した画像の**残数値 NA**をトライアッド中央値で補完。Subtype/Pathophysiology の NA は **Vsl Area 中央値のグレーダー**の分類を採用。§10.5.3 を更新。 |
 | 2026-08-21 | 各サイト／Team YY 向け協働通知 [collaboration.md](documentation/collaboration.md)、ROI 手順 [roi_method.md](documentation/roi_method.md) を公開文書として追加。§9 に着色画像／余白trim への案内を追記。 |
 | 2026-08-15 | **最終読影者（RECHECK再読影・トライアッド確定）機能**を追加：ログイン Role に最終読影者、RECHECK対象MDの選択→対象症例のみ再読影、median(G1, G2, 最終読影者) による確定、要レビューRPD 20%（既存閾値流用）、CV% 保持、dry-run プレビュー→本確定の2段階。§6・§10.5・トラブルシュートを追記。 |
 | 2026-08-15 | 統合解析データに **`*_avg_fallback.csv`**（NA セルを G1/G2 単純平均で補完した**参考・暫定**ファイル。`is_avg_filled` 列と同名 `*_avg_fallback_README.txt` で暫定である旨を明示）を追加出力。§10.2.4・§13 を更新。 |

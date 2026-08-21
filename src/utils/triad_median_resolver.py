@@ -13,14 +13,20 @@ dual-read RPD adoption (``dual_grader_merge`` / reading-center tool):
   RPD).
 - g1/g2/final-reader values are all retained for audit.
 
-Only the cells designated by the RECHECK markdown are resolved; every other
-cell of the final reader's re-read is ignored and the existing adopted values
-are never overwritten in place. Outputs are NEW files next to the original
-integrated outputs:
+On images the final reader actually re-read, remaining **numeric NA** cells
+(non-major metrics that failed dual-read RPD) are filled with the same triad
+median. Already-adopted values (RPD ≤ 20%) are never overwritten.
+
+**Subtype / Pathophysiology** NA on those images is filled from the grader
+whose **Vsl Area (mm2)** equals the triad median (the person whose vessel
+area was selected). Ties prefer the final reader.
+
+Outputs are NEW files next to the original integrated outputs:
 
 - ``{prefix}_triad_resolved_cells.csv``  … per-cell audit record
-- ``{prefix}_triad_adopted_values.csv``  … adopted CSV with RECHECK cells
-  replaced by the triad median (plus a trailing review-flag column)
+- ``{prefix}_triad_adopted_values.csv``  … official triad-adopted values
+- ``{prefix}_triad_avg_fallback.csv``    … PROVISIONAL: leftover NA copied
+  from the dual-read ``avg_fallback`` (G1/G2 mean). Not for submission.
 - ``{prefix}_triad_summary.md``          … counts + rule statement
 
 ``dry_run=True`` computes everything and returns the same summary without
@@ -29,6 +35,7 @@ writing any file (two-step confirm flow for clinical data safety).
 
 from __future__ import annotations
 
+import json
 import math
 import statistics
 import sys
@@ -40,7 +47,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from src.utils.dual_grader_merge import match_stem  # noqa: E402
+from src.utils.dual_grader_merge import (  # noqa: E402
+    AVG_FILLED_COLS_COL,
+    AVG_FILLED_FLAG_COL,
+    match_stem,
+)
 from src.utils.recheck_md_parser import (  # noqa: E402
     RecheckTarget,
     column_candidates,
@@ -48,9 +59,12 @@ from src.utils.recheck_md_parser import (  # noqa: E402
 )
 
 # Existing RPD(20%) adoption implementation — thresholds reused, not redefined.
+from src.utils.second_reader import discover_dual_source_csvs  # noqa: E402
 from tools.reading_center_rpd.compute_adopted_from_dual_csv import (  # noqa: E402
     DEFAULT_RPD_PCT,
+    META_COLS,
     apply_u2,
+    is_numeric_column,
     read_csv,
     rpd_pct,
     to_float,
@@ -77,6 +91,18 @@ TRIAD_CELL_FIELDS = [
 # Trailing audit column appended to the triad adopted CSV (new file, so the
 # batch-CSV schema of the original adopted CSV is untouched).
 NEEDS_REVIEW_COL = "Triad Needs Review (metrics)"
+VSL_AREA_COL = "Vsl Area (mm2)"
+CATEGORY_COLS = ("Subtype", "Pathophysiology")
+_OWNER_PREF = ("FR", "G2", "G1")
+_SOURCE_CSV_JSON_SUFFIX = "_source_csvs.json"
+_AVG_FALLBACK_SKIP_COLS = {
+    "ID",
+    "File",
+    "Analyst",
+    AVG_FILLED_FLAG_COL,
+    AVG_FILLED_COLS_COL,
+    NEEDS_REVIEW_COL,
+}
 
 
 def triad_median(values: Sequence[Optional[float]]) -> Optional[float]:
@@ -158,6 +184,106 @@ def resolve_cell(
         "status": "OK",
         "note": note,
     }
+
+
+def _is_na_token(val: Any) -> bool:
+    s = str(val if val is not None else "").strip()
+    return s == "" or s.upper() == "NA"
+
+
+def _finite_close(a: float, b: float) -> bool:
+    return math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-12)
+
+
+def vsl_area_median_owner(
+    g1: Optional[float],
+    g2: Optional[float],
+    final_reader: Optional[float],
+) -> Optional[str]:
+    """
+    Return ``"G1"`` / ``"G2"`` / ``"FR"`` for the grader whose Vsl Area is
+    the triad median.
+
+    Three distinct values → the middle measurement (unique). Exact ties
+    prefer FR then G2 then G1. When the median is the mean of two values
+    (one grader missing) and equals neither, pick the closest; equal
+    distance uses the same preference order.
+    """
+    labeled = [("G1", g1), ("G2", g2), ("FR", final_reader)]
+    avail: List[Tuple[str, float]] = []
+    for key, raw in labeled:
+        if raw is None:
+            continue
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(v):
+            avail.append((key, v))
+    if not avail:
+        return None
+    med = float(statistics.median([v for _, v in avail]))
+    exact = [k for k, v in avail if _finite_close(v, med)]
+    if exact:
+        for pref in _OWNER_PREF:
+            if pref in exact:
+                return pref
+        return exact[0]
+    rank = {k: i for i, k in enumerate(_OWNER_PREF)}
+    return min(avail, key=lambda kv: (abs(kv[1] - med), rank.get(kv[0], 9)))[0]
+
+
+def _category_text(row: Optional[Dict[str, Any]], column: str) -> str:
+    if row is None:
+        return ""
+    return str(row.get(column) or "").strip()
+
+
+def _load_source_csv_paths(
+    *,
+    adopted_csv: Path,
+    prefix: str,
+    first_csv: Optional[Path],
+    second_csv: Optional[Path],
+    warnings: List[str],
+) -> Tuple[Optional[Path], Optional[Path]]:
+    """Resolve G1/G2 batch CSVs: explicit args → sidecar JSON → sibling folders."""
+
+    def _ok(p: Optional[Path]) -> Optional[Path]:
+        if p is None:
+            return None
+        path = Path(p).expanduser()
+        return path if path.is_file() else None
+
+    g1 = _ok(first_csv)
+    g2 = _ok(second_csv)
+    if first_csv is not None and g1 is None:
+        warnings.append(f"第1グレーダーCSVが見つかりません: {first_csv}")
+    if second_csv is not None and g2 is None:
+        warnings.append(f"第2リーダーCSVが見つかりません: {second_csv}")
+    if g1 is not None and g2 is not None:
+        return g1, g2
+
+    sidecar = Path(adopted_csv).parent / f"{prefix}{_SOURCE_CSV_JSON_SUFFIX}"
+    if sidecar.is_file():
+        try:
+            data = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as ex:
+            warnings.append(f"source_csvs.json を読めません: {ex}")
+        else:
+            if g1 is None:
+                g1 = _ok(Path(str(data.get("first_csv") or "")))
+            if g2 is None:
+                g2 = _ok(Path(str(data.get("second_csv") or "")))
+
+    if g1 is None or g2 is None:
+        found_g1, found_g2 = discover_dual_source_csvs(adopted_csv)
+        if g1 is None:
+            g1 = _ok(found_g1)
+        if g2 is None:
+            g2 = _ok(found_g2)
+
+    return g1, g2
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +386,284 @@ def _fmt(v: Any) -> str:
     return str(v)
 
 
+def _make_record(
+    *,
+    image_file: str,
+    metric: str,
+    g1: Any,
+    g2: Any,
+    fr: Any,
+    cell: Dict[str, Any],
+    stem: str,
+    extra_note: str = "",
+    final_override: Any = None,
+) -> Dict[str, Any]:
+    note = cell.get("note") or ""
+    if extra_note:
+        note = f"{note}; {extra_note}" if note else extra_note
+    final_raw = cell["final_value"] if final_override is None else final_override
+    return {
+        "File": image_file,
+        "Metric": metric,
+        "g1_value": _fmt(g1),
+        "g2_value": _fmt(g2),
+        "final_reader_value": _fmt(fr),
+        "final_value": _fmt(final_raw),
+        "needs_review": _fmt(cell.get("needs_review", False)),
+        "cv_percent": _fmt(cell.get("cv_percent")),
+        "rpd_median_vs_final_reader_pct": _fmt(
+            cell.get("rpd_median_vs_final_reader_pct")
+        ),
+        "n_values": cell.get("n_values", 0),
+        "status": cell.get("status") or "",
+        "note": note,
+        "_stem": stem,
+        "_final_value_raw": final_raw,
+    }
+
+
+def _write_adopted_cell(
+    row: Dict[str, Any],
+    metric: str,
+    value: Any,
+    adopted_field_set: set,
+    warnings: List[str],
+    image_file: str,
+) -> bool:
+    target_col = next(
+        (c for c in column_candidates(metric) if c in adopted_field_set),
+        metric if metric in adopted_field_set else None,
+    )
+    if target_col is None:
+        warnings.append(
+            f"adopted_valuesに列 {metric} がありません（適用スキップ）: {image_file}"
+        )
+        return False
+    row[target_col] = value if isinstance(value, str) else _fmt(value)
+    return True
+
+
+def _triad_avg_fallback_readme_text(csv_name: str, n_filled: int) -> str:
+    return "\n".join(
+        [
+            f"{csv_name} について",
+            "",
+            "PROVISIONAL / REFERENCE ONLY — NOT the official triad-adopted values.",
+            "Leftover NA cells in the triad adopted CSV are copied from the dual-read",
+            f"`*_avg_fallback.csv` (G1/G2 simple mean when RPD > {RPD_REVIEW_THRESHOLD_PCT:g}%).",
+            "Already-resolved triad values are never overwritten.",
+            f"Filled cells this file: {n_filled}. Flags: {AVG_FILLED_FLAG_COL} / {AVG_FILLED_COLS_COL}.",
+            "",
+            "この CSV はトライアッド確定後も残った NA を、既存の avg_fallback",
+            "（G1/G2単純平均）で埋めた参考・暫定ファイルです。新しい解析は行っていません。",
+            "正式な確定値ではありません。提出・二次解析には *_triad_adopted_values.csv を使用してください。",
+            "RPD閾値超過の単純平均は真値の折衷にはなりません。",
+            "",
+        ]
+    )
+
+
+def overlay_avg_fallback(
+    triad_rows: List[Dict[str, Any]],
+    triad_fields: List[str],
+    avg_rows: List[Dict[str, Any]],
+) -> Tuple[List[str], List[Dict[str, Any]], int]:
+    """Copy non-NA avg_fallback values into triad cells that are still NA."""
+    avg_idx = _index_rows_by_stem(avg_rows)
+    out_fields = list(triad_fields)
+    for col in (AVG_FILLED_FLAG_COL, AVG_FILLED_COLS_COL):
+        if col not in out_fields:
+            out_fields.append(col)
+    n_filled = 0
+    out_rows: List[Dict[str, Any]] = []
+    for row in triad_rows:
+        out = dict(row)
+        stem = match_stem(row.get("File", "")) or match_stem(row.get("ID", ""))
+        src = avg_idx.get(stem)
+        filled: List[str] = []
+        if src is not None:
+            for col in triad_fields:
+                if col in _AVG_FALLBACK_SKIP_COLS:
+                    continue
+                if not _is_na_token(out.get(col)):
+                    continue
+                cand = src.get(col)
+                if _is_na_token(cand):
+                    continue
+                out[col] = cand
+                filled.append(col)
+        n_filled += len(filled)
+        out[AVG_FILLED_FLAG_COL] = "TRUE" if filled else "FALSE"
+        out[AVG_FILLED_COLS_COL] = ";".join(filled)
+        if filled:
+            base = str(out.get("Analyst") or "").rstrip()
+            suffix = (
+                "PROVISIONAL remaining-NA = G1/G2 mean (avg_fallback, reference only)"
+            )
+            out["Analyst"] = f"{base}; {suffix}" if base else suffix
+        out_rows.append(out)
+    return out_fields, out_rows, n_filled
+
+
+def _looks_numeric_col(
+    col: str,
+    g1_row: Optional[Dict[str, Any]],
+    g2_row: Optional[Dict[str, Any]],
+    fr_row: Optional[Dict[str, Any]],
+    g1_rows: List[Dict[str, Any]],
+    g2_rows: List[Dict[str, Any]],
+) -> bool:
+    if col in META_COLS or col in CATEGORY_COLS or col == NEEDS_REVIEW_COL:
+        return False
+    if g1_rows and g2_rows and is_numeric_column(col, g1_rows, g2_rows):
+        return True
+    return any(
+        to_float((r or {}).get(col)) is not None for r in (g1_row, g2_row, fr_row)
+    )
+
+
+def _fill_reread_remainder(
+    *,
+    triad_rows_idx: Dict[str, Dict[str, Any]],
+    adopted_fields: List[str],
+    g1_idx: Dict[str, Dict[str, Any]],
+    g2_idx: Dict[str, Dict[str, Any]],
+    fr_idx: Dict[str, Dict[str, Any]],
+    g1_rows: List[Dict[str, Any]],
+    g2_rows: List[Dict[str, Any]],
+    threshold: float,
+    review_by_stem: Dict[str, List[str]],
+    warnings: List[str],
+) -> Tuple[List[Dict[str, Any]], int, int]:
+    """Fill leftover NA on images present in the final-reader CSV."""
+    extra: List[Dict[str, Any]] = []
+    n_numeric = 0
+    n_category = 0
+    adopted_field_set = set(adopted_fields)
+    skip_cols = (set(META_COLS) | {NEEDS_REVIEW_COL}) - set(CATEGORY_COLS)
+
+    for stem, fr_row in fr_idx.items():
+        row = triad_rows_idx.get(stem)
+        if row is None:
+            continue
+        g1_row = g1_idx.get(stem)
+        g2_row = g2_idx.get(stem)
+        image_file = str(row.get("File") or fr_row.get("File") or stem)
+        g1_vsl = _first_available_value(g1_row, VSL_AREA_COL)
+        g2_vsl = _first_available_value(g2_row, VSL_AREA_COL)
+        fr_vsl = _first_available_value(fr_row, VSL_AREA_COL)
+        owner = vsl_area_median_owner(g1_vsl, g2_vsl, fr_vsl)
+        owner_row = {"G1": g1_row, "G2": g2_row, "FR": fr_row}.get(owner or "")
+
+        for col in adopted_fields:
+            if col in skip_cols or not _is_na_token(row.get(col)):
+                continue
+            if col in CATEGORY_COLS:
+                if owner is None or owner_row is None:
+                    extra.append(
+                        _make_record(
+                            image_file=image_file,
+                            metric=col,
+                            g1=_category_text(g1_row, col),
+                            g2=_category_text(g2_row, col),
+                            fr=_category_text(fr_row, col),
+                            cell={
+                                "final_value": None,
+                                "needs_review": False,
+                                "cv_percent": None,
+                                "rpd_median_vs_final_reader_pct": None,
+                                "n_values": 0,
+                                "status": "UNRESOLVED",
+                                "note": "Vsl Area中央値のグレーダーを特定できない",
+                            },
+                            stem=stem,
+                        )
+                    )
+                    continue
+                chosen = _category_text(owner_row, col)
+                if _is_na_token(chosen):
+                    extra.append(
+                        _make_record(
+                            image_file=image_file,
+                            metric=col,
+                            g1=_category_text(g1_row, col),
+                            g2=_category_text(g2_row, col),
+                            fr=_category_text(fr_row, col),
+                            cell={
+                                "final_value": None,
+                                "needs_review": False,
+                                "cv_percent": None,
+                                "rpd_median_vs_final_reader_pct": None,
+                                "n_values": 3,
+                                "status": "UNRESOLVED",
+                                "note": f"Vsl Area中央値グレーダー({owner})の{col}が空",
+                            },
+                            stem=stem,
+                        )
+                    )
+                    continue
+                cat_cell = {
+                    "final_value": chosen,
+                    "needs_review": False,
+                    "cv_percent": None,
+                    "rpd_median_vs_final_reader_pct": None,
+                    "n_values": 3,
+                    "status": "OK",
+                    "note": "",
+                }
+                rec = _make_record(
+                    image_file=image_file,
+                    metric=col,
+                    g1=_category_text(g1_row, col),
+                    g2=_category_text(g2_row, col),
+                    fr=_category_text(fr_row, col),
+                    cell=cat_cell,
+                    stem=stem,
+                    extra_note=(
+                        f"Vsl Area中央値のグレーダー({owner})の{col}を採用"
+                    ),
+                    final_override=chosen,
+                )
+                if _write_adopted_cell(
+                    row, col, chosen, adopted_field_set, warnings, image_file
+                ):
+                    n_category += 1
+                    extra.append(rec)
+                continue
+
+            if not _looks_numeric_col(col, g1_row, g2_row, fr_row, g1_rows, g2_rows):
+                continue
+            a = _first_available_value(g1_row, col)
+            b = _first_available_value(g2_row, col)
+            f = _first_available_value(fr_row, col)
+            cell = resolve_cell(a, b, f, threshold)
+            rec = _make_record(
+                image_file=image_file,
+                metric=col,
+                g1=a,
+                g2=b,
+                fr=f,
+                cell=cell,
+                stem=stem,
+                extra_note="再読影像の数値NAをトライアッド中央値で補完",
+            )
+            extra.append(rec)
+            if cell["status"] != "OK":
+                continue
+            if cell["needs_review"]:
+                review_by_stem.setdefault(stem, []).append(col)
+            if _write_adopted_cell(
+                row,
+                col,
+                rec["final_value"],
+                adopted_field_set,
+                warnings,
+                image_file,
+            ):
+                n_numeric += 1
+    return extra, n_numeric, n_category
+
+
 def resolve_triad_recheck(
     targets: Sequence[RecheckTarget],
     *,
@@ -271,13 +675,21 @@ def resolve_triad_recheck(
     threshold: float = RPD_REVIEW_THRESHOLD_PCT,
     final_reader_label: str = "FinalReader",
     dry_run: bool = False,
+    first_csv: Optional[Path] = None,
+    second_csv: Optional[Path] = None,
+    avg_fallback_csv: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
-    Resolve all RECHECK targets with the triad median rule and (unless
-    ``dry_run``) write the three output files next to ``out_dir``.
+    Resolve RECHECK targets with the triad median rule, then fill leftover
+    numeric NA (and Subtype/Pathophysiology NA) on re-read images.
 
-    Returns a summary dict incl. per-cell records; raises ValueError when the
-    inputs cannot be read/matched at all.
+    Unless ``dry_run``, write output files next to ``out_dir``.
+    ``first_csv`` / ``second_csv`` are optional; when omitted the resolver
+    reads ``{prefix}_source_csvs.json`` or sibling ``output_folder_*`` /
+    ``second_reader_output_*`` folders.
+    ``avg_fallback_csv`` defaults to ``{prefix}_avg_fallback.csv`` beside
+    ``adopted_csv``; leftover triad NA is copied from it into a provisional
+    ``{prefix}_triad_avg_fallback.csv``.
     """
     warnings: List[str] = []
 
@@ -294,6 +706,35 @@ def resolve_triad_recheck(
     fr_fields, fr_rows = _apply_u2_safe(fr_fields, fr_rows, warnings)
     fr_idx = _index_rows_by_stem(fr_rows, warnings, "最終読影者CSV")
     g1g2_idx = index_recheck_rows(recheck_rows)
+
+    src_g1, src_g2 = _load_source_csv_paths(
+        adopted_csv=Path(adopted_csv),
+        prefix=prefix,
+        first_csv=first_csv,
+        second_csv=second_csv,
+        warnings=warnings,
+    )
+    g1_rows: List[Dict[str, Any]] = []
+    g2_rows: List[Dict[str, Any]] = []
+    g1_idx: Dict[str, Dict[str, Any]] = {}
+    g2_idx: Dict[str, Dict[str, Any]] = {}
+    if src_g1 is not None and src_g2 is not None:
+        try:
+            g1_fields, g1_rows = read_csv(src_g1)
+            g2_fields, g2_rows = read_csv(src_g2)
+        except (ValueError, SystemExit) as ex:
+            warnings.append(f"G1/G2 CSV read failed: {ex}")
+            g1_rows, g2_rows = [], []
+        else:
+            _, g1_rows = _apply_u2_safe(g1_fields, g1_rows, warnings)
+            _, g2_rows = _apply_u2_safe(g2_fields, g2_rows, warnings)
+            g1_idx = _index_rows_by_stem(g1_rows, warnings, "第1グレーダーCSV")
+            g2_idx = _index_rows_by_stem(g2_rows, warnings, "第2リーダーCSV")
+    elif src_g1 is None or src_g2 is None:
+        warnings.append(
+            "G1/G2のバッチCSVを特定できないため、再読影像の残NA補完"
+            "（非主要指標・Subtype/Pathophysiology）をスキップします。"
+        )
 
     if not fr_idx:
         raise ValueError(
@@ -386,11 +827,49 @@ def resolve_triad_recheck(
             )
             continue
         row[target_col] = rec["final_value"]
-        row["Analyst"] = (
-            f"Dual-read mean (RPD<={threshold:g}%; else NA); "
-            f"RECHECK cells = triad median (G1, G2, {final_reader_label})"
-        )
         n_cells_applied += 1
+
+    n_extra_numeric = 0
+    n_extra_category = 0
+    if g1_idx and g2_idx:
+        extra_recs, n_extra_numeric, n_extra_category = _fill_reread_remainder(
+            triad_rows_idx=triad_rows_idx,
+            adopted_fields=adopted_fields,
+            g1_idx=g1_idx,
+            g2_idx=g2_idx,
+            fr_idx=fr_idx,
+            g1_rows=g1_rows,
+            g2_rows=g2_rows,
+            threshold=threshold,
+            review_by_stem=review_by_stem,
+            warnings=warnings,
+        )
+        records.extend(extra_recs)
+        n_cells_applied += n_extra_numeric + n_extra_category
+        for rec in extra_recs:
+            if rec["status"] == "OK":
+                n_resolved += 1
+                if rec["needs_review"] == "true":
+                    n_review += 1
+            elif rec["status"] == "UNRESOLVED":
+                n_unresolved += 1
+
+    analyst = (
+        f"Dual-read mean (RPD<={threshold:g}%; else NA); "
+        f"RECHECK cells = triad median (G1, G2, {final_reader_label})"
+    )
+    if n_extra_numeric or n_extra_category:
+        analyst += (
+            "; re-read leftover NA = triad median; "
+            "Subtype/Pathophysiology NA = Vsl Area median grader"
+        )
+    for rec in records:
+        if rec["status"] != "OK":
+            continue
+        row = triad_rows_idx.get(rec["_stem"])
+        if row is not None:
+            row["Analyst"] = analyst
+
     for row in triad_rows:
         stem = match_stem(row.get("File", "")) or match_stem(row.get("ID", ""))
         cols = review_by_stem.get(stem)
@@ -400,6 +879,28 @@ def resolve_triad_recheck(
     cells_path = out_dir / f"{prefix}_triad_resolved_cells.csv"
     adopted_path = out_dir / f"{prefix}_triad_adopted_values.csv"
     summary_path = out_dir / f"{prefix}_triad_summary.md"
+    fallback_path = out_dir / f"{prefix}_triad_avg_fallback.csv"
+    fallback_readme_path = out_dir / f"{prefix}_triad_avg_fallback_README.txt"
+
+    avg_src = Path(avg_fallback_csv) if avg_fallback_csv else (
+        Path(adopted_csv).parent / f"{prefix}_avg_fallback.csv"
+    )
+    n_avg_filled = 0
+    fallback_fields: List[str] = []
+    fallback_rows: List[Dict[str, Any]] = []
+    if avg_src.is_file():
+        try:
+            _, avg_rows = read_csv(avg_src)
+        except (ValueError, SystemExit) as ex:
+            warnings.append(f"avg_fallback CSV read failed: {ex}")
+        else:
+            fallback_fields, fallback_rows, n_avg_filled = overlay_avg_fallback(
+                triad_rows, out_fields, avg_rows
+            )
+    else:
+        warnings.append(
+            f"avg_fallback が無いため暫定NA埋めファイルをスキップします: {avg_src.name}"
+        )
 
     summary: Dict[str, Any] = {
         "dry_run": bool(dry_run),
@@ -413,11 +914,18 @@ def resolve_triad_recheck(
         "n_needs_review": n_review,
         "n_unresolved": n_unresolved,
         "n_cells_applied": n_cells_applied,
+        "n_extra_numeric": n_extra_numeric,
+        "n_extra_category": n_extra_category,
+        "n_avg_filled": n_avg_filled,
+        "first_csv": str(src_g1) if src_g1 else "",
+        "second_csv": str(src_g2) if src_g2 else "",
         "records": records,
         "warnings": warnings,
         "triad_cells_csv": str(cells_path),
         "triad_adopted_csv": str(adopted_path),
         "triad_summary_md": str(summary_path),
+        "triad_avg_fallback_csv": str(fallback_path),
+        "triad_avg_fallback_readme": str(fallback_readme_path),
     }
 
     if not dry_run:
@@ -425,6 +933,12 @@ def resolve_triad_recheck(
         write_csv(cells_path, TRIAD_CELL_FIELDS, records)
         write_csv(adopted_path, out_fields, triad_rows)
         summary_path.write_text(_render_triad_summary_md(summary), encoding="utf-8")
+        if fallback_rows:
+            write_csv(fallback_path, fallback_fields, fallback_rows)
+            fallback_readme_path.write_text(
+                _triad_avg_fallback_readme_text(fallback_path.name, n_avg_filled),
+                encoding="utf-8",
+            )
 
     return summary
 
@@ -440,18 +954,30 @@ def _render_triad_summary_md(s: Dict[str, Any]) -> str:
         "",
         "## ルール",
         "",
-        "1. `final_value = median(G1, G2, 最終読影者)`（RECHECK指定セルのみ）。",
+        "1. `final_value = median(G1, G2, 最終読影者)`（RECHECK指定セル、および最終読影者が再読影した画像に残った数値NA）。",
         f"2. RPD(median, 最終読影者) > {s['threshold_pct']:g}% → `needs_review = true`"
         "（値は確定・処理は継続）。",
         "3. CV%（SD/平均×100, ddof=1）を3値で算出し再現性報告（CV%/ICC）に使用。",
-        "4. RECHECK指定外のセル・既存確定値は一切上書きしない。",
+        "4. 既に採用済みの値（RPD≤20%の平均）は上書きしない。最終読影CSVに無い画像は触らない。",
+        "5. 再読影像の Subtype / Pathophysiology が NA のとき、"
+        "Vsl Area (mm2) のトライアッド中央値を出したグレーダーの分類を採用する。",
+        "6. 参考出力 `*_triad_avg_fallback.csv`: トライアッド後も残った NA を"
+        "既存の G1/G2 単純平均（avg_fallback）で埋めた**暫定ファイル**（正本ではない）。",
         "",
         "## 集計",
         "",
-        f"- 対象セル: {s['n_targets']}",
+        f"- RECHECK対象セル: {s['n_targets']}",
         f"- 確定: {s['n_resolved']}（うち要レビュー: {s['n_needs_review']}）",
         f"- 未解決: {s['n_unresolved']}",
+        f"- 再読影像の数値NA補完: {s.get('n_extra_numeric', 0)}",
+        f"- Subtype/Pathophysiology NA補完: {s.get('n_extra_category', 0)}",
         f"- adopted への適用セル: {s['n_cells_applied']}",
+        f"- 暫定 avg_fallback 埋め（残NA）: {s.get('n_avg_filled', 0)}"
+        + (
+            f"（`{Path(s['triad_avg_fallback_csv']).name}`）"
+            if s.get("triad_avg_fallback_csv")
+            else ""
+        ),
         "",
         "## セル別",
         "",

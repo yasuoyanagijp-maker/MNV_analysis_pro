@@ -15,7 +15,6 @@ from src.flet_ui.components.shared import (
     TEXT_MUTED,
     GLASS_BG,
     AppContext,
-    batch_queue_name_column,
     safe_round,
     session_discard,
     logout_to_login,
@@ -733,12 +732,21 @@ async def get_results_view(ctx: AppContext):
             lines = [
                 f"対象セル: {summary['n_targets']} / 確定: {summary['n_resolved']}"
                 f"（要レビュー: {summary['n_needs_review']}） / 未解決: {summary['n_unresolved']}",
+                f"再読影像の数値NA補完: {summary.get('n_extra_numeric', 0)} / "
+                f"Subtype・Pathophysiology: {summary.get('n_extra_category', 0)}",
                 "",
                 "出力ファイル（既存の統合CSVは変更していません）:",
                 f"  {summary['triad_cells_csv']}",
                 f"  {summary['triad_adopted_csv']}",
                 f"  {summary['triad_summary_md']}",
             ]
+            fb = summary.get("triad_avg_fallback_csv")
+            if fb and Path(str(fb)).is_file():
+                lines.append(f"  {fb}")
+                lines.append(
+                    f"  ※ triad_avg_fallback は残NAをG1/G2平均で埋めた暫定ファイル"
+                    f"（{summary.get('n_avg_filled', 0)} セル）。正本ではありません。"
+                )
             for w in summary.get("warnings") or []:
                 lines.append(f"⚠ {w}")
             ctx.page.open(
@@ -780,6 +788,8 @@ async def get_results_view(ctx: AppContext):
             header = ft.Text(
                 f"RECHECK対象 {summary['n_targets']} セル — 確定 {summary['n_resolved']}"
                 f"（要レビュー {summary['n_needs_review']}）/ 未解決 {summary['n_unresolved']}。"
+                f" 再読影像の数値NA補完 {summary.get('n_extra_numeric', 0)} / "
+                f"Subtype・Pathophysiology {summary.get('n_extra_category', 0)}。"
                 f" 要レビュー = RPD(median, 最終読影者) > {summary['threshold_pct']:g}%"
                 "（既存のNA/採用判定と同一閾値）。値は確定され処理は継続します。",
                 size=12,
@@ -843,7 +853,9 @@ async def get_results_view(ctx: AppContext):
         bgcolor=Colors.PURPLE_200,
         color=Colors.BLACK,
         tooltip=(
-            "RECHECK指定セルを median(G1, G2, 最終読影者) で確定します。"
+            "RECHECK指定セルと、最終読影した画像に残った数値NAを"
+            " median(G1, G2, 最終読影者) で確定します。"
+            "Subtype/Pathophysiology の NA は Vsl Area 中央値のグレーダーの分類を採用。"
             "まず dry-run プレビューを表示し、確認後に本確定を書き出します"
             "（既存の統合CSVは上書きしません）。"
         ),
@@ -2421,6 +2433,11 @@ async def get_results_view(ctx: AppContext):
         preview_names = ctx.page.session.get("mnv_batch_names_preview")
         if not (isinstance(preview_names, list) and preview_names):
             preview_names = [Path(p).name for p in paths_mnv]
+        cur_name = ""
+        if 0 <= idx_mnv < len(preview_names):
+            cur_name = str(preview_names[idx_mnv]).strip()
+        if not cur_name and 0 <= idx_mnv < len(paths_mnv):
+            cur_name = Path(paths_mnv[idx_mnv]).name
         qc_banner = ft.Container(
             content=ft.Column(
                 [
@@ -2431,10 +2448,14 @@ async def get_results_view(ctx: AppContext):
                         color=PRIMARY,
                     ),
                     ft.Text(qc_help_text, size=12, color=TEXT_MUTED),
-                    batch_queue_name_column(
-                        preview_names,
-                        idx_mnv,
-                        heading="キュー（いずれも MNV）",
+                    ft.Text(
+                        cur_name,
+                        size=12,
+                        color=TEXT_MUTED,
+                        max_lines=1,
+                        no_wrap=True,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                        tooltip=cur_name,
                     ),
                     ft.Row(
                         [

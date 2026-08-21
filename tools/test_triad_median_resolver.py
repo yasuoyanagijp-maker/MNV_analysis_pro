@@ -19,6 +19,7 @@ from src.utils.triad_median_resolver import (  # noqa: E402
     resolve_cell,
     resolve_triad_recheck,
     triad_median,
+    vsl_area_median_owner,
 )
 from tools.reading_center_rpd.compute_adopted_from_dual_csv import (  # noqa: E402
     DEFAULT_RPD_PCT,
@@ -206,6 +207,8 @@ class TestResolveTriadRecheckEndToEnd(unittest.TestCase):
             self.assertFalse(Path(summary["triad_cells_csv"]).exists())
             self.assertFalse(Path(summary["triad_adopted_csv"]).exists())
             self.assertFalse(Path(summary["triad_summary_md"]).exists())
+            self.assertFalse(Path(summary["triad_avg_fallback_csv"]).exists())
+            self.assertFalse(Path(summary["triad_avg_fallback_readme"]).exists())
 
     def test_commit_writes_only_designated_cells(self):
         with tempfile.TemporaryDirectory() as td:
@@ -257,6 +260,8 @@ class TestResolveTriadRecheckEndToEnd(unittest.TestCase):
 
             self.assertTrue(Path(summary["triad_cells_csv"]).exists())
             self.assertTrue(Path(summary["triad_summary_md"]).exists())
+            self.assertEqual(summary["n_avg_filled"], 0)
+            self.assertFalse(Path(summary["triad_avg_fallback_csv"]).exists())
 
     def test_review_flag_set_when_final_reader_deviates(self):
         with tempfile.TemporaryDirectory() as td:
@@ -445,6 +450,307 @@ class TestColumnNameEquivalence(unittest.TestCase):
             self.assertEqual(rec["final_value"], "60")
             _, rows = _read_csv(Path(summary["triad_adopted_csv"]))
             self.assertEqual(rows[0]["Caliber Uniformity Score"], "60")
+
+
+class TestVslAreaMedianOwner(unittest.TestCase):
+    def test_three_distinct_picks_middle(self):
+        self.assertEqual(vsl_area_median_owner(1.0, 1.6, 1.1), "FR")
+        self.assertEqual(vsl_area_median_owner(1.6, 1.0, 1.1), "FR")
+        self.assertEqual(vsl_area_median_owner(0.40, 0.31, 0.32), "FR")
+
+    def test_g1_is_median(self):
+        self.assertEqual(vsl_area_median_owner(1.2, 1.0, 1.8), "G1")
+
+    def test_tie_prefers_final_reader(self):
+        self.assertEqual(vsl_area_median_owner(1.1, 1.1, 1.1), "FR")
+        self.assertEqual(vsl_area_median_owner(1.0, 1.5, 1.5), "FR")
+
+    def test_two_values_picks_closest(self):
+        # median(1.0, 1.2) = 1.1 — FR closer than a missing G2 would be;
+        # both equally far → FR preferred
+        self.assertEqual(vsl_area_median_owner(1.0, None, 1.2), "FR")
+
+    def test_none_when_all_missing(self):
+        self.assertIsNone(vsl_area_median_owner(None, None, None))
+
+
+class TestRereadRemainderFill(unittest.TestCase):
+    def _write_pair_and_fr(self, d: Path):
+        prefix = "itest"
+        recheck_csv = d / f"{prefix}_recheck_list.csv"
+        adopted_csv = d / f"{prefix}_adopted_values.csv"
+        fr_csv = d / "MNV_final_reader.csv"
+        g1_csv = d / "g1.csv"
+        g2_csv = d / "g2.csv"
+        fields = [
+            "ID",
+            "File",
+            "Subtype",
+            "Pathophysiology",
+            "Vsl Area (mm2)",
+            "MNV Area (mm2)",
+            "Tortuosity",
+            "Vsl Branches",
+        ]
+        _write_csv(
+            recheck_csv,
+            ["File", "Metric", "Value_grader1", "Value_reader2"],
+            [
+                {
+                    "File": "102-001_Week04.png",
+                    "Metric": "Vsl Area (mm2)",
+                    "Value_grader1": "1.0",
+                    "Value_reader2": "1.6",
+                }
+            ],
+        )
+        _write_csv(
+            adopted_csv,
+            fields,
+            [
+                {
+                    "ID": "1",
+                    "File": "102-001_Week04.png",
+                    "Subtype": "NA",
+                    "Pathophysiology": "NA",
+                    "Vsl Area (mm2)": "NA",
+                    "MNV Area (mm2)": "1.5",
+                    "Tortuosity": "1.11",
+                    "Vsl Branches": "NA",
+                },
+                {
+                    "ID": "2",
+                    "File": "102-002_Week04.png",
+                    "Subtype": "NA",
+                    "Pathophysiology": "Arteriolarized",
+                    "Vsl Area (mm2)": "0.9",
+                    "MNV Area (mm2)": "2.0",
+                    "Tortuosity": "1.22",
+                    "Vsl Branches": "NA",
+                },
+            ],
+        )
+        _write_csv(
+            g1_csv,
+            fields,
+            [
+                {
+                    "ID": "1",
+                    "File": "102-001_Week04.png",
+                    "Subtype": "Seafan",
+                    "Pathophysiology": "Mature Quiescent",
+                    "Vsl Area (mm2)": "1.0",
+                    "MNV Area (mm2)": "1.4",
+                    "Tortuosity": "1.10",
+                    "Vsl Branches": "10",
+                },
+                {
+                    "ID": "2",
+                    "File": "102-002_Week04.png",
+                    "Subtype": "Seafan",
+                    "Pathophysiology": "Arteriolarized",
+                    "Vsl Area (mm2)": "0.85",
+                    "MNV Area (mm2)": "1.9",
+                    "Tortuosity": "1.20",
+                    "Vsl Branches": "50",
+                },
+            ],
+        )
+        _write_csv(
+            g2_csv,
+            fields,
+            [
+                {
+                    "ID": "1",
+                    "File": "102-001_Week04.png",
+                    "Subtype": "Tree in bud",
+                    "Pathophysiology": "Transitional",
+                    "Vsl Area (mm2)": "1.6",
+                    "MNV Area (mm2)": "1.6",
+                    "Tortuosity": "1.12",
+                    "Vsl Branches": "20",
+                },
+                {
+                    "ID": "2",
+                    "File": "102-002_Week04.png",
+                    "Subtype": "Tree in bud",
+                    "Pathophysiology": "Arteriolarized",
+                    "Vsl Area (mm2)": "0.95",
+                    "MNV Area (mm2)": "2.1",
+                    "Tortuosity": "1.24",
+                    "Vsl Branches": "80",
+                },
+            ],
+        )
+        _write_csv(
+            fr_csv,
+            fields,
+            [
+                {
+                    "ID": "1",
+                    "File": "102-001_Week04.png",
+                    "Subtype": "Glomerular",
+                    "Pathophysiology": "Transitional",
+                    "Vsl Area (mm2)": "1.1",
+                    "MNV Area (mm2)": "9.9",
+                    "Tortuosity": "9.9",
+                    "Vsl Branches": "14",
+                }
+            ],
+        )
+        targets = [
+            RecheckTarget(
+                image_file="102-001_Week04.png",
+                image_stem="102-001_week04",
+                display_name="Vsl Area (mm2)",
+                column="Vsl Area (mm2)",
+            )
+        ]
+        avg_fields = fields + ["is_avg_filled", "avg_filled_columns"]
+        _write_csv(
+            d / f"{prefix}_avg_fallback.csv",
+            avg_fields,
+            [
+                {
+                    "ID": "1",
+                    "File": "102-001_Week04.png",
+                    "Subtype": "NA",
+                    "Pathophysiology": "NA",
+                    "Vsl Area (mm2)": "1.3",
+                    "MNV Area (mm2)": "1.5",
+                    "Tortuosity": "1.11",
+                    "Vsl Branches": "15",
+                    "is_avg_filled": "TRUE",
+                    "avg_filled_columns": "Vsl Area (mm2);Vsl Branches",
+                },
+                {
+                    "ID": "2",
+                    "File": "102-002_Week04.png",
+                    "Subtype": "NA",
+                    "Pathophysiology": "Arteriolarized",
+                    "Vsl Area (mm2)": "0.9",
+                    "MNV Area (mm2)": "2.0",
+                    "Tortuosity": "1.22",
+                    "Vsl Branches": "65",
+                    "is_avg_filled": "TRUE",
+                    "avg_filled_columns": "Vsl Branches",
+                },
+            ],
+        )
+        return prefix, recheck_csv, adopted_csv, fr_csv, g1_csv, g2_csv, targets
+
+    def test_extra_numeric_and_category_on_reread_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            (
+                prefix,
+                recheck_csv,
+                adopted_csv,
+                fr_csv,
+                g1_csv,
+                g2_csv,
+                targets,
+            ) = self._write_pair_and_fr(d)
+            summary = resolve_triad_recheck(
+                targets,
+                recheck_csv=recheck_csv,
+                adopted_csv=adopted_csv,
+                final_reader_csv=fr_csv,
+                out_dir=d,
+                prefix=prefix,
+                dry_run=False,
+                first_csv=g1_csv,
+                second_csv=g2_csv,
+            )
+            self.assertEqual(summary["n_extra_numeric"], 1)
+            self.assertEqual(summary["n_extra_category"], 2)
+            _, rows = _read_csv(Path(summary["triad_adopted_csv"]))
+            by_file = {r["File"]: r for r in rows}
+            r1 = by_file["102-001_Week04.png"]
+            r2 = by_file["102-002_Week04.png"]
+            # RECHECK: median(1.0, 1.6, 1.1) = 1.1 = FR
+            self.assertEqual(r1["Vsl Area (mm2)"], "1.1")
+            # leftover numeric NA → median(10, 20, 14) = 14
+            self.assertEqual(r1["Vsl Branches"], "14")
+            # already-adopted mean not overwritten by FR 9.9
+            self.assertEqual(r1["MNV Area (mm2)"], "1.5")
+            self.assertEqual(r1["Tortuosity"], "1.11")
+            # category from FR (Vsl Area median owner)
+            self.assertEqual(r1["Subtype"], "Glomerular")
+            self.assertEqual(r1["Pathophysiology"], "Transitional")
+            # 102-002 was never re-read → leftover NA stays
+            self.assertEqual(r2["Subtype"], "NA")
+            self.assertEqual(r2["Vsl Branches"], "NA")
+            self.assertEqual(r2["Pathophysiology"], "Arteriolarized")
+            self.assertEqual(r2["Vsl Area (mm2)"], "0.9")
+
+            self.assertEqual(summary["n_avg_filled"], 1)
+            self.assertTrue(Path(summary["triad_avg_fallback_csv"]).is_file())
+            self.assertTrue(Path(summary["triad_avg_fallback_readme"]).is_file())
+            _, fb_rows = _read_csv(Path(summary["triad_avg_fallback_csv"]))
+            fb = {r["File"]: r for r in fb_rows}
+            # triad values must not be replaced by G1/G2 mean
+            self.assertEqual(fb["102-001_Week04.png"]["Vsl Area (mm2)"], "1.1")
+            self.assertEqual(fb["102-001_Week04.png"]["Vsl Branches"], "14")
+            self.assertEqual(fb["102-001_Week04.png"]["Subtype"], "Glomerular")
+            self.assertEqual(fb["102-001_Week04.png"]["is_avg_filled"], "FALSE")
+            # unread image leftover NA copied from avg_fallback
+            self.assertEqual(fb["102-002_Week04.png"]["Vsl Branches"], "65")
+            self.assertEqual(fb["102-002_Week04.png"]["is_avg_filled"], "TRUE")
+            self.assertEqual(
+                fb["102-002_Week04.png"]["avg_filled_columns"], "Vsl Branches"
+            )
+            self.assertEqual(fb["102-002_Week04.png"]["Subtype"], "NA")
+
+    def test_without_g1g2_does_not_fill_remainder(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            prefix, recheck_csv, adopted_csv, fr_csv, _, _, targets = (
+                self._write_pair_and_fr(d)
+            )
+            summary = resolve_triad_recheck(
+                targets,
+                recheck_csv=recheck_csv,
+                adopted_csv=adopted_csv,
+                final_reader_csv=fr_csv,
+                out_dir=d,
+                prefix=prefix,
+                dry_run=False,
+            )
+            self.assertEqual(summary["n_extra_numeric"], 0)
+            self.assertEqual(summary["n_extra_category"], 0)
+            _, rows = _read_csv(Path(summary["triad_adopted_csv"]))
+            r1 = {r["File"]: r for r in rows}["102-001_Week04.png"]
+            self.assertEqual(r1["Vsl Area (mm2)"], "1.1")
+            self.assertEqual(r1["Vsl Branches"], "NA")
+            self.assertEqual(r1["Subtype"], "NA")
+            # official triad stays NA; provisional overlay fills from avg_fallback
+            self.assertEqual(summary["n_avg_filled"], 2)
+            _, fb_rows = _read_csv(Path(summary["triad_avg_fallback_csv"]))
+            fb1 = {r["File"]: r for r in fb_rows}["102-001_Week04.png"]
+            self.assertEqual(fb1["Vsl Area (mm2)"], "1.1")
+            self.assertEqual(fb1["Vsl Branches"], "15")
+            self.assertEqual(fb1["is_avg_filled"], "TRUE")
+
+
+class TestDiscoverDualSourceCsvs(unittest.TestCase):
+    def test_sibling_output_folders(self):
+        from src.utils.second_reader import discover_dual_source_csvs
+
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            g1_dir = parent / "output_folder_2026_08_21"
+            g2_dir = parent / "second_reader_output_2026_08_21"
+            integ = parent / "integrated_output_2026_08_21"
+            for p in (g1_dir, g2_dir, integ):
+                p.mkdir()
+            (g1_dir / "MNV_batch_g1.csv").write_text("ID,File\n1,a.png\n", encoding="utf-8")
+            (g2_dir / "MNV_batch_g2.csv").write_text("ID,File\n1,a.png\n", encoding="utf-8")
+            adopted = integ / "MNV_integrated_x_adopted_values.csv"
+            adopted.write_text("ID,File\n", encoding="utf-8")
+            found_g1, found_g2 = discover_dual_source_csvs(adopted)
+            self.assertEqual(found_g1, (g1_dir / "MNV_batch_g1.csv").resolve())
+            self.assertEqual(found_g2, (g2_dir / "MNV_batch_g2.csv").resolve())
 
 
 if __name__ == "__main__":

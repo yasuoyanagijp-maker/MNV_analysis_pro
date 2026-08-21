@@ -143,6 +143,59 @@ def _is_merged_csv(path: Path) -> bool:
     return any(marker in name for marker in _MERGED_CSV_MARKERS)
 
 
+def discover_dual_source_csvs(
+    adopted_csv: Path,
+) -> Tuple[Optional[Path], Optional[Path]]:
+    """
+    Find the G1 / G2 batch CSVs that produced ``adopted_csv``.
+
+    Looks in sibling folders of ``integrated_output_*`` (the usual layout:
+    ``output_folder_*`` + ``second_reader_output_*``). Newest ``MNV_*.csv``
+    in each folder wins. Returns ``(g1, g2)``; either side may be None.
+    """
+    integ = Path(adopted_csv).expanduser().resolve().parent
+    parent = integ.parent
+    g1: Optional[Path] = None
+    g2: Optional[Path] = None
+    if not parent.is_dir():
+        return None, None
+
+    def _newest_batch(folder: Path) -> Optional[Path]:
+        try:
+            csvs = [
+                p
+                for p in folder.glob("MNV_*.csv")
+                if p.is_file() and not _is_merged_csv(p)
+            ]
+        except OSError:
+            return None
+        if not csvs:
+            return None
+        return max(csvs, key=lambda p: p.stat().st_mtime)
+
+    try:
+        children = list(parent.iterdir())
+    except OSError:
+        return None, None
+    for child in children:
+        if not child.is_dir():
+            continue
+        name = child.name
+        if name.startswith(_SECOND_READER_DIR_PREFIX):
+            found = _newest_batch(child)
+            if found is not None:
+                g2 = found
+            continue
+        if name.startswith((_INTEGRATED_DIR_PREFIX, _FINAL_READER_DIR_PREFIX)):
+            continue
+        found = _newest_batch(child)
+        if found is None:
+            continue
+        if g1 is None or name.startswith("output_folder"):
+            g1 = found
+    return g1, g2
+
+
 def find_first_grader_mnv_csvs(
     scan_root: Path,
     *,
