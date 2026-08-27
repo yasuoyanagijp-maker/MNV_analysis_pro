@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import socket
 
-from src.utils.local_ports import get_free_port, pick_listen_port, port_is_free, resolve_flet_port
+from src.utils.local_ports import (
+    get_free_port,
+    pick_listen_port,
+    port_is_free,
+    wait_for_tcp_port,
+)
 
 
 def test_get_free_port_is_bindable():
@@ -17,6 +22,7 @@ def test_port_is_free_false_when_bound():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
         busy = int(sock.getsockname()[1])
         assert not port_is_free(busy)
         alt = pick_listen_port(busy)
@@ -30,6 +36,7 @@ def test_resolve_env_port_bumps_when_busy():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
         busy = int(sock.getsockname()[1])
         env = {"ARIAKE_API_PORT": str(busy)}
         chosen = resolve_env_port_or_ephemeral("ARIAKE_API_PORT", env=env)
@@ -44,3 +51,22 @@ def test_resolve_env_port_ephemeral_when_unset():
     chosen = resolve_env_port_or_ephemeral("FLET_PORT", env=env)
     assert env["FLET_PORT"] == str(chosen)
     assert port_is_free(chosen)
+
+
+def test_wait_for_tcp_port_succeeds_when_listening():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+        port = int(sock.getsockname()[1])
+        assert wait_for_tcp_port(port, timeout=2.0) is True
+
+
+def test_wait_for_tcp_port_times_out_when_closed():
+    port = get_free_port()
+    assert wait_for_tcp_port(port, timeout=0.3, poll_interval=0.05) is False
+
+
+def test_wait_for_tcp_port_aborts_when_worker_dies():
+    port = get_free_port()
+    assert wait_for_tcp_port(port, timeout=5.0, is_alive=lambda: False) is False

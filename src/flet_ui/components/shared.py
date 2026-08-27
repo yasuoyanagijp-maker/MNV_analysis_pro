@@ -2,10 +2,11 @@ import asyncio
 import flet as ft
 from flet import Colors, Icons, FontWeight, Animation, AnimationCurve
 import time
-import httpx
 from pathlib import Path
 from typing import Awaitable, Callable, List, Optional
 import uuid
+
+from src.utils.local_http import local_async_client, login_via_local_api
 
 # Custom Theme Colors
 PRIMARY = "#00E5FF"  # Cyan Neon
@@ -207,7 +208,7 @@ class BackendClient:
         self.base_url = base_url
 
     async def detect_type(self, path: str):
-        async with httpx.AsyncClient() as client:
+        async with local_async_client() as client:
             try:
                 response = await client.get(f"{self.base_url}/detect", params={"path": path})
                 return response.json()
@@ -215,7 +216,7 @@ class BackendClient:
                 return {"type": "unknown", "error": str(e)}
 
     async def start_mnv_analysis(self, image_path: str, scale: float, roi: dict = None, roi_mask_b64: str = None, intelligent_roi: bool = False, use_self_as_fd: bool = False):
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with local_async_client(timeout=300.0) as client:
             try:
                 payload = {
                     "image_path": image_path,
@@ -248,7 +249,7 @@ class BackendClient:
         single_image_mode: bool = False,
         single_image_explicit_path: str = None,
     ):
-        async with httpx.AsyncClient(timeout=600.0) as client:
+        async with local_async_client(timeout=600.0) as client:
             try:
                 payload = {
                     "input_dir": str(input_dir),
@@ -284,7 +285,7 @@ class BackendClient:
         progress_callback: Optional[Callable[..., Awaitable[None]]] = None,
     ):
         """VD with background job + polling so UI can update a progress bar."""
-        async with httpx.AsyncClient(timeout=600.0) as client:
+        async with local_async_client(timeout=600.0) as client:
             try:
                 payload = {
                     "input_dir": str(input_dir),
@@ -336,17 +337,13 @@ class BackendClient:
             except Exception as e:
                 return {"error": f"VD Connection Failed: {str(e)}"}
 
-    async def login(self, username, password):
-        async with httpx.AsyncClient() as client:
-            try:
-                payload = {"researcher_name": username, "password": password}
-                response = await client.post(f"{self.base_url}/login", json=payload)
-                return response.json()
-            except Exception as e:
-                return {"success": False, "message": f"Connection Error: {str(e)}"}
-    
+    async def login(self, username, password, *, attempts: int = 8):
+        return await login_via_local_api(
+            self.base_url, username, password, attempts=attempts
+        )
+
     async def list_dir(self, path=None):
-        async with httpx.AsyncClient() as client:
+        async with local_async_client() as client:
             try:
                 params = {"path": path} if path else {}
                 response = await client.get(f"{self.base_url}/ls", params=params)

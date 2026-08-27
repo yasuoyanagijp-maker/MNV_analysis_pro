@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import os
 import socket
-from typing import Iterable, Optional
+import time
+from typing import Callable, Iterable, Optional
 
 
 def get_free_port(host: str = "127.0.0.1") -> int:
@@ -18,6 +19,35 @@ def get_free_port(host: str = "127.0.0.1") -> int:
         sock.bind((host, 0))
         sock.listen(1)
         return int(sock.getsockname()[1])
+
+
+def wait_for_tcp_port(
+    port: int,
+    *,
+    host: str = "127.0.0.1",
+    timeout: float = 90.0,
+    poll_interval: float = 0.2,
+    is_alive: Optional[Callable[[], bool]] = None,
+) -> bool:
+    """Return True once TCP connect to host:port succeeds.
+
+    Used by the packaged wrapper so the login window is not shown while the
+    FastAPI child is still importing numpy/cv2. ``is_alive`` (e.g. Process.is_alive)
+    aborts early if the worker has already died.
+    """
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    port = int(port)
+    while True:
+        if is_alive is not None and not is_alive():
+            return False
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                return True
+        except OSError:
+            pass
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(max(0.05, float(poll_interval)))
 
 
 def port_is_free(port: int, host: str = "127.0.0.1") -> bool:
