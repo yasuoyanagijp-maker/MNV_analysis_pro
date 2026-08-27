@@ -82,7 +82,9 @@ CC: （なし）
   - 解析は従来Windows、普段はMac使用。Rは問題なし、Python環境は未整備
   - M1スペック可否を質問あり → 問題なしと回答済
   - 2026-07-02 Mac版送付完了（MacBook Air M1）
-ステータス: 送付完了（2026-07-02、Mac版）
+  - 2026-08-21 頃 v1.2.3／OCTA-MIC 案内の対象
+  - 2026-08-27 ログイン失敗の問い合わせ。「Connection Error: All connection attempts failed」。入力は Takizawa / ariake2024 / TOHOKU_UNIV / 第1グレーダーで問題なし（認証失敗ではない）
+ステータス: 送付完了・ログイン接続エラー対応中（2026-08-27）
 
 ---
 
@@ -425,6 +427,14 @@ CC: （なし）
 
 ================================================================================
 【送付履歴】（新しい順）
+
+日付: 2026-08-27
+宛先: 瀧澤 廣輝 先生
+内容: ログイン「Connection Error: All connection attempts failed」問い合わせ受領・応対
+メール: hiroki.takizawa.a8@tohoku.ac.jp
+備考: 入力（Takizawa / TOHOKU_UNIV / 第1グレーダー / ariake2024）は正しい。認証失敗ではなくローカル解析エンジン未到達。再起動待機と OS（Mac M1 vs 大学Windows）の確認を案内。
+
+---
 
 日付: 2026-07-14
 宛先: 定秀 文子 先生

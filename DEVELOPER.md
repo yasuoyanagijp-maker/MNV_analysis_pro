@@ -76,7 +76,7 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 ## 5. バックエンド（API）
 
 - 実装: `src/api/main.py`。解析は `src/core` / `src/ariake_octa` に委譲。
-- フロントの呼び出し: `BackendClient`（`httpx`、既定 `http://127.0.0.1:8000`）。
+- フロントの呼び出し: `BackendClient`（`httpx`、既定 `http://127.0.0.1:8000`）。**ローカル API には `trust_env=False`**（大学ネットの `HTTP_PROXY` が 127.0.0.1 を吸い上げて "All connection attempts failed" になるのを防ぐ）。GakuNin 通信は別クライアントでプロキシを使う。
 - 新エンドポイント追加時: **スキーマ**（`src/api/schemas.py`）と **Client メソッド**の両方を更新すると安全。
 
 ---

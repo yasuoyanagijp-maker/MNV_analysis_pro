@@ -215,6 +215,7 @@ project_id / folder_id はダッシュボードの **Advanced Settings**、ま�
 | 統合解析データで第1 CSV が見つからない | 第1が Save CSV したファイルが同期／スキャン対象に含まれているか |
 | 採用 CSV が GakuNin に無い | **仕様どおり**。同期は `output_folder` のみ |
 | PAT を保存できない | OS のキーリング／資格情報ストアが使えるか |
+| ログインで「Connection Error: All connection attempts failed」 | **GakuNin やパスワードの問題ではない。** 同じ PC 内の解析エンジンに届いていない。アプリを終了して再起動し、画面が出てから少し待って再試行。大学プロキシの影響もある |
 | 別施設のパスに書き出された | 前回の Team YY セッションが残っていないか → ログアウトして再ログイン |
 
 ---
@@ -248,6 +249,7 @@ GakuNin の PAT や施設データを、問い合わせメール以外のチャ�
 | 日付 | 内容 |
 |------|------|
 | 2026-08-21 | 初版。各サイト／Team YY 向け協働通知として、ルート A（施設内 2 名）・ルート B（1 名＋中央読影）、GakuNin フォルダ設計、ACL、採用ルールを記載。 |
+| 2026-08-27 | 「Connection Error: All connection attempts failed」はローカル解析エンジン未到達であり、GakuNin／パスワードの問題ではない旨を §8 に追記。 |
 
 ---
 

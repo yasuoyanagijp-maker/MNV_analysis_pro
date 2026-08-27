@@ -128,9 +128,22 @@ if __name__ == "__main__":
     api_proc = multiprocessing.Process(target=run_api_server, args=(api_port,), daemon=True)
     api_proc.start()
 
-    # Give API a moment to bind
     print(f"[Wrapper] Backend assigned to port {api_port}. Waiting for startup...", flush=True)
-    time.sleep(2)
+    try:
+        from src.utils.local_ports import wait_for_tcp_port
+
+        api_ready = wait_for_tcp_port(
+            api_port, timeout=90.0, is_alive=api_proc.is_alive
+        )
+    except ImportError:
+        time.sleep(2)
+        api_ready = True
+    if not api_ready:
+        print(
+            "[Wrapper] WARNING: FastAPI did not become ready. Login may show "
+            "'Connection Error: All connection attempts failed'.",
+            flush=True,
+        )
 
     # ── RUN FRONTEND ───────────────────────────────────────────────────────
     try:
