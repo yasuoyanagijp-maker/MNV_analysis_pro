@@ -332,16 +332,25 @@ if [[ ! -f "$ENTITLEMENTS" ]]; then
     exit 1
 fi
 
-log_info "署名中（Hardened Runtime + entitlements）..."
+log_info "署名中..."
 # --deep: .app 内すべての .dylib / framework に再帰署名
-codesign \
-    --force \
-    --deep \
-    --sign "${DEVELOPER_ID}" \
-    --options runtime \
-    --entitlements "${ENTITLEMENTS}" \
-    --timestamp \
-    "${APP_PATH}"
+# アドホック（公証なし配布）では Hardened Runtime を付けない。
+# --options runtime だと未公証の解析エンジン子プロセスが
+# CODESIGNING Invalid Page で SIGKILL される（macOS 26 / M1 で確認）。
+if [[ "$DEVELOPER_ID" == "-" ]]; then
+    log_info "アドホック署名（Hardened Runtime なし・公証なし研究配布）..."
+    codesign --force --deep --sign - "${APP_PATH}"
+else
+    log_info "Developer ID 署名（Hardened Runtime + entitlements）..."
+    codesign \
+        --force \
+        --deep \
+        --sign "${DEVELOPER_ID}" \
+        --options runtime \
+        --entitlements "${ENTITLEMENTS}" \
+        --timestamp \
+        "${APP_PATH}"
+fi
 
 log_info "署名の検証..."
 codesign --verify --deep --strict --verbose=2 "${APP_PATH}"

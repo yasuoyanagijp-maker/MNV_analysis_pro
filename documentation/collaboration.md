@@ -249,7 +249,7 @@ GakuNin の PAT や施設データを、問い合わせメール以外のチャ�
 | 日付 | 内容 |
 |------|------|
 | 2026-08-21 | 初版。各サイト／Team YY 向け協働通知として、ルート A（施設内 2 名）・ルート B（1 名＋中央読影）、GakuNin フォルダ設計、ACL、採用ルールを記載。 |
-| 2026-08-27 | 「Connection Error: All connection attempts failed」はローカル解析エンジン未到達。GakuNin／パスワードの問題ではなく、**病院業務用 PC では使わない**（施設 Windows ファイアウォールの前例）。 |
+| 2026-08-28 | Connection Error はローカル解析エンジン未到達。Mac の `CODESIGNING Invalid Page`（未公証）と、病院業務用 Windows のファイアウォールは別原因。 |
 
 ---
 

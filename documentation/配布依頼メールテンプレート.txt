@@ -94,9 +94,15 @@ cd （展開したフォルダのパス）
 
 xattr -cr ARIAKE_OCTA.app
 cp -r ARIAKE_OCTA.app /Applications/
+xattr -cr /Applications/ARIAKE_OCTA.app
+codesign --force --deep --sign - /Applications/ARIAKE_OCTA.app
 open /Applications/ARIAKE_OCTA.app
 
 4. インストールが完了し、アプリが起動します。
+
+（codesign --sign - はこの Mac 向けのアドホック再署名です。Apple の公証は不要です。
+ログインで Connection Error になる場合は、上の xattr と codesign だけを
+すでに入っている /Applications/ARIAKE_OCTA.app に対して実行してください。）
 
 補足：「インストール.command」自体が開けない場合は、先に以下を実行してから ./インストール.command をお試しください。
 

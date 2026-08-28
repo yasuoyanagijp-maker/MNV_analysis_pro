@@ -527,7 +527,7 @@ GakuNin RDM（プロジェクト配下）/
 
 | 日付 | 内容 |
 |------|------|
-| 2026-08-27 | ログインの **Connection Error: All connection attempts failed** をトラブルシュートに追記。認証失敗ではなくローカル解析エンジン未到達。**病院・電子カルテ用 PC は使わず研究用端末で試す**（施設 Windows ファイアウォールの前例）。 |
+| 2026-08-28 | Connection Error: Mac で `CODESIGNING Invalid Page` なら現行配布（ad-hoc・未公証）が解析エンジン子プロセスを殺している。当面は Windows 版。病院業務用 Windows のファイアウォールは別原因。 |
 | 2026-08-21 | トライアッド確定時に **`*_triad_avg_fallback.csv`**（残NAを既存 G1/G2 平均で埋めた参考・暫定）を追加出力。§10.5.2・§10.5.3 を更新。 |
 | 2026-08-21 | 最終読影者が再読影した画像の**残数値 NA**をトライアッド中央値で補完。Subtype/Pathophysiology の NA は **Vsl Area 中央値のグレーダー**の分類を採用。§10.5.3 を更新。 |
 | 2026-08-21 | 各サイト／Team YY 向け協働通知 [collaboration.md](documentation/collaboration.md)、ROI 手順 [roi_method.md](documentation/roi_method.md) を公開文書として追加。§9 に着色画像／余白trim への案内を追記。 |

@@ -6,8 +6,10 @@
     <!-- Hardened Runtime: JIT不要・メモリ保護に準拠 -->
     <key>com.apple.security.cs.allow-jit</key>
     <false/>
+    <!-- PyInstaller / Python .so のマップに必要。false だと未公証で
+         解析エンジンが CODESIGNING Invalid Page になる -->
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <false/>
+    <true/>
     <key>com.apple.security.cs.disable-library-validation</key>
     <!-- サードパーティ .dylib (opencv, numpy) をロードするために必要 -->
     <true/>
