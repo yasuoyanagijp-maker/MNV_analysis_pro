@@ -84,8 +84,10 @@ CC: （なし）
   - 2026-07-02 Mac版送付完了（MacBook Air M1）
   - 2026-08-21 頃 v1.2.3／OCTA-MIC 案内の対象
   - 2026-08-27 ログイン失敗の問い合わせ。「Connection Error: All connection attempts failed」。入力は Takizawa / ariake2024 / TOHOKU_UNIV / 第1グレーダーで問題なし（認証失敗ではない）
-  - 2026-08-27 初回案内メール送付済。尾花先生施設の業務用Windowsファイアウォールと同型の可能性があるため、病院PC回避（MacBook Air 等の研究用端末）を追案内
-ステータス: 送付完了・病院PC回避を追案内（2026-08-27）
+  - 2026-08-27 初回案内メール送付済。当初は病院PCファイアウォールも疑ったが、本人報告で否定（自宅ネット・病院ネット・テザリングいずれも失敗）
+  - 2026-08-27 M1 Mac（MacBookAir10,1 / macOS 26.5）で Releases の Apple Silicon 版を Applications から起動。約7秒後に子プロセスが **CODESIGNING Invalid Page** で SIGKILL。親のログイン画面は残るため Connection Error になる。v1.2.3-mac は **ad-hoc・未公証**
+  - 2026-08-27 解析用 Windows に Releases の Windows 版を入れて **動作確認**。安田先生と相談のうえ國方先生・中澤教授へ共同研究を相談予定
+ステータス: 送付完了・使用中（Windows で動作確認 2026-08-27。M1 Mac は未公証のため不可）
 
 ---
 
@@ -428,6 +430,22 @@ CC: （なし）
 
 ================================================================================
 【送付履歴】（新しい順）
+
+日付: 2026-08-27
+宛先: 瀧澤 廣輝 先生
+内容: Windows版で動作確認の返信受領。M1 Mac は不可と判明
+メール: hiroki.takizawa.a8@tohoku.ac.jp
+備考: 解析用 Windows（Releases）は問題なく動作。M1 Mac の失敗は病院ネットではなく、ad-hoc 未公証アプリの子プロセスが CODESIGNING Invalid Page で殺されたため（macOS 26.5、起動約7秒後）。安田・國方・中澤先生へ共同研究相談予定。
+
+---
+
+日付: 2026-08-27
+宛先: 瀧澤 廣輝 先生
+内容: M1 Mac での再試行報告（クラッシュレポート添付）
+メール: hiroki.takizawa.a8@tohoku.ac.jp
+備考: 自宅／病院／テザリングいずれも Connection Error。Applications から起動、約8秒でエラー。クラッシュは ARM-64 子プロセスのコード署名違反。
+
+---
 
 日付: 2026-08-27
 宛先: 瀧澤 廣輝 先生

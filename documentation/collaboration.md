@@ -215,7 +215,7 @@ project_id / folder_id はダッシュボードの **Advanced Settings**、ま�
 | 統合解析データで第1 CSV が見つからない | 第1が Save CSV したファイルが同期／スキャン対象に含まれているか |
 | 採用 CSV が GakuNin に無い | **仕様どおり**。同期は `output_folder` のみ |
 | PAT を保存できない | OS のキーリング／資格情報ストアが使えるか |
-| ログインで「Connection Error: All connection attempts failed」 | **GakuNin やパスワードの問題ではない。** 同じ PC 内の解析エンジンに届いていない。**病院の業務用 PC では使わず**、研究用の個人ノートで試す（施設 Windows のファイアウォールで同型の失敗あり） |
+| ログインで「Connection Error: All connection attempts failed」 | **GakuNin やパスワードの問題ではない。** 同じ PC 内の解析エンジンに届いていない。Mac で `CODESIGNING Invalid Page` なら現行配布が未公証のため（Windows 版へ）。病院業務用 Windows のファイアウォールでも同型の失敗あり |
 | 別施設のパスに書き出された | 前回の Team YY セッションが残っていないか → ログアウトして再ログイン |
 
 ---
