@@ -215,7 +215,7 @@ project_id / folder_id はダッシュボードの **Advanced Settings**、ま�
 | 統合解析データで第1 CSV が見つからない | 第1が Save CSV したファイルが同期／スキャン対象に含まれているか |
 | 採用 CSV が GakuNin に無い | **仕様どおり**。同期は `output_folder` のみ |
 | PAT を保存できない | OS のキーリング／資格情報ストアが使えるか |
-| ログインで「Connection Error: All connection attempts failed」 | **GakuNin やパスワードの問題ではない。** 同じ PC 内の解析エンジンに届いていない。Mac で `CODESIGNING Invalid Page` なら現行配布が未公証のため（Windows 版へ）。病院業務用 Windows のファイアウォールでも同型の失敗あり |
+| ログインで「Connection Error: All connection attempts failed」 | **GakuNin やパスワードの問題ではない。** 同じ PC 内の解析エンジンに届いていない。**Mac** ならまず Terminal で `xattr -cr /Applications/ARIAKE_OCTA.app` と `codesign --force --deep --sign - /Applications/ARIAKE_OCTA.app`（新ZIP不要。`xattr` だけでは不十分）。`CODESIGNING Invalid Page` ならこの原因。病院業務用 Windows のファイアウォールでも同型の失敗あり |
 | 別施設のパスに書き出された | 前回の Team YY セッションが残っていないか → ログアウトして再ログイン |
 
 ---
@@ -249,6 +249,7 @@ GakuNin の PAT や施設データを、問い合わせメール以外のチャ�
 | 日付 | 内容 |
 |------|------|
 | 2026-08-21 | 初版。各サイト／Team YY 向け協働通知として、ルート A（施設内 2 名）・ルート B（1 名＋中央読影）、GakuNin フォルダ設計、ACL、採用ルールを記載。 |
+| 2026-08-29 | Connection Error（Mac）の第一対応を ad-hoc 再署名（xattr + codesign）に更新。新ZIP不要。 |
 | 2026-08-28 | Connection Error はローカル解析エンジン未到達。Mac の `CODESIGNING Invalid Page`（未公証）と、病院業務用 Windows のファイアウォールは別原因。 |
 
 ---

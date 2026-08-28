@@ -477,7 +477,7 @@ GakuNin RDM（プロジェクト配下）/
 | Web でフォルダが選べない | **仕様上、OS のフォルダダイアログは使えません。** 手動パス、サーバー側エクスプローラ、または **`FLET_USE_WEB=0`** でネイティブ起動を試す。 |
 | パスが通らない | パスが **API プロセスから見える**か（共有フォルダのマウント、権限）。 |
 | ログインできない | `DEV_MODE` ではないことを確認。API の認証とネットワークを確認。 |
-| **Connection Error: All connection attempts failed** | **パスワードや施設コードの誤りではありません。** ログイン画面の UI は出ても、同じ PC 内の解析エンジン（FastAPI）に届いていません。**Mac** でクラッシュレポートに `CODESIGNING` / `Invalid Page` がある場合は、現行配布（ad-hoc・未公証）が解析エンジン子プロセスを殺しているためで、当面は **Windows 版**を使ってください。病院・電子カルテ用 Windows だけ失敗する場合は研究用端末へ。 |
+| **Connection Error: All connection attempts failed** | **パスワードや施設コードの誤りではありません。** ログイン画面の UI は出ても、同じ PC 内の解析エンジン（FastAPI）に届いていません。**Mac**（M1 等）では、現行配布（ad-hoc）が解析エンジン子プロセスをコード署名違反で殺すことがあります。**新しい ZIP は不要**です。Terminal で `xattr -cr /Applications/ARIAKE_OCTA.app` のあと `codesign --force --deep --sign - /Applications/ARIAKE_OCTA.app` を実行し、アプリを開き直してください（`xattr` だけでは直りません）。クラッシュレポートに `CODESIGNING` / `Invalid Page` があればこの原因です。それでもダメなら **Windows 版**。病院・電子カルテ用 Windows だけ失敗する場合は研究用端末へ。 |
 | 第2リーダーカードが出ない | Role が **第2リーダー** か。ログアウトして Role を選び直す。 |
 | 統合解析データボタンが無い | 先に **Save CSV** で第2 CSV を保存したか。 |
 | 最終読影者カードが出ない | Role が **最終読影者** か。ログアウトして Role を選び直す。 |
@@ -527,6 +527,7 @@ GakuNin RDM（プロジェクト配下）/
 
 | 日付 | 内容 |
 |------|------|
+| 2026-08-29 | Connection Error（Mac）: 第一対応は新ZIPではなく `xattr` + ad-hoc `codesign --sign -`。`xattr` だけでは不十分。病院業務用 Windows のファイアウォールは別原因。 |
 | 2026-08-28 | Connection Error: Mac で `CODESIGNING Invalid Page` なら現行配布（ad-hoc・未公証）が解析エンジン子プロセスを殺している。当面は Windows 版。病院業務用 Windows のファイアウォールは別原因。 |
 | 2026-08-21 | トライアッド確定時に **`*_triad_avg_fallback.csv`**（残NAを既存 G1/G2 平均で埋めた参考・暫定）を追加出力。§10.5.2・§10.5.3 を更新。 |
 | 2026-08-21 | 最終読影者が再読影した画像の**残数値 NA**をトライアッド中央値で補完。Subtype/Pathophysiology の NA は **Vsl Area 中央値のグレーダー**の分類を採用。§10.5.3 を更新。 |
