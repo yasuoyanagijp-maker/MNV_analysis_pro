@@ -8,6 +8,7 @@ import time
 import socket
 import subprocess
 import multiprocessing
+import threading
 import tempfile
 import traceback
 from pathlib import Path
@@ -72,12 +73,33 @@ def _resolve_launch_port(env_key: str) -> int:
 
 
 def run_api_server(port: int):
-    """Worker process: Runs the FastAPI backend via uvicorn."""
+    """Worker: Runs the FastAPI backend via uvicorn."""
     import uvicorn
     from src.api.main import app
     print(f"[Backend] Starting FastAPI on port {port}...", flush=True)
     # Explicitly disable colors to avoid isatty() calls on None stdout
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", use_colors=False)
+
+
+def _start_backend(port: int):
+    """Start FastAPI.
+
+    Frozen macOS apps that spawn a child under Hardened Runtime are SIGKILL'd
+    (CODESIGNING Invalid Page). Run the engine in a daemon thread on Darwin so
+    login does not depend on Apple notarization.
+    """
+    if sys.platform == "darwin":
+        worker = threading.Thread(
+            target=run_api_server,
+            args=(port,),
+            daemon=True,
+            name="ariaike-api",
+        )
+        worker.start()
+        return worker
+    proc = multiprocessing.Process(target=run_api_server, args=(port,), daemon=True)
+    proc.start()
+    return proc
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
@@ -125,8 +147,7 @@ if __name__ == "__main__":
     os.environ["FLET_USE_WEB"] = use_web
 
     # ── SPAWN BACKEND ──────────────────────────────────────────────────────
-    api_proc = multiprocessing.Process(target=run_api_server, args=(api_port,), daemon=True)
-    api_proc.start()
+    api_proc = _start_backend(api_port)
 
     print(f"[Wrapper] Backend assigned to port {api_port}. Waiting for startup...", flush=True)
     try:
@@ -178,7 +199,7 @@ if __name__ == "__main__":
         traceback.print_exc(file=sys.stderr)
     finally:
         print("[Wrapper] Flet window closed. Shutting down backend...", flush=True)
-        if api_proc.is_alive():
+        if isinstance(api_proc, multiprocessing.Process) and api_proc.is_alive():
             api_proc.terminate()
             api_proc.join(timeout=3)
         sys.exit(0)

@@ -2,6 +2,12 @@
 # =============================================================================
 # ARIAKE OCTA Analysis — インストーラー
 # 右クリック →「開く」で実行してください（初回はダブルクリック不可の場合あり）
+#
+# 公証（Apple notary）は使いません。代わりにこの端末上で:
+#   1. xattr -cr … Gatekeeper の隔離属性を外す
+#   2. codesign --sign - … アドホック再署名（Hardened Runtime なし）
+# 配布 ZIP が Hardened Runtime 付きだと、解析エンジンの子プロセスが
+# CODESIGNING Invalid Page で落ち、ログインが Connection Error になります。
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -38,12 +44,12 @@ if [[ -d "$APP_DEST" ]]; then
     rm -rf "$APP_DEST"
 fi
 
-# xattr クリア（Gatekeeperの警告を回避）
-echo -e "${GREEN}[1/3]${NC} セキュリティ属性をクリア中..."
+# xattr クリア（Gatekeeper の「開発元未確認」回避。公証の代わりではない）
+echo -e "${GREEN}[1/4]${NC} セキュリティ属性をクリア中..."
 xattr -cr "$APP_SRC"
 
 # Applications へコピー
-echo -e "${GREEN}[2/3]${NC} Applications フォルダへインストール中..."
+echo -e "${GREEN}[2/4]${NC} Applications フォルダへインストール中..."
 cp -r "$APP_SRC" /Applications/
 
 if [[ ! -d "$APP_DEST" ]]; then
@@ -52,8 +58,21 @@ if [[ ! -d "$APP_DEST" ]]; then
     exit 1
 fi
 
+# この Mac 向けアドホック再署名。--options runtime は付けない
+# （Hardened Runtime だと未公証の解析エンジンが SIGKILL される）。
+echo -e "${GREEN}[3/4]${NC} このMac向けに再署名中（公証なし）..."
+xattr -cr "$APP_DEST"
+if codesign --force --deep --sign - "$APP_DEST"; then
+    echo "       再署名が完了しました。"
+else
+    echo -e "${YELLOW}[警告]${NC} 再署名に失敗しました。ログインで Connection Error になることがあります。"
+    echo "       ターミナルで次を実行してから、アプリを起動し直してください:"
+    echo "         xattr -cr \"${APP_DEST}\""
+    echo "         codesign --force --deep --sign - \"${APP_DEST}\""
+fi
+
 # 起動
-echo -e "${GREEN}[3/3]${NC} アプリを起動中..."
+echo -e "${GREEN}[4/4]${NC} アプリを起動中..."
 open "$APP_DEST"
 
 echo ""
