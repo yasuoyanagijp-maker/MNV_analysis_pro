@@ -89,11 +89,12 @@ jobs:
           NOTES="$(cat <<'EOF'
 ## macOS release
 
-Built with PR #43 Mac packaging fixes:
+Built with PR #43 + PR #44 Mac packaging fixes:
+- strip `*.dist-info` from Frameworks (fixes codesign / M3 launch SIGKILL)
 - ad-hoc signing **without** Hardened Runtime (research distribution)
 - `wrapper.py` runs FastAPI in-process on Darwin (no spawn SIGKILL)
 - `インストール.command` ad-hoc re-signs after copy to /Applications
-- post-build architecture verification (single-arch only)
+- post-build architecture verification (PyInstaller slice; Flet universal2 allowed)
 
 ## Install
 1. Unzip and run `インストール.command` via **right-click → Open**

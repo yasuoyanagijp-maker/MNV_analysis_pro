@@ -31,6 +31,16 @@ while IFS= read -r -d '' binary; do
     TOTAL=$((TOTAL + 1))
 
     if [[ "$info" == *"Architectures in the fat file:"* ]]; then
+        # Flet ships universal2 inside flet-macos.tar.gz; allow if expected slice is present.
+        case "$binary" in
+            *flet-macos*|*/Flet.app/*|*/flet_desktop/app/*)
+                if [[ "$EXPECTED" == "arm64" && "$info" == *"arm64"* ]] || \
+                   [[ "$EXPECTED" == "x86_64" && "$info" == *"x86_64"* ]]; then
+                    TOTAL=$((TOTAL + 1))
+                    continue
+                fi
+                ;;
+        esac
         FAT+=("$binary")
         continue
     fi
