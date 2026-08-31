@@ -42,7 +42,7 @@ DEVELOPER_ID="Developer ID Application: Your Name (XXXXXXXXXX)"
 KEYCHAIN_PROFILE="ARIAKE_NOTARY"             # notarytool store-credentials で設定した名前
 APP_NAME="ARIAKE_OCTA"                        # .app / .dmg のベース名
 APP_BUNDLE_ID="com.ariake.octa"              # Bundle Identifier
-APP_VERSION="1.2.0"
+APP_VERSION="1.2.4"
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── パス設定 ──────────────────────────────────────────────────────────────────
@@ -201,6 +201,13 @@ if [[ "$SIGN_ONLY" != true ]]; then
         exit 1
     fi
     log_success "PyInstaller ビルド完了: ${APP_PATH}"
+
+    VERIFY_ARCH="${SCRIPT_DIR}/tools/verify_mac_app_arch.sh"
+    if [[ -x "$VERIFY_ARCH" ]]; then
+        log_info "アーキテクチャ整合性を検証中（${TARGET_ARCH} のみ）..."
+        "$VERIFY_ARCH" "$APP_PATH" "$TARGET_ARCH"
+        log_success "アーキテクチャ検証 OK"
+    fi
 fi
 
 # ── libcrypto バージョン衝突の修正 ────────────────────────────────────────────
@@ -437,5 +444,6 @@ else
 fi
 echo ""
 echo -e "  ${BOLD}インストール手順（配布先）:${NC}"
-echo    "    DMG を開く → ARIAKE OCTA.app を Applications フォルダへドラッグ"
+echo    "    ZIP: ./package_mac_release.sh --arm64 --version ${APP_VERSION}"
+echo    "    または DMG を開く → ARIAKE OCTA.app を Applications フォルダへドラッグ"
 echo ""

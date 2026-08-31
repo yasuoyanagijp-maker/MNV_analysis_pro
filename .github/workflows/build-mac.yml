@@ -1,0 +1,110 @@
+name: Build macOS release
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_arch:
+        description: Target architecture
+        type: choice
+        options:
+          - arm64
+          - x86_64
+        default: arm64
+      app_version:
+        description: Release version (e.g. 1.2.4)
+        type: string
+        default: "1.2.4"
+  push:
+    tags:
+      - "v*-mac"
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select build architecture
+        id: arch
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "target=${{ inputs.target_arch }}" >> "$GITHUB_OUTPUT"
+            echo "version=${{ inputs.app_version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=arm64" >> "$GITHUB_OUTPUT"
+            ver="${GITHUB_REF_NAME#v}"
+            ver="${ver%-mac}"
+            echo "version=${ver}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Build .app (ad-hoc, no notarization)
+        run: |
+          chmod +x build_mac.sh tools/verify_mac_app_arch.sh package_mac_release.sh
+          if [[ "${{ steps.arch.outputs.target }}" == "arm64" ]]; then
+            ./build_mac.sh --skip-notarize --clean --arm64
+          else
+            ./build_mac.sh --skip-notarize --clean --intel
+          fi
+
+      - name: Package release ZIP
+        run: |
+          if [[ "${{ steps.arch.outputs.target }}" == "arm64" ]]; then
+            ./package_mac_release.sh --arm64 --version "${{ steps.arch.outputs.version }}"
+          else
+            ./package_mac_release.sh --intel --version "${{ steps.arch.outputs.version }}"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-${{ steps.arch.outputs.target }}-v${{ steps.arch.outputs.version }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (tag push only)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          NOTES="$(cat <<'EOF'
+## macOS release
+
+Built with PR #43 Mac packaging fixes:
+- ad-hoc signing **without** Hardened Runtime (research distribution)
+- `wrapper.py` runs FastAPI in-process on Darwin (no spawn SIGKILL)
+- `インストール.command` ad-hoc re-signs after copy to /Applications
+- post-build architecture verification (single-arch only)
+
+## Install
+1. Unzip and run `インストール.command` via **right-click → Open**
+2. See `Macインストール手順.txt` in the zip
+
+## Artifacts
+- Apple Silicon (M1/M2/M3/M4): `ARIAKE_OCTA_mac.zip`
+- Intel Mac: `ARIAKE_OCTA_macOS_Intel_v*.zip` (when built with `--intel`)
+EOF
+)"
+          gh release create "$TAG" dist/*.zip \
+            --title "macOS Release ${TAG}" \
+            --notes "$NOTES" \
+            --repo "${{ github.repository }}"

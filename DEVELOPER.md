@@ -128,6 +128,21 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 
 ---
 
+## 10. macOS 配布ビルド（v1.2.4 以降）
+
+| 項目 | 内容 |
+|------|------|
+| ビルド | `./build_mac.sh --skip-notarize --arm64`（M1 Mac）または `--intel`（Intel Mac） |
+| アーキ検証 | `tools/verify_mac_app_arch.sh dist/ARIAKE_OCTA.app arm64` — fat/universal や Intel 混入で **fail** |
+| ZIP 同梱 | `./package_mac_release.sh --arm64 --version 1.2.4` → `dist/ARIAKE_OCTA_mac.zip` |
+| CI | `.github/workflows/build-mac.yml`（`workflow_dispatch` または `v*-mac` タグ push） |
+| 署名 | 研究配布は ad-hoc（`-`）。**Hardened Runtime を付けない**（Connection Error 防止） |
+| インストール | 同梱 `インストール.command` が xattr + ad-hoc 再署名を実行 |
+
+**v1.2.3-mac の既知問題（PR #43 で main 修正済み、タグ未反映）:** Hardened Runtime 付き ad-hoc 署名 + multiprocessing spawn → ログイン後 Connection Error。アーキ混在は **なし**（arm64 624 本、x86_64 0）。
+
+---
+
 *本書はリポジトリ内の慣行を反映したもので、大規模リファクタの際は更新してください。*
 
 ローカルに **`DEVELOPMENT_RULES.md`**（UI ガードレールのみの旧メモ）がある場合、**§6 と重複する内容は本書を正**とし、整理・削除してかまいません。
