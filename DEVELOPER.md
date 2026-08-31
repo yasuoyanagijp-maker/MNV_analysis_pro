@@ -143,10 +143,21 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 
 **v1.2.3-mac の既知問題（v1.2.4 で修正）:**
 
-1. **起動前 SIGKILL（前原型）:** `Contents/Frameworks/*.dist-info`（例: `fastapi-0.110.0.dist-info`）が codesign `--deep` を壊し、署名無効のまま CODESIGNING Invalid Page。ユーザー側 codesign も同 dist-info で失敗。
-2. **ログイン後 Connection Error（瀧澤型）:** Hardened Runtime + multiprocessing spawn（PR #43 で thread 起動・HR なし ad-hoc に変更）。
+1. **起動前 SIGKILL（前原型）:** `Contents/Frameworks/*.dist-info`（例: `fastapi-0.110.0.dist-info`）が codesign `--deep` を壊す。ユーザー側 codesign も同 dist-info で失敗。
+2. **ログイン後 Connection Error（瀧澤型）:** v1.2.3 は `codesign --options runtime`（Hardened Runtime）+ `multiprocessing.Process` spawn。子 PID が FastAPI/uvicorn。`sknw` → **numba/llvmlite** の JIT（`LLVMPY_TryAllocateExecutableMemory`）が HR 下で **CODESIGNING Invalid Page**。親 GUI は残り Connection Error。
 
-アーキ混在は **なし**（arm64 624 本、x86_64 0）。flet-macos.tar.gz 内 Flet.app は universal2（正常）。
+**v1.2.4-mac（研究 ad-hoc 配布）での対処:**
+
+| 項目 | v1.2.4 行为 |
+|------|-------------|
+| FastAPI 起動 | Darwin は **spawn しない**（`wrapper.py` daemon thread） |
+| 署名 | ad-hoc **`--options runtime` なし** → entitlements 無効 → JIT 可 |
+| numba/llvmlite | **解析時**に `ariake_octa/skeleton.py` → `sknw` import。ログイン `/login` 自体は軽量だが、エンジンスレッド起動で `main.py` → `MNVPipeline` 等を import |
+| Developer ID 将来 | `entitlements.plist` に `allow-jit` + `allow-unsigned-executable-memory`（HR 付き公証用） |
+
+**v1.2.5-mac は不要**（瀧澤型は v1.2.4 再送で足りる想定）。前原型は dist-info 除去が主因。
+
+アーキ混在は **なし**（arm64 単一）。flet-macos.tar.gz 内 Flet.app は universal2（正常）。
 
 ---
 

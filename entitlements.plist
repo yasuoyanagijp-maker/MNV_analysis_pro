@@ -3,11 +3,12 @@
     "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Hardened Runtime: JIT不要・メモリ保護に準拠 -->
+    <!-- Developer ID + Hardened Runtime のみ有効。研究用 ad-hoc（--options runtime なし）では適用されない。 -->
+    <!-- sknw → numba → llvmlite が JIT 実行メモリを確保する。allow-jit=false だと
+         瀧澤型（ログイン後 Connection Error）: LLVMPY_TryAllocateExecutableMemory → SIGKILL -->
     <key>com.apple.security.cs.allow-jit</key>
-    <false/>
-    <!-- PyInstaller / Python .so のマップに必要。false だと未公証で
-         解析エンジンが CODESIGNING Invalid Page になる -->
+    <true/>
+    <!-- PyInstaller / Python .so / llvmlite の W^X 緩和。allow-jit とセットで Developer ID 向け -->
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
     <key>com.apple.security.cs.disable-library-validation</key>
