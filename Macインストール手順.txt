@@ -35,9 +35,11 @@
 
 • 「インストール.command」と「ARIAKE_OCTA.app」が同じフォルダにあるか確認してください。
 
-• v1.2.3 以前の ZIP で、ターミナルの codesign が
-  「bundle format unrecognized … fastapi-0.110.0.dist-info」と出る場合:
-  ユーザー側の再署名では直りません。**v1.2.4-mac 以降の ZIP** をお使いください。
+• v1.2.3 で **起動直後** に落ちる / codesign が
+  「bundle format unrecognized … fastapi-0.110.0.dist-info」と出る場合（前原型）:
+  リポジトリ同梱の **v1.2.3_Mac再署名.command** を右クリック →「開く」
+  （既定: /Applications/ARIAKE_OCTA.app）。dist-info 除去後に ad-hoc 再署名します。
+  ※ **ログイン後** Connection Error（瀧澤型・Intel）には効きません → v1.2.4 ZIP が必要。
 
 • システム設定 → プライバシーとセキュリティ で、ブロックされた場合は
   「このまま開く」等の許可を試してください。
@@ -56,10 +58,12 @@
 
 パスワードや施設コードの入力ミスではありません。
 ログイン画面は出ていても、同じ Mac 内の解析エンジンに届いていない状態です。
-現行の Mac 配布は未公証のため、古い入れ方だと解析エンジンが
-コード署名違反で落ちることがあります。
 
-すでに Applications に入っている場合は、ターミナルで次を実行してから
+**v1.2.3 の Connection Error（瀧澤型・Intel 木住野型）:**
+  v1.2.3_Mac再署名.command では直りません（spawn + Hardened Runtime が原因）。
+  **v1.2.4-mac**（Apple Silicon）または **Intel v1.2.4 ZIP** をお使いください。
+
+**v1.2.4 以降**で既に Applications に入っている場合:
 アプリを起動し直してください（公証は不要です）:
 
     xattr -cr /Applications/ARIAKE_OCTA.app

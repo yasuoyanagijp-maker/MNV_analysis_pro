@@ -14,6 +14,10 @@ on:
         description: Release version (e.g. 1.2.4)
         type: string
         default: "1.2.4"
+      attach_to_release:
+        description: Upload zip onto existing GitHub Release v{version}-mac
+        type: boolean
+        default: true
   push:
     tags:
       - "v*-mac"
@@ -23,7 +27,10 @@ permissions:
 
 jobs:
   build-mac:
-    runs-on: macos-14
+    # arm64 → macos-14 (Apple Silicon).
+    # x86_64 → macos-15-intel (native Intel). macos-13 is retired;
+    # macos-14 cannot produce an Intel zip (arm64 Python / PyInstaller).
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_arch == 'x86_64' && 'macos-15-intel' || 'macos-14' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,6 +52,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.9"
+          architecture: ${{ steps.arch.outputs.target == 'x86_64' && 'x64' || 'arm64' }}
           cache: pip
           cache-dependency-path: |
             requirements.txt
@@ -56,9 +64,16 @@ jobs:
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python -m pip install -r requirements.txt -r requirements-build.txt
 
+      - name: Verify runner and venv architecture
+        run: |
+          chmod +x tools/require_mac_python_arch.sh
+          echo "uname -m: $(uname -m)"
+          .venv/bin/python -c "import platform,sys; print('python', sys.version); print('machine', platform.machine())"
+          ./tools/require_mac_python_arch.sh .venv/bin/python "${{ steps.arch.outputs.target }}"
+
       - name: Build .app (ad-hoc, no notarization)
         run: |
-          chmod +x build_mac.sh tools/verify_mac_app_arch.sh tools/strip_mac_codesign_poison.sh tools/verify_mac_codesign_ready.sh package_mac_release.sh
+          chmod +x build_mac.sh tools/verify_mac_app_arch.sh tools/strip_mac_codesign_poison.sh tools/verify_mac_codesign_ready.sh tools/require_mac_python_arch.sh package_mac_release.sh
           if [[ "${{ steps.arch.outputs.target }}" == "arm64" ]]; then
             ./build_mac.sh --skip-notarize --clean --arm64
           else
@@ -79,6 +94,36 @@ jobs:
           name: mac-${{ steps.arch.outputs.target }}-v${{ steps.arch.outputs.version }}
           path: dist/*.zip
           if-no-files-found: error
+
+      - name: Attach zip to existing GitHub Release
+        if: github.event_name == 'workflow_dispatch' && inputs.attach_to_release == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_TARGET: ${{ steps.arch.outputs.target }}
+          APP_VERSION: ${{ steps.arch.outputs.version }}
+        run: |
+          TAG="v${APP_VERSION}-mac"
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release ${TAG} does not exist yet; zip stays in Actions artifacts only."
+            exit 0
+          fi
+          gh release upload "$TAG" dist/*.zip --clobber --repo "${{ github.repository }}"
+          echo "Uploaded dist/*.zip to ${TAG}"
+          if [[ "$BUILD_TARGET" != "x86_64" ]]; then
+            exit 0
+          fi
+          NOTES="$(gh release view "$TAG" --repo "${{ github.repository }}" --json body --jq .body)"
+          if echo "$NOTES" | grep -q "ARIAKE_OCTA_macOS_Intel"; then
+            echo "Release notes already mention the Intel zip."
+            exit 0
+          fi
+          {
+            printf '%s\n' "$NOTES"
+            echo ""
+            echo "- Intel Mac: \`ARIAKE_OCTA_macOS_Intel_v${APP_VERSION}.zip\`"
+          } > /tmp/release-notes.md
+          gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file /tmp/release-notes.md
+          echo "Appended Intel zip bullet to ${TAG} notes."
 
       - name: Publish GitHub Release (tag push only)
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')

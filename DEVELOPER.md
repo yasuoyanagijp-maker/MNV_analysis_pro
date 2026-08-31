@@ -132,21 +132,107 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 
 | 項目 | 内容 |
 |------|------|
-| ビルド | `./build_mac.sh --skip-notarize --arm64`（M1 Mac）または `--intel`（Intel Mac） |
+| ビルド | `./build_mac.sh --skip-notarize --arm64`（Apple Silicon）または `--intel`（**x86_64 Python 3.9**） |
 | pip メタデータ | `collect_all` の `*.dist-info` / `*.egg-info` を spec で除外し、ビルド後 `tools/strip_mac_codesign_poison.sh` |
 | codesign 検証 | `tools/verify_mac_codesign_ready.sh` — Frameworks に dist-info が無いこと + `codesign --verify` |
-| アーキ検証 | `tools/verify_mac_app_arch.sh dist/ARIAKE_OCTA.app arm64` — fat/universal や Intel 混入で **fail** |
+| アーキ検証 | `tools/verify_mac_app_arch.sh dist/ARIAKE_OCTA.app arm64`（または `x86_64`）。fat/universal や逆アーキ混入で **fail** |
+| venv 検証 | `tools/require_mac_python_arch.sh .venv/bin/python x86_64` — `--intel` 前に必須 |
 | ZIP 同梱 | `./package_mac_release.sh --arm64 --version 1.2.4` → `dist/ARIAKE_OCTA_mac.zip` |
-| CI | `.github/workflows/build-mac.yml`（`workflow_dispatch` または `v*-mac` タグ push） |
+| Intel ZIP | `./package_mac_release.sh --intel --version 1.2.4` → `dist/ARIAKE_OCTA_macOS_Intel_v1.2.4.zip` |
+| CI | `.github/workflows/build-mac.yml`（`v*-mac` タグ = arm64 / `workflow_dispatch` x86_64 = **macos-15-intel**） |
 | 署名 | 研究配布は ad-hoc（`-`）。**Hardened Runtime を付けない**（Connection Error 防止） |
 | インストール | 同梱 `インストール.command` が xattr + ad-hoc 再署名を実行 |
+| 公証 | 研究配布は不要（`--skip-notarize`） |
 
 **v1.2.3-mac の既知問題（v1.2.4 で修正）:**
 
-1. **起動前 SIGKILL（前原型）:** `Contents/Frameworks/*.dist-info`（例: `fastapi-0.110.0.dist-info`）が codesign `--deep` を壊し、署名無効のまま CODESIGNING Invalid Page。ユーザー側 codesign も同 dist-info で失敗。
-2. **ログイン後 Connection Error（瀧澤型）:** Hardened Runtime + multiprocessing spawn（PR #43 で thread 起動・HR なし ad-hoc に変更）。
+1. **起動前 SIGKILL（前原型）:** `Contents/Frameworks/*.dist-info`（例: `fastapi-0.110.0.dist-info`）が codesign `--deep` を壊し、署名無効のまま CODESIGNING Invalid Page。既インストールなら `v1.2.3_Mac再署名.command`。新配布は v1.2.4 ZIP。
+2. **ログイン後 Connection Error（瀧澤型・Intel 木住野型）:** Hardened Runtime + multiprocessing spawn（PR #43 で thread 起動・HR なし ad-hoc）。**新しい zip が必要**（再署名だけでは足りない）。
 
-アーキ混在は **なし**（arm64 624 本、x86_64 0）。flet-macos.tar.gz 内 Flet.app は universal2（正常）。
+アーキ混在は **なし**（v1.2.3-mac arm64: 624 本 / x86_64 0）。flet-macos.tar.gz 内 Flet.app は universal2（正常）。
+
+Linux のクラウドエージェントでは `.app` を作れない。Intel zip は **ローカル Mac** か **GitHub Actions `macos-15-intel`**。
+
+### 10.1 Intel v1.2.4 zip（木住野先生向け）
+
+成果物: `dist/ARIAKE_OCTA_macOS_Intel_v1.2.4.zip`。前提: `main` 最新（#43/#44/#45/#47 以降）。公証不要。
+
+venv も PyInstaller も **すべて x86_64 Python 3.9**。arm64 の Homebrew Python だと Intel zip にならない（`IncompatibleBinaryArchError` / `verify_mac_app_arch` で arm64 検出）。
+
+#### A. Intel Mac（MacBook Pro 2020 など）
+
+```bash
+# python.org の macOS 64-bit Python 3.9（/usr/local/bin/python3.9 等）
+file "$(which python3.9)"    # → Mach-O 64-bit x86_64
+
+git pull origin main
+python3.9 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt -r requirements-build.txt
+
+chmod +x build_mac.sh package_mac_release.sh tools/*.sh
+./build_mac.sh --skip-notarize --clean --intel
+./package_mac_release.sh --intel --version 1.2.4
+
+tools/verify_mac_app_arch.sh dist/ARIAKE_OCTA.app x86_64
+ls -lh dist/ARIAKE_OCTA_macOS_Intel_v1.2.4.zip
+```
+
+#### B. Apple Silicon（M1/M2/M3）— Rosetta + Intel Python 3.9
+
+```bash
+softwareupdate --install-rosetta --agree-to-license   # 初回のみ
+# python.org 3.9.x macOS 64-bit Intel インストーラを Rosetta 下で:
+#   arch -x86_64 installer -pkg ~/Downloads/python-3.9.*-macos11.pkg -target /
+file /usr/local/bin/python3.9   # x86_64 であること
+
+cd MNV_analysis_pro
+git pull origin main
+rm -rf .venv-intel
+arch -x86_64 /usr/local/bin/python3.9 -m venv .venv-intel
+arch -x86_64 .venv-intel/bin/pip install -U pip
+arch -x86_64 .venv-intel/bin/pip install -r requirements.txt -r requirements-build.txt
+
+mv .venv .venv-arm64 2>/dev/null || true
+ln -sfn .venv-intel .venv   # build_mac.sh は .venv を参照する
+
+chmod +x build_mac.sh package_mac_release.sh tools/*.sh
+arch -x86_64 ./build_mac.sh --skip-notarize --clean --intel
+arch -x86_64 ./package_mac_release.sh --intel --version 1.2.4
+arch -x86_64 ./tools/verify_mac_app_arch.sh dist/ARIAKE_OCTA.app x86_64
+file dist/ARIAKE_OCTA.app/Contents/MacOS/ARIAKE_OCTA   # x86_64
+
+# arm64 用 venv を戻す（任意）
+rm .venv
+mv .venv-arm64 .venv 2>/dev/null || ln -sfn .venv-intel .venv
+```
+
+所要時間の目安: pip 初回 5〜15 分 + PyInstaller/codesign 10〜25 分（合計 20〜40 分）。M1+Rosetta は Intel 実機より遅いことが多い。
+
+#### C. GitHub Actions（macos-15-intel）
+
+Actions → **Build macOS release** → Run workflow:
+
+| 入力 | 値 |
+|------|-----|
+| Branch | `main`（本変更マージ後）またはこの PR ブランチ |
+| `target_arch` | **x86_64** |
+| `app_version` | `1.2.4` |
+| `attach_to_release` | true（既存 `v1.2.4-mac` に asset 追加。tag 打ち直し不要） |
+
+`macos-14` で `x86_64` を選ぶと失敗する（arm64 Python）。
+
+#### 失敗しやすい点
+
+| 症状 | 原因 |
+|------|------|
+| `IncompatibleBinaryArchError` | venv が arm64 のまま `--intel` した |
+| `verify_mac_app_arch` で arm64 検出 | 同上 |
+| codesign `fastapi-*.dist-info` | 古い main。`git pull` で #44 以降を確認 |
+| Intel Mac で `incorrect executable format` | arm64 zip を送った |
+
+配布: `open dist/` → `ARIAKE_OCTA_macOS_Intel_v1.2.4.zip`。木住野先生向けは右クリック →「開く」で `インストール.command`。
 
 ---
 
