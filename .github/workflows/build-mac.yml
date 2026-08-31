@@ -58,7 +58,7 @@ jobs:
 
       - name: Build .app (ad-hoc, no notarization)
         run: |
-          chmod +x build_mac.sh tools/verify_mac_app_arch.sh package_mac_release.sh
+          chmod +x build_mac.sh tools/verify_mac_app_arch.sh tools/strip_mac_codesign_poison.sh tools/verify_mac_codesign_ready.sh package_mac_release.sh
           if [[ "${{ steps.arch.outputs.target }}" == "arm64" ]]; then
             ./build_mac.sh --skip-notarize --clean --arm64
           else

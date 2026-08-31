@@ -6,8 +6,11 @@
 # 公証（Apple notary）は使いません。代わりにこの端末上で:
 #   1. xattr -cr … Gatekeeper の隔離属性を外す
 #   2. codesign --sign - … アドホック再署名（Hardened Runtime なし）
-# 配布 ZIP が Hardened Runtime 付きだと、解析エンジンの子プロセスが
-# CODESIGNING Invalid Page で落ち、ログインが Connection Error になります。
+# 公証（Apple notary）は使いません。代わりにこの端末上で:
+#   1. xattr -cr … Gatekeeper の隔離属性を外す
+#   2. codesign --sign - … アドホック再署名（Hardened Runtime なし）
+# v1.2.4 以降はビルド時に *.dist-info を除去済みのため再署名が通ります。
+# v1.2.3 では Frameworks/fastapi-*.dist-info 等により codesign --deep が失敗します。
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

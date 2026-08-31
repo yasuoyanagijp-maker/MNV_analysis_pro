@@ -36,6 +36,10 @@ if [[ ! -d "$APP_PATH" ]]; then
     exit 1
 fi
 
+if [[ -x "${SCRIPT_DIR}/tools/verify_mac_codesign_ready.sh" ]]; then
+    "${SCRIPT_DIR}/tools/verify_mac_codesign_ready.sh" "$APP_PATH" || true
+fi
+
 if [[ -x "${SCRIPT_DIR}/tools/verify_mac_app_arch.sh" ]]; then
     "${SCRIPT_DIR}/tools/verify_mac_app_arch.sh" "$APP_PATH" "$TARGET_ARCH"
 fi

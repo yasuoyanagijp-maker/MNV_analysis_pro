@@ -3,10 +3,14 @@
 # Intel Mac でビルド時に使用。x86_64 ネイティブ用。
 import os
 import sys
-from PyInstaller.utils.hooks import collect_all, copy_metadata
+from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
 project_root = os.getcwd()
+sys.path.insert(0, project_root)
+from tools.mac_pyinstaller_filters import collect_pkg_without_metadata, filter_analysis_metadata
+
+MAC_APP_VERSION = os.environ.get("ARIAKE_MAC_APP_VERSION", "1.2.4")
 
 # venv（Python 3.9）の Pillow 内にある libtiff を使用する
 venv_site_packages = os.path.join(project_root, '.venv/lib/python3.9/site-packages')
@@ -42,7 +46,7 @@ hiddenimports = [
 ]
 
 for pkg in ['flet', 'flet_desktop', 'fastapi', 'uvicorn', 'multipart', 'cv2', 'skimage', 'networkx', 'shapely', 'imageio', 'imagecodecs', 'matplotlib']:
-    tmp_ret = collect_all(pkg)
+    tmp_ret = collect_pkg_without_metadata(collect_all, pkg)
     datas += tmp_ret[0]
     binaries += tmp_ret[1]
     hiddenimports += tmp_ret[2]
@@ -64,6 +68,8 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=True,
 )
+
+filter_analysis_metadata(a)
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher, level=0)
 
@@ -102,5 +108,7 @@ app = BUNDLE(
     info_plist={
         "CFBundleDisplayName": "ARIAKE OCTA Pro",
         "CFBundleName": "ARIAKE OCTA Pro",
+        "CFBundleShortVersionString": MAC_APP_VERSION,
+        "CFBundleVersion": MAC_APP_VERSION,
     },
 )

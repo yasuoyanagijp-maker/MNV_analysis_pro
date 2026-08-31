@@ -18,7 +18,8 @@
 # 配布・ログイン問い合わせ（Mac Connection Error）
 
 - 「Connection Error: All connection attempts failed」は **パスワード誤りではない**。ログイン UI は出ても、同じ PC 内の FastAPI に届いていない。
-- **Mac（M1 等）の第一仮説は病院ネットワークではない。** 公開 `v1.2.3-mac` は ad-hoc + Hardened Runtime のため Connection Error になりうる。**v1.2.4-mac**（PR #43）では Hardened Runtime なし + スレッド起動 + `インストール.command` 再署名。
+- **Mac（M1 等）Connection Error（ログイン後）:** v1.2.3-mac は ad-hoc + Hardened Runtime + spawn。**v1.2.4-mac** では HR なし + スレッド起動 + dist-info 除去。
+- **Mac 起動前 SIGKILL（前原型）:** v1.2.3 の `Frameworks/*.dist-info` が codesign を壊す。ユーザー codesign も `fastapi-0.110.0.dist-info` で失敗。**v1.2.4 再送**。Windows 案内しない。
 - 返信は `documentation/配布依頼メールテンプレート.txt` の **「Connection Error（Mac・第一返信）」** を使う。v1.2.3 相手には新 ZIP を約束しない。v1.2.4 再送可。他施設名を書かない。
 - 案内するコマンド（既存アプリのまま）:
   `xattr -cr /Applications/ARIAKE_OCTA.app` のあと `codesign --force --deep --sign - /Applications/ARIAKE_OCTA.app`。`xattr` だけでは直らない。
