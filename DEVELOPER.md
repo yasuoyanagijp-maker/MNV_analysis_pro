@@ -146,9 +146,62 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 1. **起動前 SIGKILL（前原型）:** `Contents/Frameworks/*.dist-info`（例: `fastapi-0.110.0.dist-info`）が codesign `--deep` を壊す。ユーザー側 codesign も同 dist-info で失敗。
 2. **ログイン後 Connection Error（瀧澤型）:** v1.2.3 は `codesign --options runtime`（Hardened Runtime）+ `multiprocessing.Process` spawn。子 PID が FastAPI/uvicorn。`sknw` → **numba/llvmlite** の JIT（`LLVMPY_TryAllocateExecutableMemory`）が HR 下で **CODESIGNING Invalid Page**。親 GUI は残り Connection Error。
 
+**瀧澤型 — primary evidence（2026-08-27 16:07 JST, v1.2.3-mac, M1 MacBookAir10,1, macOS 26.5）**
+
+- Launch **16:07:10.0275** → crash **16:07:17.4798**（≈7.45s）。ログイン UI 表示後 Connection Error ~7s と一致。
+- **Child 60052**, Parent / Responsible **60050**（spawn 子 = FastAPI エンジン）。
+- **VM_ALLOCATE** 16K **`r-x/rwx SM=PRV`** at `0x1009e8000` — JIT 用実行可能ページ → **SIGKILL CODESIGNING Code 2 Invalid Page**。
+- Thread 0 stack（問題レポート + スクリーンショット）: `sys_icache_invalidate` → `libllvmlite.dylib` **`Memory::protectMappedMemory`** → **`LLVMPY_TryAllocateExecutableMemory`** → `libffi` / `_ctypes` → Python3。
+
+```
+Translated Report (Full Report Below)
+-------------------------------------
+Process: ARIAKE_OCTA [60052]
+Path: /Applications/ARIAKE_OCTA.app/Contents/MacOS/ARIAKE_OCTA
+Identifier: com.ariake.octa
+Version: 0.0.0 (???)
+Code Type: ARM-64 (Native)
+Role: Unspecified
+Parent Process: ARIAKE_OCTA [60050]
+Coalition: com.ariake.octa [10951]
+Responsible Process: ARIAKE_OCTA [60050]
+User ID: 501
+
+Date/Time: 2026-08-27 16:07:17.4798 +0900
+Launch Time: 2026-08-27 16:07:10.0275 +0900
+Hardware Model: MacBookAir10,1
+OS Version: macOS 26.5 (25F71)
+Release Type: User
+
+Crash Reporter Key: 052EFC88-9945-2934-4D7D-EBE545C8BF15
+Incident Identifier: 66D38A1A-E466-46B8-AF72-35C30BE25D12
+
+Sleep/Wake UUID: A72CA8B2-945D-46E3-B078-6C910E42A55C
+
+Time Awake Since Boot: 68000 seconds
+Time Since Wake: 32 seconds
+
+System Integrity Protection: enabled
+
+Triggered by Thread: 0, Dispatch Queue: com.apple.main-thread
+
+Exception Type: EXC_BAD_ACCESS (SIGKILL (Code Signature Invalid))
+Exception Subtype: UNKNOWN_0x32 at 0x00000001009e8000
+Exception Codes: 0x0000000000000032, 0x00000001009e8000
+
+Termination Reason: Namespace CODESIGNING, Code 2, Invalid Page
+
+VM Region Info: 0x1009e8000 is in 0x1009e8000-0x1009ec000; bytes after start: 0 bytes before end: 16383
+ REGION TYPE START - END [ VSIZE] PRT/MAX SHRMOD REGION DETAIL
+ mapped file 1009e0000-1009e8000 [ 32K] r-x/rwx SM=COW Object_id=a8a24383
+---> VM_ALLOCATE 1009e8000-1009ec000 [ 16K] r-x/rwx SM=PRV 
+ GAP OF 0x8000 BYTES
+ __TEXT 1009f4000-1009fc000 [ 32K] r-x/rwx SM=COW /Applications/ARIAKE_OCTA.app/Contents/Frameworks/python3.9/lib-dynload/_struct.cpython-39-darwin.so
+```
+
 **v1.2.4-mac（研究 ad-hoc 配布）での対処:**
 
-| 項目 | v1.2.4 行为 |
+| 項目 | v1.2.4 の動作 |
 |------|-------------|
 | FastAPI 起動 | Darwin は **spawn しない**（`wrapper.py` daemon thread） |
 | 署名 | ad-hoc **`--options runtime` なし** → entitlements 無効 → JIT 可 |
