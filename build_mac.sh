@@ -17,7 +17,8 @@
 # 使い方:
 #   ./build_mac.sh                   # 通常ビルド（全工程・アーキ自動選択）
 #   ./build_mac.sh --arm64           # Apple Silicon (M1/M2/M3) 用を明示
-#   ./build_mac.sh --intel           # Intel Mac 用を明示（Intel Mac 上でのみ有効）
+#   ./build_mac.sh --intel           # Intel (x86_64) 用。venv の Python も x86_64 であること
+#                                    # （Intel Mac または M1+Rosetta + python.org Intel 3.9）
 #   ./build_mac.sh --build-only      # PyInstaller ビルドのみ
 #   ./build_mac.sh --sign-only       # 署名・公証のみ（ビルド済み前提）
 #   ./build_mac.sh --skip-notarize   # 公証をスキップ（テスト用）
@@ -98,7 +99,13 @@ MACOS_VER="$(sw_vers -productVersion)"
 # ビルド対象アーキテクチャ（--arm64/--intel で上書き可能）
 if [[ -n "$FORCE_ARCH" ]]; then
     TARGET_ARCH="$FORCE_ARCH"
-    [[ "$ARCH" != "$TARGET_ARCH" ]] && log_warn "クロスビルド: ホスト ${ARCH} → ターゲット ${TARGET_ARCH}"
+    if [[ "$ARCH" != "$TARGET_ARCH" ]]; then
+        log_warn "ホスト ${ARCH} → ターゲット ${TARGET_ARCH}"
+        if [[ "$TARGET_ARCH" == "x86_64" ]]; then
+            log_warn "Intel zip は Python / venv も x86_64 必須。arm64 Homebrew Python では失敗します。"
+            log_warn "M1/M2/M3: arch -x86_64 /usr/local/bin/python3.9 -m venv .venv-intel && ln -sfn .venv-intel .venv"
+        fi
+    fi
 else
     TARGET_ARCH="$ARCH"
 fi
@@ -136,9 +143,19 @@ done
 # 仮想環境の確認
 if [[ ! -x "$VENV_PYTHON" ]]; then
     log_error ".venv が見つかりません。先に ./run.sh --setup-only を実行してください"
+    log_error "Intel ビルドなら x86_64 Python 3.9 で: arch -x86_64 /usr/local/bin/python3.9 -m venv .venv"
     exit 1
 fi
 log_success ".venv を確認"
+
+REQUIRE_PY_ARCH="${SCRIPT_DIR}/tools/require_mac_python_arch.sh"
+if [[ -f "$REQUIRE_PY_ARCH" ]]; then
+    log_info "venv Python が ${TARGET_ARCH} か確認中..."
+    bash "$REQUIRE_PY_ARCH" "$VENV_PYTHON" "$TARGET_ARCH"
+    log_success "venv Python は ${TARGET_ARCH}"
+else
+    log_warn "tools/require_mac_python_arch.sh がありません（アーキ確認をスキップ）"
+fi
 
 # ── ビルドツールのインストール ─────────────────────────────────────────────────
 log_step "ビルドツールのインストール確認"

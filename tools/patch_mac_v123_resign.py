@@ -128,9 +128,13 @@ def main() -> int:
     strip_pip_metadata(app)
 
     print("[2/4] 隔離属性をクリア (xattr -cr)...")
-    proc = _run(["xattr", "-cr", str(app)])
+    proc = _run(["xattr", "-cr", str(app)], check=False)
     if proc.returncode != 0:
-        print(proc.stderr or proc.stdout, file=sys.stderr)
+        print("[エラー] xattr に失敗しました。", file=sys.stderr)
+        if proc.stderr:
+            print(proc.stderr, file=sys.stderr)
+        if proc.stdout:
+            print(proc.stdout, file=sys.stderr)
         return 1
 
     print("[3/4] アドホック再署名（Hardened Runtime なし）...")
