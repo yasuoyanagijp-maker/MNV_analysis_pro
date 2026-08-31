@@ -42,7 +42,7 @@ DEVELOPER_ID="Developer ID Application: Your Name (XXXXXXXXXX)"
 KEYCHAIN_PROFILE="ARIAKE_NOTARY"             # notarytool store-credentials で設定した名前
 APP_NAME="ARIAKE_OCTA"                        # .app / .dmg のベース名
 APP_BUNDLE_ID="com.ariake.octa"              # Bundle Identifier
-APP_VERSION="1.2.0"
+APP_VERSION="1.2.4"
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── パス設定 ──────────────────────────────────────────────────────────────────
@@ -188,6 +188,7 @@ if [[ "$SIGN_ONLY" != true ]]; then
         exit 1
     fi
     log_info "使用 spec: $(basename "$SPEC_FILE")"
+    export ARIAKE_MAC_APP_VERSION="${APP_VERSION}"
 
     "$VENV_PYTHON" -m PyInstaller \
         --clean \
@@ -201,6 +202,13 @@ if [[ "$SIGN_ONLY" != true ]]; then
         exit 1
     fi
     log_success "PyInstaller ビルド完了: ${APP_PATH}"
+
+    VERIFY_ARCH="${SCRIPT_DIR}/tools/verify_mac_app_arch.sh"
+    if [[ -x "$VERIFY_ARCH" ]]; then
+        log_info "アーキテクチャ整合性を検証中（${TARGET_ARCH} のみ）..."
+        "$VERIFY_ARCH" "$APP_PATH" "$TARGET_ARCH"
+        log_success "アーキテクチャ検証 OK"
+    fi
 fi
 
 # ── libcrypto バージョン衝突の修正 ────────────────────────────────────────────
@@ -319,6 +327,18 @@ elif [[ -z "$VENV_SSL_SO" ]]; then
     log_warn "Python の _ssl.so が見つかりません (スキップ)"
 fi
 
+# ── pip メタデータ除去（codesign --deep 破壊要因）────────────────────────────
+# collect_all が *.dist-info を Frameworks に置くと codesign が
+# 「bundle format unrecognized」で失敗し、起動時 CODESIGNING Invalid Page になる。
+log_step "codesign 互換のため pip メタデータを除去"
+STRIP_POISON="${SCRIPT_DIR}/tools/strip_mac_codesign_poison.sh"
+if [[ -x "$STRIP_POISON" ]]; then
+    "$STRIP_POISON" "$APP_PATH"
+    log_success "pip メタデータ除去完了"
+else
+    log_warn "strip_mac_codesign_poison.sh が見つかりません（スキップ）"
+fi
+
 # ── 署名 ─────────────────────────────────────────────────────────────────────
 log_step "コード署名"
 
@@ -339,21 +359,34 @@ log_info "署名中..."
 # CODESIGNING Invalid Page で SIGKILL される（macOS 26 / M1 で確認）。
 if [[ "$DEVELOPER_ID" == "-" ]]; then
     log_info "アドホック署名（Hardened Runtime なし・公証なし研究配布）..."
-    codesign --force --deep --sign - "${APP_PATH}"
+    if ! codesign --force --deep --sign - "${APP_PATH}"; then
+        log_error "codesign に失敗しました。Frameworks 内に *.dist-info が残っていないか確認してください。"
+        exit 1
+    fi
 else
     log_info "Developer ID 署名（Hardened Runtime + entitlements）..."
-    codesign \
+    if ! codesign \
         --force \
         --deep \
         --sign "${DEVELOPER_ID}" \
         --options runtime \
         --entitlements "${ENTITLEMENTS}" \
         --timestamp \
-        "${APP_PATH}"
+        "${APP_PATH}"; then
+        log_error "codesign に失敗しました。"
+        exit 1
+    fi
 fi
 
 log_info "署名の検証..."
-codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+if ! codesign --verify --deep --strict --verbose=2 "${APP_PATH}"; then
+    log_error "codesign --verify に失敗しました。"
+    exit 1
+fi
+VERIFY_READY="${SCRIPT_DIR}/tools/verify_mac_codesign_ready.sh"
+if [[ -x "$VERIFY_READY" ]]; then
+    "$VERIFY_READY" "$APP_PATH"
+fi
 log_success "署名完了"
 
 # ── DMG 作成 ─────────────────────────────────────────────────────────────────
@@ -437,5 +470,6 @@ else
 fi
 echo ""
 echo -e "  ${BOLD}インストール手順（配布先）:${NC}"
-echo    "    DMG を開く → ARIAKE OCTA.app を Applications フォルダへドラッグ"
+echo    "    ZIP: ./package_mac_release.sh --arm64 --version ${APP_VERSION}"
+echo    "    または DMG を開く → ARIAKE OCTA.app を Applications フォルダへドラッグ"
 echo ""

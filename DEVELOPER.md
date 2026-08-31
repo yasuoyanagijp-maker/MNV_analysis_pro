@@ -128,6 +128,28 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 
 ---
 
+## 10. macOS 配布ビルド（v1.2.4 以降）
+
+| 項目 | 内容 |
+|------|------|
+| ビルド | `./build_mac.sh --skip-notarize --arm64`（M1 Mac）または `--intel`（Intel Mac） |
+| pip メタデータ | `collect_all` の `*.dist-info` / `*.egg-info` を spec で除外し、ビルド後 `tools/strip_mac_codesign_poison.sh` |
+| codesign 検証 | `tools/verify_mac_codesign_ready.sh` — Frameworks に dist-info が無いこと + `codesign --verify` |
+| アーキ検証 | `tools/verify_mac_app_arch.sh dist/ARIAKE_OCTA.app arm64` — fat/universal や Intel 混入で **fail** |
+| ZIP 同梱 | `./package_mac_release.sh --arm64 --version 1.2.4` → `dist/ARIAKE_OCTA_mac.zip` |
+| CI | `.github/workflows/build-mac.yml`（`workflow_dispatch` または `v*-mac` タグ push） |
+| 署名 | 研究配布は ad-hoc（`-`）。**Hardened Runtime を付けない**（Connection Error 防止） |
+| インストール | 同梱 `インストール.command` が xattr + ad-hoc 再署名を実行 |
+
+**v1.2.3-mac の既知問題（v1.2.4 で修正）:**
+
+1. **起動前 SIGKILL（前原型）:** `Contents/Frameworks/*.dist-info`（例: `fastapi-0.110.0.dist-info`）が codesign `--deep` を壊し、署名無効のまま CODESIGNING Invalid Page。ユーザー側 codesign も同 dist-info で失敗。
+2. **ログイン後 Connection Error（瀧澤型）:** Hardened Runtime + multiprocessing spawn（PR #43 で thread 起動・HR なし ad-hoc に変更）。
+
+アーキ混在は **なし**（arm64 624 本、x86_64 0）。flet-macos.tar.gz 内 Flet.app は universal2（正常）。
+
+---
+
 *本書はリポジトリ内の慣行を反映したもので、大規模リファクタの際は更新してください。*
 
 ローカルに **`DEVELOPMENT_RULES.md`**（UI ガードレールのみの旧メモ）がある場合、**§6 と重複する内容は本書を正**とし、整理・削除してかまいません。

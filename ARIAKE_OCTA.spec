@@ -3,10 +3,14 @@
 # 直接 pyinstaller を呼ぶ場合は、本ファイルの代わりにアーキテクチャ別 spec を使用してください。
 import os
 import sys
-from PyInstaller.utils.hooks import collect_all, copy_metadata
+from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
 project_root = os.getcwd()
+sys.path.insert(0, project_root)
+from tools.mac_pyinstaller_filters import collect_pkg_without_metadata, filter_analysis_metadata
+
+MAC_APP_VERSION = os.environ.get("ARIAKE_MAC_APP_VERSION", "1.2.4")
 
 # venv（Python 3.9）の Pillow 内にある libtiff を使用する
 venv_site_packages = os.path.join(project_root, '.venv/lib/python3.9/site-packages')
@@ -46,7 +50,7 @@ hiddenimports = [
 
 # 一般的なパッケージの収集（imagecodecs/tifffile は LZW 圧縮 TIFF 用に必須）
 for pkg in ['flet', 'fastapi', 'uvicorn', 'multipart', 'cv2', 'skimage', 'networkx', 'shapely', 'imageio', 'imagecodecs']:
-    tmp_ret = collect_all(pkg)
+    tmp_ret = collect_pkg_without_metadata(collect_all, pkg)
     datas += tmp_ret[0]
     binaries += tmp_ret[1]
     hiddenimports += tmp_ret[2]
@@ -70,6 +74,8 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=True, # 解凍エラー(Error -5)を防ぐための重要設定
 )
+
+filter_analysis_metadata(a)
 
 # 【修正ポイント3】TIFFの外科的削除を停止
 # ファイル欠落エラー（xattr: No such file）の直接的な原因を無効化します
@@ -121,5 +127,7 @@ app = BUNDLE(
     info_plist={
         "CFBundleDisplayName": "ARIAKE OCTA Pro",
         "CFBundleName": "ARIAKE OCTA Pro",
+        "CFBundleShortVersionString": MAC_APP_VERSION,
+        "CFBundleVersion": MAC_APP_VERSION,
     },
 )
