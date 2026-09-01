@@ -140,14 +140,16 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 | ZIP 同梱 | `./package_mac_release.sh --arm64 --version 1.2.4` → `dist/ARIAKE_OCTA_mac.zip` |
 | Intel ZIP | `./package_mac_release.sh --intel --version 1.2.4` → `dist/ARIAKE_OCTA_macOS_Intel_v1.2.4.zip` |
 | CI | `.github/workflows/build-mac.yml`（`v*-mac` タグ = arm64 / `workflow_dispatch` x86_64 = **macos-15-intel**） |
+| OpenSSL | Python `_ssl` は 1.1、OpenCV は 3。`tools/mac_openssl_coexistence.py` が混在を直す（1.1 への一括付け替えは禁止） |
 | 署名 | 研究配布は ad-hoc（`-`）。**Hardened Runtime を付けない**（Connection Error 防止） |
 | インストール | 同梱 `インストール.command` が xattr + ad-hoc 再署名を実行 |
 | 公証 | 研究配布は不要（`--skip-notarize`） |
 
-**v1.2.3-mac の既知問題（v1.2.4 で修正）:**
+**既知の Mac 配布問題:**
 
 1. **起動前 SIGKILL（前原型）:** `Contents/Frameworks/*.dist-info`（例: `fastapi-0.110.0.dist-info`）が codesign `--deep` を壊し、署名無効のまま CODESIGNING Invalid Page。既インストールなら `v1.2.3_Mac再署名.command`。新配布は v1.2.4 ZIP。
 2. **ログイン後 Connection Error（瀧澤型・Intel 木住野型）:** Hardened Runtime + multiprocessing spawn（PR #43 で thread 起動・HR なし ad-hoc）。**新しい zip が必要**（再署名だけでは足りない）。
+3. **起動直後に cv2 / Connection Error（OpenSSL 混在）:** v1.2.4-mac の `build_mac.sh` が OpenCV の `libssl.3.dylib` を `libcrypto.1.1.dylib` に付け替え、`_ASYNC_WAIT_CTX_get_status` で落ちる。既インストールなら `python3 tools/mac_openssl_coexistence.py --fix /Applications/ARIAKE_OCTA.app --sign`。新配布は本修正後の ZIP。
 
 アーキ混在は **なし**（v1.2.3-mac arm64: 624 本 / x86_64 0）。flet-macos.tar.gz 内 Flet.app は universal2（正常）。
 

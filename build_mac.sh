@@ -228,120 +228,22 @@ if [[ "$SIGN_ONLY" != true ]]; then
     fi
 fi
 
-# ── libcrypto バージョン衝突の修正 ────────────────────────────────────────────
-# 問題: _ssl.so のビルド時にリンクした SSL ライブラリとバンドル libcrypto が不一致だとクラッシュ。
-#       - Xcode Python: /usr/lib/libcrypto.44.dylib（Apple LibreSSL）→ システムのまま触らない
-#       - Homebrew Python: libcrypto.3.dylib（OpenSSL 3.x）→ 差し替え処理が必要な場合あり
-# 修正: Apple の /usr/lib を参照している場合は何もせず、OpenSSL 系のときのみ差し替え。
-log_step "libcrypto バージョン衝突の修正"
-
-FRAMEWORKS_DIR="${APP_PATH}/Contents/Frameworks"
-
-# Python の _ssl.so を取得（PyInstaller 後のアプリ内）
-VENV_SSL_SO=$(find "${FRAMEWORKS_DIR}" -name "_ssl.cpython-*.so" | head -1)
-RUN_LIBCRYPTO_FIX=false
-
-if [[ -n "$VENV_SSL_SO" ]]; then
-    log_info "Python _ssl.so: ${VENV_SSL_SO}"
-
-    # _ssl.so が元々リンクしている libcrypto のパスを特定
-    LIBCRYPTO_REF=$(otool -L "$VENV_SSL_SO" 2>/dev/null | grep libcrypto | awk '{print $1}' | head -1)
-
-    # Apple のシステム libcrypto (/usr/lib) を参照している場合は触らない
-    if [[ "$LIBCRYPTO_REF" == /usr/lib/* ]] || [[ "$LIBCRYPTO_REF" == /System/* ]]; then
-        log_info "_ssl.so は Apple のシステム libcrypto を参照（${LIBCRYPTO_REF}）。差し替え不要。"
-    else
-        RUN_LIBCRYPTO_FIX=true
+# ── OpenSSL 1.1 と 3 の共存 ────────────────────────────────────────────────
+# Python 3.9 の _ssl.so は libcrypto.1.1、OpenCV は libssl.3 / libcrypto.3。
+# 以前は _ssl.so に合わせて全バイナリを 1.1 に付け替えており、cv2 import が
+# Symbol not found: _ASYNC_WAIT_CTX_get_status で落ちていた。
+# 互換バージョン（Mach-O compatibility version）を正とし、混在させない。
+log_step "OpenSSL 1.1 / 3 共存（cv2 を 1.1 に付け替えない）"
+OPENSSL_FIX="${SCRIPT_DIR}/tools/mac_openssl_coexistence.py"
+if [[ -f "$OPENSSL_FIX" ]]; then
+    FIX_PY="${VENV_PYTHON}"
+    if [[ ! -x "$FIX_PY" ]]; then
+        FIX_PY="python3"
     fi
-fi
-
-if [[ "$RUN_LIBCRYPTO_FIX" == true ]]; then
-    NEED_OPENSSL_11=false
-    if [[ "$LIBCRYPTO_REF" == *"libcrypto.3"* ]]; then
-        NEED_OPENSSL_11=false
-    elif [[ "$LIBCRYPTO_REF" == *"1.1"* || "$LIBCRYPTO_REF" == *"libcrypto.1"* ]]; then
-        NEED_OPENSSL_11=true
-    else
-        NEED_OPENSSL_11=true
-    fi
-
-    if [[ "$NEED_OPENSSL_11" == true ]]; then
-        LIBCRYPTO_DYLIB_NAME="libcrypto.1.1.dylib"
-        SEARCH_DIRS="/opt/homebrew/opt/openssl@1.1/lib /usr/local/opt/openssl@1.1/lib"
-    else
-        LIBCRYPTO_DYLIB_NAME="libcrypto.3.dylib"
-        SEARCH_DIRS="/opt/homebrew/opt/openssl@3/lib /usr/local/opt/openssl@3/lib"
-    fi
-
-    log_info "_ssl.so の参照: ${LIBCRYPTO_REF} → ${LIBCRYPTO_DYLIB_NAME} を使用"
-
-    CORRECT_LIBCRYPTO=""
-    for d in $SEARCH_DIRS; do
-        if [[ -f "${d}/${LIBCRYPTO_DYLIB_NAME}" ]]; then
-            CORRECT_LIBCRYPTO="${d}/${LIBCRYPTO_DYLIB_NAME}"
-            break
-        fi
-    done
-    if [[ -z "$CORRECT_LIBCRYPTO" && "$LIBCRYPTO_REF" == /* && -f "$LIBCRYPTO_REF" ]]; then
-        CORRECT_LIBCRYPTO="$LIBCRYPTO_REF"
-    fi
-
-    if [[ -n "$CORRECT_LIBCRYPTO" && -f "$CORRECT_LIBCRYPTO" ]]; then
-        log_info "正しい libcrypto を発見: ${CORRECT_LIBCRYPTO}"
-        
-        # 正しい libcrypto を Frameworks に必ず配置
-        LIBCRYPTO_DEST="${FRAMEWORKS_DIR}/${LIBCRYPTO_DYLIB_NAME}"
-        log_info "libcrypto を配置: ${LIBCRYPTO_DEST}"
-        cp -vf "$CORRECT_LIBCRYPTO" "$LIBCRYPTO_DEST"
-        chmod 755 "$LIBCRYPTO_DEST"
-
-        # 同名校が既に別の場所にあれば内容を差し替え
-        if [[ -d "${APP_PATH}" ]]; then
-            while IFS= read -r bundled_lib; do
-                [[ -z "$bundled_lib" || "$bundled_lib" == "$LIBCRYPTO_DEST" ]] && continue
-                if [[ -L "$bundled_lib" ]]; then continue; fi
-                if [[ "$(basename "$bundled_lib")" == "$LIBCRYPTO_DYLIB_NAME" ]]; then
-                    log_info "libcrypto を差し替え中: ${bundled_lib}"
-                    chmod +w "$bundled_lib"
-                    cp -vf "$CORRECT_LIBCRYPTO" "$bundled_lib"
-                    chmod 755 "$bundled_lib"
-                fi
-            done < <(find "${APP_PATH}" -name "*libcrypto*.dylib*" 2>/dev/null)
-        fi
-
-        # メイン実行ファイルの RPATH に Frameworks を追加（@rpath 解決のため）
-        EXE_PATH="${APP_PATH}/Contents/MacOS/${APP_NAME}"
-        if [[ -f "$EXE_PATH" ]]; then
-            if ! otool -l "$EXE_PATH" 2>/dev/null | grep -q "path @executable_path/../Frameworks"; then
-                log_info "exe に RPATH を追加: @executable_path/../Frameworks"
-                install_name_tool -add_rpath "@executable_path/../Frameworks" "$EXE_PATH" 2>/dev/null || true
-            fi
-        fi
-
-        # すべてのバイナリ内の libcrypto 参照を @rpath/${LIBCRYPTO_DYLIB_NAME} に更新
-        log_info "バイナリのリンク参照を更新中..."
-        RPATH_CRYPTO="@rpath/${LIBCRYPTO_DYLIB_NAME}"
-        if [[ -d "${APP_PATH}" ]]; then
-            find "${APP_PATH}" \( -name "*.so" -o -name "*.dylib" -o -perm +111 -type f \) 2>/dev/null | while read -r binary; do
-                # libcrypto への依存関係があるか確認
-                deps=$(otool -L "$binary" 2>/dev/null | grep libcrypto | awk '{print $1}') || continue
-                for current_ref in $deps; do
-                    if [[ "$current_ref" != "$RPATH_CRYPTO" ]]; then
-                        install_name_tool -change "$current_ref" "$RPATH_CRYPTO" "$binary" 2>/dev/null || true
-                    fi
-                done
-            done
-        fi
-        log_success "libcrypto の一括置換と参照の更新を完了しました"
-
-        # 差し替え後に再署名（アドホック）— バイナリ変更で署名が無効になるため
-        log_info "アドホック署名を実行..."
-        codesign --force --deep --sign - "${APP_PATH}"
-    else
-        log_warn "正しい libcrypto が見つかりません。Homebrew で openssl@1.1 または openssl@3 をインストールしてください: brew install openssl@3"
-    fi
-elif [[ -z "$VENV_SSL_SO" ]]; then
-    log_warn "Python の _ssl.so が見つかりません (スキップ)"
+    "$FIX_PY" "$OPENSSL_FIX" --fix "$APP_PATH" --verify "$APP_PATH"
+    log_success "OpenSSL 1.1 と 3 を共存させた"
+else
+    log_warn "mac_openssl_coexistence.py が見つかりません（スキップ）"
 fi
 
 # ── pip メタデータ除去（codesign --deep 破壊要因）────────────────────────────

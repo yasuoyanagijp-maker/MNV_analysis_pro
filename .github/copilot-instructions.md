@@ -18,7 +18,7 @@
 # 配布・ログイン問い合わせ（Mac Connection Error）
 
 - 「Connection Error: All connection attempts failed」は **パスワード誤りではない**。ログイン UI は出ても、同じ PC 内の FastAPI に届いていない。
-- **Mac（M1 等）Connection Error（ログイン後）:** v1.2.3-mac は ad-hoc + Hardened Runtime + spawn。**v1.2.4-mac** では HR なし + スレッド起動 + dist-info 除去。
+- **Mac（M1 等）Connection Error（ログイン後）:** v1.2.3-mac は ad-hoc + Hardened Runtime + spawn。**v1.2.4-mac** では HR なし + スレッド起動 + dist-info 除去。v1.2.4-mac の OpenSSL 1.1/3 混在（cv2 が libcrypto.1.1 を掴む）は `tools/mac_openssl_coexistence.py` で修正。
 - **Mac 起動前 SIGKILL（前原型）:** v1.2.3 の `Frameworks/*.dist-info` が codesign を壊す。ユーザー codesign も `fastapi-0.110.0.dist-info` で失敗。**v1.2.4 再送**。Windows 案内しない。
 - 返信は `documentation/配布依頼メールテンプレート.txt` の **「Connection Error（Mac・第一返信）」** を使う。v1.2.3 相手には新 ZIP を約束しない。v1.2.4 再送可。他施設名を書かない。
 - 案内するコマンド（既存アプリのまま）:
