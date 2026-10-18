@@ -1,0 +1,29 @@
+{
+  "size_class": "optovue_3mm",
+  "n_cases": 94,
+  "n_before": 48,
+  "n_after": 46,
+  "note": "n=94 FD-valid Optovue 3mm scans. complexity_score percentiles are from complexity_ref_optovue_3mm.json (cohort median Complexity = 50, trunk neutral at 50). Morphology gates match the other strata: Dead tree < P10, Glomerular >= P30, Tree in bud in between. Medusa and Seafan need trunk pattern, which this CSV does not contain.",
+  "percentiles": [
+    10,
+    25,
+    40,
+    50,
+    60,
+    65,
+    75,
+    90
+  ],
+  "complexity_ref": "complexity_ref_optovue_3mm.json",
+  "complexity_score": {
+    "P10": 39.01825381367814,
+    "P25": 44.203830840625834,
+    "P30": 46.08350719956896,
+    "P40": 47.90088773107645,
+    "P50": 50.0,
+    "P60": 52.60570699156637,
+    "P65": 55.106741443043006,
+    "P75": 56.914038517636236,
+    "P90": 64.24851871000376
+  }
+}

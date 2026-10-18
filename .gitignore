@@ -21,6 +21,8 @@ desktop.ini
 output/
 output/exports/logs/
 temp_data/
+# Patient-level cohort tables used to fit a reference (do not push)
+data/optovue_3mm_20260812/
 uploads/
 *.tmp
 flet_ui.log
