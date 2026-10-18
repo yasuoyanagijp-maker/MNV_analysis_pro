@@ -179,8 +179,20 @@ def build(rows: list[dict]) -> tuple[dict, dict, list[dict]]:
             "(cohort median Complexity = 50, trunk neutral at 50). "
             "Morphology gates match the other strata: Dead tree < P10, "
             "Glomerular >= P30, Tree in bud in between. "
-            "Medusa and Seafan need trunk pattern, which this CSV does not contain."
+            "Medusa and Seafan need trunk pattern, which this CSV does not contain. "
+            "provisional_no_trunk assigns Medusa at >= P65 and Seafan at >= P40 "
+            "without trunk."
         ),
+        "provisional_no_trunk": {
+            "uses_trunk": False,
+            "order": [
+                "Dead tree if complexity < P10",
+                "Medusa if complexity >= P65",
+                "Seafan if complexity >= P40",
+                "Glomerular if complexity >= P30",
+                "Tree in bud otherwise",
+            ],
+        },
         "percentiles": list(PERCENTILES),
         "complexity_ref": "complexity_ref_optovue_3mm.json",
         "complexity_score": complexity_score,
@@ -196,6 +208,20 @@ def classify(score: float, ref: dict) -> str:
     block = ref["complexity_score"]
     if score < block["P10"]:
         return "Dead tree"
+    if score >= block["P30"]:
+        return "Glomerular"
+    return "Tree in bud"
+
+
+def classify_provisional(score: float, ref: dict) -> str:
+    """Five classes from complexity alone. P65 then P40 stand in for trunk."""
+    block = ref["complexity_score"]
+    if score < block["P10"]:
+        return "Dead tree"
+    if score >= block["P65"]:
+        return "Medusa"
+    if score >= block["P40"]:
+        return "Seafan"
     if score >= block["P30"]:
         return "Glomerular"
     return "Tree in bud"
@@ -230,6 +256,7 @@ def main() -> None:
     p10 = cls["complexity_score"]["P10"]
     p30 = cls["complexity_score"]["P30"]
     labels = [classify(item["_complexity"], cls) for item in scored]
+    provisional = [classify_provisional(item["_complexity"], cls) for item in scored]
     from collections import Counter
 
     print("n_fit", ref["n_cases"], "excluded", ref["n_excluded_fd_fail"])
@@ -238,15 +265,20 @@ def main() -> None:
         item["_complexity"] for item in scored if not item["_fd_failed"]
     ]
     print("fit median", float(np.median(fit_scores)))
-    print("P10", p10, "P30", p30, "P50", cls["complexity_score"]["P50"])
+    print("P10", p10, "P30", p30, "P40", cls["complexity_score"]["P40"],
+          "P65", cls["complexity_score"]["P65"], "P50", cls["complexity_score"]["P50"])
     print("labels", Counter(labels))
-    print("fd_fail labels", Counter(
-        lab for lab, item in zip(labels, scored) if item["_fd_failed"]
+    print("provisional fit", Counter(
+        lab for lab, item in zip(provisional, scored) if not item["_fd_failed"]
+    ))
+    print("provisional fd_fail", Counter(
+        lab for lab, item in zip(provisional, scored) if item["_fd_failed"]
     ))
 
     extra = [
         "Network Complexity Score (Optovue 3mm PCA)",
         "Subtype (Optovue 3mm PCA)",
+        "Subtype (Optovue 3mm PCA, provisional)",
         "FD excluded from reference (0=used 1=excluded)",
     ]
     fieldnames = list(rows[0].keys()) + extra
@@ -255,10 +287,11 @@ def main() -> None:
     with dest.open("w", encoding="utf-8-sig", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
-        for item, label in zip(scored, labels):
+        for item, label, provisional_label in zip(scored, labels, provisional):
             row = {key: item[key] for key in rows[0].keys()}
             row["Network Complexity Score (Optovue 3mm PCA)"] = f"{item['_complexity']:.6f}"
             row["Subtype (Optovue 3mm PCA)"] = label
+            row["Subtype (Optovue 3mm PCA, provisional)"] = provisional_label
             row["FD excluded from reference (0=used 1=excluded)"] = (
                 "1" if item["_fd_failed"] else "0"
             )
