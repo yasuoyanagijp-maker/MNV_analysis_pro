@@ -260,6 +260,8 @@ GakuNin RDM（プロジェクト配下）/
 
 Optovue 3mm の Complexity では、Trunk の分布が基準に無いため Trunk 項は **50** のままです。Seafan と Medusa は、画像から出る Trunk の形で判定します。Caliber Uniformity、病態分類、Caliber U2 は Zeiss HD 3mm の基準のままです。式とパーセンタイルは詳細マニュアル **§6.3.1** を参照してください。
 
+インストール済みの **Mac v1.2.4**（Apple Silicon と Intel）と **Windows v1.2.3** には、アプリ一式を入れ替えずにこの画面を足すパッチがあります。Releases の `v1.2.4-optovue-3mm-patch` から OS に合う ZIP を取り、中の「パッチの説明.txt」に従って適用してください。
+
 ### 8.2 画像・フォルダの指定
 
 - **Select Folder / Select Image**  
@@ -561,7 +563,7 @@ Optovue 3mm の Complexity では、Trunk の分布が基準に無いため Trun
 
 | 日付 | 内容 |
 |------|------|
-| 2026-10-19 | 起動ウィザードの 3 mm を **Optovue** と **Zeiss HD** に分割。§8.1.1 に選択画面・確認画面と操作動画を追加。 |
+| 2026-10-19 | 起動ウィザードの 3 mm を **Optovue** と **Zeiss HD** に分割。§8.1.1 に選択画面・確認画面と操作動画を追加。インストール済み Mac v1.2.4 / Windows v1.2.3 向けパッチは Releases の `v1.2.4-optovue-3mm-patch`。 |
 | 2026-08-29 | Connection Error（Mac）: 第一対応は新ZIPではなく `xattr` + ad-hoc `codesign --sign -`。`xattr` だけでは不十分。病院業務用 Windows のファイアウォールは別原因。 |
 | 2026-08-28 | Connection Error: Mac で `CODESIGNING Invalid Page` なら現行配布（ad-hoc・未公証）が解析エンジン子プロセスを殺している。当面は Windows 版。病院業務用 Windows のファイアウォールは別原因。 |
 | 2026-08-21 | トライアッド確定時に **`*_triad_avg_fallback.csv`**（残NAを既存 G1/G2 平均で埋めた参考・暫定）を追加出力。§10.5.2・§10.5.3 を更新。 |
