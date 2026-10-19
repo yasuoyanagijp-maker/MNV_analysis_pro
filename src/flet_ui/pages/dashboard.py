@@ -1240,6 +1240,14 @@ async def get_dashboard_view(ctx: AppContext):
         ctx.page.session.set("mnv_batch_device_from_meta", True)
         return default_device, warnings
 
+    def _discard_export_device_maps():
+        """Drop meta device maps without changing the wizard's device choice."""
+        session_discard(ctx.page.session, "mnv_batch_devices")
+        session_discard(ctx.page.session, "mnv_batch_device_stems")
+        session_discard(ctx.page.session, "mnv_batch_device_names")
+        session_discard(ctx.page.session, "mnv_batch_default_device")
+        session_discard(ctx.page.session, "mnv_batch_device_from_meta")
+
     async def load_second_reader_batch(fspath) -> bool:
         """
         第2リーダー: メタデータフォルダの親フォルダを自動スキャンし、
@@ -1653,6 +1661,11 @@ async def get_dashboard_view(ctx: AppContext):
         if is_second_reader(ctx.page.session):
             await load_second_reader_batch(fspath)
             return
+        # A normal folder load must not keep a previous reader batch's device maps.
+        # Those maps would replace the wizard's Optovue / Zeiss HD choice.
+        if ctx.page.session.get("mnv_batch_device_from_meta"):
+            ctx.page.session.set("mnv_3mm_device", "")
+        _discard_export_device_maps()
         await _load_batch_from_directory_core(fspath)
 
     ctx.folder_batch_loader = load_batch_from_directory
@@ -2033,6 +2046,7 @@ async def get_dashboard_view(ctx: AppContext):
             _refresh()
 
         async def _select_folder(_=None):
+            _discard_export_device_maps()
             analysis_type.value = wizard["analysis_type"]
             scale_mm.value = wizard["scale_mm"]
             if wizard.get("device") == "optovue":
