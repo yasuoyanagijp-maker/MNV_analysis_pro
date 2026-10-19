@@ -61,6 +61,7 @@ from src.utils.second_reader import (
     SR_FIRST_GRADER_CSV_KEY,
     SR_SCAN_ROOT_KEY,
     SR_CSV_PATH_KEY,
+    device_token_for_image,
     find_first_grader_mnv_csvs,
     format_scale_dropdown_value,
     integrated_output_dir,
@@ -926,6 +927,27 @@ async def get_results_view(ctx: AppContext):
                         ctx.scale_mm_ref.current.value = scale_txt
                 except Exception:
                     pass
+            if ctx.page.session.get("mnv_batch_device_from_meta"):
+                effective_fov = (
+                    next_fov
+                    if next_fov is not None
+                    else ctx.page.session.get("scale")
+                )
+                ctx.page.session.set(
+                    "mnv_3mm_device",
+                    device_token_for_image(
+                        paths[next_i],
+                        path_to_device=ctx.page.session.get("mnv_batch_devices") or {},
+                        stem_to_device=ctx.page.session.get("mnv_batch_device_stems")
+                        or {},
+                        name_to_device=ctx.page.session.get("mnv_batch_device_names")
+                        or {},
+                        default_device=str(
+                            ctx.page.session.get("mnv_batch_default_device") or ""
+                        ),
+                        fov_mm=effective_fov,
+                    ),
+                )
             await ctx.add_to_console(f"MNV batch: accepted. Opening ROI for file {next_i + 1}/{len(paths)}.", "INFO")
             ctx.page.go("/roi")
         else:
@@ -943,6 +965,13 @@ async def get_results_view(ctx: AppContext):
             session_discard(ctx.page.session, "mnv_batch_scale_stems")
             session_discard(ctx.page.session, "mnv_batch_scale_names")
             session_discard(ctx.page.session, "mnv_batch_default_fov")
+            if ctx.page.session.get("mnv_batch_device_from_meta"):
+                ctx.page.session.set("mnv_3mm_device", "")
+            session_discard(ctx.page.session, "mnv_batch_devices")
+            session_discard(ctx.page.session, "mnv_batch_device_stems")
+            session_discard(ctx.page.session, "mnv_batch_device_names")
+            session_discard(ctx.page.session, "mnv_batch_default_device")
+            session_discard(ctx.page.session, "mnv_batch_device_from_meta")
             ctx.page.session.set("results_selected_index", -1)
             if vd_hdr is not None:
                 await ctx.add_to_console(
@@ -992,6 +1021,13 @@ async def get_results_view(ctx: AppContext):
         session_discard(ctx.page.session, "mnv_batch_scale_stems")
         session_discard(ctx.page.session, "mnv_batch_scale_names")
         session_discard(ctx.page.session, "mnv_batch_default_fov")
+        if ctx.page.session.get("mnv_batch_device_from_meta"):
+            ctx.page.session.set("mnv_3mm_device", "")
+        session_discard(ctx.page.session, "mnv_batch_devices")
+        session_discard(ctx.page.session, "mnv_batch_device_stems")
+        session_discard(ctx.page.session, "mnv_batch_device_names")
+        session_discard(ctx.page.session, "mnv_batch_default_device")
+        session_discard(ctx.page.session, "mnv_batch_device_from_meta")
         ctx.page.session.set("results_selected_index", -1)
         
         await ctx.add_to_console(f"MNV batch stopped early: {len(acc)} file(s) saved.", "SUCCESS")

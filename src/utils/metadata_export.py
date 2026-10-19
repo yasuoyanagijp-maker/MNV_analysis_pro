@@ -78,6 +78,7 @@ MANIFEST_FIELDS = [
 # Heuristic device labels aligned with size_class / FOV used in the pipeline
 _DEVICE_BY_STRATUM = {
     "small_3mm": "CIRRUS",
+    "optovue_3mm": "Optovue",
     "large": "PlexElite",
     "small": "Solix",
 }
