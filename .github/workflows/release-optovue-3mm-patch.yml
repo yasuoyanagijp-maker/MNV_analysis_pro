@@ -1,0 +1,36 @@
+name: Release Optovue 3mm patch
+
+on:
+  push:
+    tags:
+      - "v1.2.4-optovue-3mm-patch"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build patch ZIPs
+        run: python3 tools/optovue_3mm_patch/build_patches.py --out dist/patches
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v1.2.4-optovue-3mm-patch"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/patches/*.zip --clobber --repo "${{ github.repository }}"
+          else
+            gh release create "$TAG" dist/patches/*.zip \
+              --repo "${{ github.repository }}" \
+              --latest=false \
+              --title "Optovue 3mm patch for Mac v1.2.4 and Windows v1.2.3" \
+              --notes-file tools/optovue_3mm_patch/RELEASE_NOTES.md
+          fi

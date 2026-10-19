@@ -32,12 +32,13 @@ from core.caliber_u2 import (
     calculate_maturity_index,
     resolve_caliber_u2_size_class,
 )
+from utils.mnv_size_class import OPTOVUE_3MM, explicit_mnv_size_class
 from core.pattern_metrics import (
-    apply_trunk_scale_correction,
     calculate_complexity_pca,
     calculate_stability_metrics,
     calculate_trunk_distribution_score,
     load_complexity_ref,
+    trunk_term_for_complexity,
 )
 from core.roi_manager import ROIDetector, ROIModifier
 from core.skeleton_analysis import (BranchAnalyzer, DiameterAnalyzer,
@@ -190,6 +191,7 @@ class MNVPipeline:
         debug: bool = False,
         enable_roi_refinement: bool = True,
         filter_params: Optional[Dict] = None,
+        size_class: Optional[str] = None,
     ):  # ★ True に変更
         """
         Parameters:
@@ -212,8 +214,12 @@ class MNVPipeline:
         filter_params : dict, optional
             FilterBank用オプション: percentile_low, percentile_high,
             otsu_scale, sauvola_k
+        size_class : str, optional
+            ``optovue_3mm`` selects the Optovue 3mm complexity and morphology
+            references. Other values are ignored; scale 3 mm stays Zeiss HD.
         """
         self.scale_mm = scale_mm
+        self.size_class_override = explicit_mnv_size_class(scale_mm, size_class)
         self.mexican_hat_sigma = mexican_hat_sigma
         self.tubeness_sigma = tubeness_sigma
         self.save_stages = save_stages
@@ -1094,8 +1100,13 @@ class MNVPipeline:
         )
 
         # 画像サイズに応じて参照クラスを切り替え（ユーザー入力の scale_mm を優先）
-        # 3mm の場合は small_3mm 用 JSON を使用
-        if self.scale_mm is not None and abs(float(self.scale_mm) - 3.0) < 0.01:
+        # 3mm (Optovue) は complexity / 形態だけ optovue_3mm。3mm (Zeiss HD) は small_3mm。
+        scale_is_3mm = (
+            self.scale_mm is not None and abs(float(self.scale_mm) - 3.0) < 0.01
+        )
+        if scale_is_3mm and self.size_class_override == OPTOVUE_3MM:
+            spatial_analyzer.size_class = OPTOVUE_3MM
+        elif scale_is_3mm:
             spatial_analyzer.size_class = "small_3mm"
         else:
             try:
@@ -1271,7 +1282,12 @@ class MNVPipeline:
         )
 
         _t_complexity = time.perf_counter()
-        size_class = spatial_results.get("size_class", "small")
+        complexity_size_class = spatial_results.get("size_class", "small")
+        # Optovue 3mm has complexity and morphology JSON only. Stability,
+        # pathophysiology percentiles, and Caliber U2 stay on Zeiss HD 3mm.
+        stability_size_class = (
+            "small_3mm" if complexity_size_class == OPTOVUE_3MM else complexity_size_class
+        )
         euler_center = (
             regional_results.get(
                 "euler_center", skeleton_results["euler_number"] // 2
@@ -1322,8 +1338,8 @@ class MNVPipeline:
             spatial_results["thick_vessel_center_ratio"],
             spatial_results["diameter_center_periphery_ratio"],
         )
-        complexity_ref = load_complexity_ref(size_class)
-        trunk_score = apply_trunk_scale_correction(trunk_score_raw, complexity_ref)
+        complexity_ref = load_complexity_ref(complexity_size_class)
+        trunk_score = trunk_term_for_complexity(trunk_score_raw, complexity_ref)
 
         # Legacy PCA Caliber Uniformity (kept as optional / fallback column).
         radial_profile = spatial_results.get("radial_profile", {})
@@ -1337,7 +1353,7 @@ class MNVPipeline:
             try:
                 stability_with_norm_trunk = calculate_stability_metrics(
                     np.asarray(diameters, dtype=float),
-                    size_class=size_class,
+                    size_class=stability_size_class,
                     trunk_score=trunk_score,
                 )
                 stability_score_pca = float(stability_with_norm_trunk)
@@ -1365,7 +1381,8 @@ class MNVPipeline:
         )
         caliber_u2_details = {
             **caliber_u2_details,
-            "pipeline_size_class": size_class,
+            "pipeline_size_class": complexity_size_class,
+            "stability_size_class": stability_size_class,
             "u2_size_class": u2_size_class,
             "image_width_px": image_width_px,
         }
@@ -1389,9 +1406,9 @@ class MNVPipeline:
             tortuosity_periphery=tortuosity_periphery,
             fd_global=fd_global,
             trunk_score=trunk_score,
-            size_class=size_class,
+            size_class=complexity_size_class,
         )
-        complexity_details = {"method": "pca"}
+        complexity_details = {"method": "pca", "size_class": complexity_size_class}
         self.logger.debug(
             f"[Step6] 1c. complexity_score: {time.perf_counter()-_t_complexity:.3f}s"
         )
@@ -1403,7 +1420,7 @@ class MNVPipeline:
             complexity_score=complexity_score,
             stability_score=stability_score,
             trunk_pattern=spatial_results["trunk_pattern"],
-            size_class=size_class,
+            size_class=complexity_size_class,
             eccentricity=spatial_results.get("trunk_eccentricity", -1.0),
             radial_uniformity=spatial_results.get("radial_uniformity", -1.0),
             angular_cv=spatial_results.get("angular_distribution_cv", -1.0),
@@ -1440,7 +1457,7 @@ class MNVPipeline:
             loop_total=float(loop_total),
             mean_diameter_um=float(skeleton_results.get("mean_diameter_um", 0)),
             cv_diameter=float(skeleton_results.get("cv_diameter", 0)),
-            size_class=size_class,
+            size_class=stability_size_class,
             treatment_history=0,
         )
 
@@ -1457,6 +1474,8 @@ class MNVPipeline:
             "complexity_details": complexity_details,
             "trunk_score_raw": float(trunk_score_raw),
             "trunk_score": float(trunk_score),
+            "complexity_size_class": complexity_size_class,
+            "stability_size_class": stability_size_class,
             "mnv_subtype": classification["subtype"],
             "subtype_confidence": classification["confidence"],
             "maturity_index": maturity_index,

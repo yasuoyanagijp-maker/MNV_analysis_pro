@@ -299,15 +299,32 @@ ROI・ウィザード上の **Confirm & Start Analysis** 等で解析を開始�
 
 #### 6.3.1 層（size_class）の決め方
 
-Image Scale (mm) と画像幅から参照 JSON を切り替えます（`mnv_pipeline` と同一ロジック）。
+Image Scale (mm) と、3 mm のときは起動ウィザードの装置ボタンから参照 JSON を切り替えます（`mnv_pipeline` と同一ロジック）。操作画面は [USER_MANUAL.md §8.1.1](../USER_MANUAL.md#811-起動ウィザードのスキャン幅) です。
 
 | 条件 | size_class | 参照ファイル接尾辞 |
 |------|-------------|-------------------|
-| スケール ≈ **3.0 mm** | `small_3mm` | `_small_3mm` |
+| **3 mm (Optovue)** | `optovue_3mm` | `_optovue_3mm`（Complexity と形態分類） |
+| **3 mm (Zeiss HD)**、数値の 3.0、3 mm の手入力 | `small_3mm` | `_small_3mm` |
 | 画像幅 **> 800 px**、またはスケール **≥ 6.0 mm** | `large` | `_large` |
 | それ以外 | `small` | `_small` |
 
-他施設・他装置と比較するときは、**同じ size_class（同じスケール設定）同士**で比べてください。
+![3 mm (Optovue) を選択](figures/scale_3mm/scale_3mm_optovue_selected.png)
+
+![3 mm (Zeiss HD) を選択](figures/scale_3mm/scale_3mm_zeiss_hd_selected.png)
+
+確認画面では Scale に装置名が出ます。
+
+![確認画面: 3 mm (Zeiss HD)](figures/scale_3mm/confirm_scale_zeiss_hd.png)
+
+![確認画面: 3 mm (Optovue)](figures/scale_3mm/confirm_scale_optovue.png)
+
+<video src="figures/scale_3mm/optovue_zeiss_3mm_scale_buttons.mp4" controls width="720"></video>
+
+[操作動画](figures/scale_3mm/optovue_zeiss_3mm_scale_buttons.mp4)
+
+`optovue_3mm` の Complexity は `complexity_ref_optovue_3mm.json`（FD 有効 94 眼、中央値 50）、形態は `mnv_classification_ref_optovue_3mm.json` です。この基準に Trunk 分布が無いため、Complexity の Trunk 項は **50** 固定です。Seafan / Medusa は画像の Trunk 形（MEDUSA / SEAFAN）と、この JSON の P40・P65 で判定します。Caliber Uniformity（`stability_ref_small_3mm.json`）、病態分類のパーセンタイル、Caliber U2 は **Zeiss HD の `small_3mm`** のままです。
+
+他施設・他装置と比較するときは、**同じ size_class（同じスケール設定と、3 mm では同じ装置ボタン）同士**で比べてください。
 
 #### 6.3.2 Network Complexity Score（0–100）
 
@@ -344,6 +361,7 @@ Image Scale (mm) と画像幅から参照 JSON を切り替えます（`mnv_pipe
 | small | 0.634 | 0.265 | ≈0.102 | 34 |
 | large | 0.663 | 0.226 | ≈0.111 | 49 |
 | small_3mm | 0.633 | 0.301 | ≈0.066 | 30 |
+| optovue_3mm | 0.628 | 0.260 | ≈0.113 | 94 |
 
 **Trunk Distribution 生スコアの内訳**（Complexity / Caliber Uniformity 共通）
 

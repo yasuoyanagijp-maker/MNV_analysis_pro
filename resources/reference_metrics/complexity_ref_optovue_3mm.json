@@ -1,0 +1,55 @@
+{
+  "size_class": "optovue_3mm",
+  "n_cases": 94,
+  "n_before": 48,
+  "n_after": 46,
+  "n_excluded_fd_fail": 22,
+  "metrics": [
+    "euler_total_inv",
+    "loop_total",
+    "junction_density",
+    "FD_global"
+  ],
+  "note": "Optovue 3mm cohort (Tsuzu 2026-08-12 combined CSV). PCA on euler_total_inv, loop_total, junction_density, FD_global, same inputs as complexity_ref_{small,large,small_3mm}.json. PC1/PC2 linear scales put each axis median at 50; PC1 is then shifted so the cohort median of Complexity is 50. Trunk raw score is absent from the CSV, so the trunk term is the neutral value 50. FD quality flag 1 (fd_out_of_range) excluded from the fit. Runtime weights are explained_variance_ratio; final_weights 0.7/0.2/0.1 are recorded for schema parity and are not used.",
+  "mu": {
+    "euler_total_inv": 6.638297872340425,
+    "loop_total": 22.829787234042552,
+    "junction_density": 15.490266109893618,
+    "FD_global": 1.111472846968085
+  },
+  "sigma": {
+    "euler_total_inv": 12.700733247675021,
+    "loop_total": 19.71116069307494,
+    "junction_density": 2.7588115045477983,
+    "FD_global": 0.10615744682500285
+  },
+  "pc1_weights": {
+    "euler_total_inv": 0.5731416071864894,
+    "loop_total": 0.5799750630434777,
+    "junction_density": -0.08030485624578294,
+    "FD_global": 0.5733138358898607
+  },
+  "pc2_weights": {
+    "euler_total_inv": -0.2153339742885929,
+    "loop_total": -0.04611601143742407,
+    "junction_density": -0.9672214049393645,
+    "FD_global": 0.12644108048140384
+  },
+  "explained_variance_ratio": [
+    0.6276476060526702,
+    0.2595057705877971
+  ],
+  "score_min": -5.727660471065524,
+  "score_max": 5.198485321100267,
+  "final_weights": {
+    "PC1": 0.7,
+    "PC2": 0.2,
+    "TrunkDist": 0.1
+  },
+  "PC2_min": -3.268608918288583,
+  "PC2_max": 3.345706487529626,
+  "trunk_term": {
+    "value": 50.0,
+    "reason": "Trunk distribution inputs are not in the batch CSV."
+  }
+}
