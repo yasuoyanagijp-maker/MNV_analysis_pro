@@ -29,6 +29,7 @@ MAC_FILES = (
     "src/flet_ui/components/shared.py",
     "src/flet_ui/pages/dashboard.py",
     "src/flet_ui/pages/mnv_wizard.py",
+    "src/flet_ui/pages/results_screen.py",
     "src/utils/metadata_export.py",
     "src/utils/mnv_size_class.py",
     "src/utils/second_reader.py",
