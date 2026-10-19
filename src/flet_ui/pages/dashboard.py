@@ -51,12 +51,16 @@ from src.utils.second_reader import (
     SR_FIRST_GRADER_CSV_KEY,
     SR_SCAN_ROOT_KEY,
     SR_CSV_PATH_KEY,
+    bind_device_to_batch_paths,
     bind_fov_to_batch_paths,
+    device_token_for_image,
     final_reader_output_dir,
     format_scale_dropdown_value,
     is_final_reader,
     is_second_reader,
+    load_meta_device_by_stem,
     load_meta_fov_by_stem,
+    resolve_image_device_map,
     resolve_image_fov_map,
     resolve_second_reader_scan,
     second_reader_output_dir,
@@ -85,6 +89,13 @@ def _prepare_results_session(page, all_results, *, vd_only: bool = False) -> Non
         session_discard(page.session, "mnv_batch_scale_stems")
         session_discard(page.session, "mnv_batch_scale_names")
         session_discard(page.session, "mnv_batch_default_fov")
+        if page.session.get("mnv_batch_device_from_meta"):
+            page.session.set("mnv_3mm_device", "")
+        session_discard(page.session, "mnv_batch_devices")
+        session_discard(page.session, "mnv_batch_device_stems")
+        session_discard(page.session, "mnv_batch_device_names")
+        session_discard(page.session, "mnv_batch_default_device")
+        session_discard(page.session, "mnv_batch_device_from_meta")
         session_discard(page.session, "results_selected_index")
         if all_results:
             page.session.set("results_selected_index", 0)
@@ -1030,6 +1041,15 @@ async def get_dashboard_view(ctx: AppContext):
                     "mnv_batch_scales",
                     bind_fov_to_batch_paths(paths_ordered, stem_to_fov, name_to_fov),
                 )
+            if ctx.page.session.get("mnv_batch_device_from_meta"):
+                stem_to_device = ctx.page.session.get("mnv_batch_device_stems") or {}
+                name_to_device = ctx.page.session.get("mnv_batch_device_names") or {}
+                ctx.page.session.set(
+                    "mnv_batch_devices",
+                    bind_device_to_batch_paths(
+                        paths_ordered, stem_to_device, name_to_device
+                    ),
+                )
             ctx.page.session.set("mnv_batch_paths", paths_ordered)
             ctx.page.session.set("mnv_batch_index", 0)
             ctx.page.session.set("mnv_batch_results", [])
@@ -1052,6 +1072,20 @@ async def get_dashboard_view(ctx: AppContext):
                 scale_mm.value = format_scale_dropdown_value(float(first_fov))
             else:
                 ctx.page.session.set("scale", float(scale_mm.value))
+            if ctx.page.session.get("mnv_batch_device_from_meta"):
+                ctx.page.session.set(
+                    "mnv_3mm_device",
+                    device_token_for_image(
+                        paths_ordered[0],
+                        path_to_device=ctx.page.session.get("mnv_batch_devices") or {},
+                        stem_to_device=ctx.page.session.get("mnv_batch_device_stems") or {},
+                        name_to_device=ctx.page.session.get("mnv_batch_device_names") or {},
+                        default_device=str(
+                            ctx.page.session.get("mnv_batch_default_device") or ""
+                        ),
+                        fov_mm=ctx.page.session.get("scale"),
+                    ),
+                )
             session_discard(ctx.page.session, "roi")
             session_discard(ctx.page.session, "roi_mask_b64")
             batch_table.rows.clear()
@@ -1118,6 +1152,13 @@ async def get_dashboard_view(ctx: AppContext):
             session_discard(ctx.page.session, "mnv_batch_scale_stems")
             session_discard(ctx.page.session, "mnv_batch_scale_names")
             session_discard(ctx.page.session, "mnv_batch_default_fov")
+            if ctx.page.session.get("mnv_batch_device_from_meta"):
+                ctx.page.session.set("mnv_3mm_device", "")
+            session_discard(ctx.page.session, "mnv_batch_devices")
+            session_discard(ctx.page.session, "mnv_batch_device_stems")
+            session_discard(ctx.page.session, "mnv_batch_device_names")
+            session_discard(ctx.page.session, "mnv_batch_default_device")
+            session_discard(ctx.page.session, "mnv_batch_device_from_meta")
             session_discard(ctx.page.session, "last_result")
             session_discard(ctx.page.session, "batch_results")
             session_discard(ctx.page.session, "results_selected_index")
@@ -1174,6 +1215,31 @@ async def get_dashboard_view(ctx: AppContext):
         await run_batch_analysis(None)
         return True
 
+    def _store_export_device_maps(images, meta_files):
+        """Remember per-image Optovue vs Zeiss HD from export/meta stratum."""
+        path_to_device, default_device, warnings = resolve_image_device_map(
+            images, meta_files
+        )
+        stem_to_device = load_meta_device_by_stem(meta_files)
+        name_to_device = {
+            img.name: stem_to_device[img.stem]
+            for img in images
+            if img.stem in stem_to_device
+        }
+        if stem_to_device:
+            ctx.page.session.set("mnv_batch_device_stems", stem_to_device)
+            ctx.page.session.set("mnv_batch_device_names", name_to_device)
+        else:
+            session_discard(ctx.page.session, "mnv_batch_device_stems")
+            session_discard(ctx.page.session, "mnv_batch_device_names")
+        if path_to_device:
+            ctx.page.session.set("mnv_batch_devices", path_to_device)
+        else:
+            session_discard(ctx.page.session, "mnv_batch_devices")
+        ctx.page.session.set("mnv_batch_default_device", default_device)
+        ctx.page.session.set("mnv_batch_device_from_meta", True)
+        return default_device, warnings
+
     async def load_second_reader_batch(fspath) -> bool:
         """
         第2リーダー: メタデータフォルダの親フォルダを自動スキャンし、
@@ -1204,14 +1270,30 @@ async def get_dashboard_view(ctx: AppContext):
         )
         for w in fov_warnings:
             await ctx.add_to_console(f"第2リーダー FOV: {w}", "WARN")
+        default_device, device_warnings = _store_export_device_maps(
+            scan.images, scan.meta_files
+        )
+        for w in device_warnings:
+            await ctx.add_to_console(f"第2リーダー 装置: {w}", "WARN")
         if default_fov is not None:
             scale_txt = format_scale_dropdown_value(default_fov)
             scale_mm.value = scale_txt
             ctx.page.session.set("scale", float(default_fov))
             ctx.page.session.set("mnv_batch_default_fov", float(default_fov))
-            ctx.page.session.set("mnv_3mm_device", "")
+            device_token = device_token_for_image(
+                "", default_device=default_device, fov_mm=float(default_fov)
+            )
+            ctx.page.session.set("mnv_3mm_device", device_token)
+            device_note = ""
+            if abs(float(default_fov) - 3.0) < 0.01:
+                device_note = (
+                    " 3 mm の基準は Optovue です。"
+                    if device_token == "optovue"
+                    else " 3 mm の基準は Zeiss HD です。"
+                )
             await ctx.add_to_console(
-                f"第2リーダー: export/meta の FOV からスケールを {scale_txt} mm に設定しました。",
+                f"第2リーダー: export/meta の FOV からスケールを {scale_txt} mm に設定しました。"
+                f"{device_note}",
                 "INFO",
             )
         else:
@@ -1470,12 +1552,22 @@ async def get_dashboard_view(ctx: AppContext):
         )
         for w in fov_warnings:
             await ctx.add_to_console(f"最終読影者 FOV: {w}", "WARN")
+        default_device, device_warnings = _store_export_device_maps(
+            images, meta_files
+        )
+        for w in device_warnings:
+            await ctx.add_to_console(f"最終読影者 装置: {w}", "WARN")
         if default_fov is not None:
             scale_txt = format_scale_dropdown_value(default_fov)
             scale_mm.value = scale_txt
             ctx.page.session.set("scale", float(default_fov))
             ctx.page.session.set("mnv_batch_default_fov", float(default_fov))
-            ctx.page.session.set("mnv_3mm_device", "")
+            ctx.page.session.set(
+                "mnv_3mm_device",
+                device_token_for_image(
+                    "", default_device=default_device, fov_mm=float(default_fov)
+                ),
+            )
         else:
             session_discard(ctx.page.session, "mnv_batch_default_fov")
         stem_to_fov = load_meta_fov_by_stem(meta_files)

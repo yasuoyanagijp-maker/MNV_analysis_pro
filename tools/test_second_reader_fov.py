@@ -9,8 +9,11 @@ import unittest
 from pathlib import Path
 
 from src.utils.second_reader import (
+    bind_device_to_batch_paths,
     bind_fov_to_batch_paths,
+    device_token_for_image,
     format_scale_dropdown_value,
+    resolve_image_device_map,
     resolve_image_fov_map,
 )
 
@@ -61,6 +64,63 @@ class TestSecondReaderFov(unittest.TestCase):
             )
             _, default_fov, _ = resolve_image_fov_map([img], [meta])
             self.assertEqual(default_fov, 3.0)
+
+    def test_optovue_stratum_selects_optovue_device(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            optovue = root / "optovue_case.png"
+            zeiss = root / "zeiss_case.png"
+            optovue.write_bytes(b"x")
+            zeiss.write_bytes(b"y")
+            (root / "optovue_case.json").write_text(
+                json.dumps({"lesion_id": "optovue_case", "stratum": "optovue_3mm", "fov_mm": 3.0}),
+                encoding="utf-8",
+            )
+            (root / "zeiss_case.json").write_text(
+                json.dumps({"lesion_id": "zeiss_case", "stratum": "small_3mm", "fov_mm": 3.0}),
+                encoding="utf-8",
+            )
+            path_map, default_device, warnings = resolve_image_device_map(
+                [optovue, zeiss],
+                [root / "optovue_case.json", root / "zeiss_case.json"],
+            )
+            self.assertEqual(path_map[str(optovue.resolve())], "optovue")
+            self.assertEqual(path_map[str(zeiss.resolve())], "")
+            self.assertIn(default_device, {"optovue", ""})
+            self.assertTrue(warnings)
+            staged = str((root / "staged" / optovue.name))
+            rebound = bind_device_to_batch_paths(
+                [staged],
+                {"optovue_case": "optovue", "zeiss_case": ""},
+                {optovue.name: "optovue", zeiss.name: ""},
+            )
+            self.assertEqual(rebound[staged], "optovue")
+            self.assertEqual(
+                device_token_for_image(
+                    staged,
+                    path_to_device=rebound,
+                    default_device="",
+                    fov_mm=3.0,
+                ),
+                "optovue",
+            )
+            self.assertEqual(
+                device_token_for_image(
+                    str(zeiss),
+                    stem_to_device={"zeiss_case": ""},
+                    default_device="optovue",
+                    fov_mm=3.0,
+                ),
+                "",
+            )
+            self.assertEqual(
+                device_token_for_image(
+                    str(optovue),
+                    stem_to_device={"optovue_case": "optovue"},
+                    fov_mm=6.0,
+                ),
+                "",
+            )
 
 
 if __name__ == "__main__":

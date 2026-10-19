@@ -434,6 +434,141 @@ def format_scale_dropdown_value(fov_mm: float) -> str:
     return f"{float(fov_mm):g}"
 
 
+def _meta_device_token(meta: Dict[str, Any]) -> str:
+    """Session device token. Only Optovue 3 mm meta selects ``optovue``."""
+    stratum = str(meta.get("stratum") or "").strip().lower()
+    if stratum == "optovue_3mm":
+        return "optovue"
+    return ""
+
+
+def load_meta_device_by_stem(meta_files: Sequence[Path]) -> Dict[str, str]:
+    """Map meta stem / lesion_id → ``optovue`` or ``\"\"`` (Zeiss HD / other)."""
+    out: Dict[str, str] = {}
+    for path in meta_files:
+        try:
+            meta = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if not isinstance(meta, dict):
+            continue
+        token = _meta_device_token(meta)
+        stems = {
+            Path(path).stem,
+            str(meta.get("lesion_id") or "").strip(),
+        }
+        for stem in stems:
+            if stem:
+                out[stem] = token
+    return out
+
+
+def resolve_image_device_map(
+    images: Sequence[Path],
+    meta_files: Sequence[Path],
+) -> Tuple[Dict[str, str], str, List[str]]:
+    """
+    Build absolute-image-path → device token from export/meta ``stratum``.
+
+    ``optovue`` selects the Optovue 3 mm references. An empty token keeps
+    Zeiss HD at 3 mm. ``default_device`` is the majority token.
+    """
+    warnings: List[str] = []
+    by_stem = load_meta_device_by_stem(meta_files)
+    path_to_device: Dict[str, str] = {}
+    for img in images:
+        if img.stem not in by_stem:
+            continue
+        token = by_stem[img.stem]
+        try:
+            path_to_device[str(Path(img).resolve())] = token
+        except OSError:
+            path_to_device[str(img)] = token
+    if not path_to_device:
+        return {}, "", warnings
+    counts = Counter(path_to_device.values())
+    default_device = str(counts.most_common(1)[0][0])
+    if len(counts) > 1:
+        label = "Optovue" if default_device == "optovue" else "Zeiss HD"
+        warnings.append(
+            f"メタの 3 mm 装置が混在しています（多数派 {label} を既定にします）。"
+            " 画像ごとに基準を切り替えます。"
+        )
+    return path_to_device, default_device, warnings
+
+
+def bind_device_to_batch_paths(
+    paths: Sequence[str],
+    stem_to_device: Dict[str, str],
+    name_to_device: Optional[Dict[str, str]] = None,
+) -> Dict[str, str]:
+    """Remap device tokens onto staged paths. Empty string means Zeiss HD."""
+    name_to_device = name_to_device or {}
+    out: Dict[str, str] = {}
+    for raw in paths:
+        p = Path(raw)
+        if p.name in name_to_device:
+            token = name_to_device[p.name]
+        elif p.stem in stem_to_device:
+            token = stem_to_device[p.stem]
+        else:
+            continue
+        token = "optovue" if token == "optovue" else ""
+        out[str(raw)] = token
+        try:
+            out[str(p.resolve())] = token
+        except OSError:
+            pass
+    return out
+
+
+def device_token_for_image(
+    path: str,
+    *,
+    path_to_device: Optional[Dict[str, str]] = None,
+    stem_to_device: Optional[Dict[str, str]] = None,
+    name_to_device: Optional[Dict[str, str]] = None,
+    default_device: str = "",
+    fov_mm: Optional[float] = None,
+) -> str:
+    """Return ``optovue`` or ``\"\"`` for one queued image.
+
+    A known meta token wins. Images without meta use ``default_device``.
+    Any FOV other than 3 mm clears the token so a 6 mm image cannot keep
+    the Optovue 3 mm references.
+    """
+    path_to_device = path_to_device or {}
+    stem_to_device = stem_to_device or {}
+    name_to_device = name_to_device or {}
+    token: Optional[str] = None
+    if path:
+        p = Path(path)
+        if path in path_to_device:
+            token = path_to_device[path]
+        else:
+            try:
+                resolved = str(p.resolve())
+            except OSError:
+                resolved = ""
+            if resolved and resolved in path_to_device:
+                token = path_to_device[resolved]
+        if token is None and p.name in name_to_device:
+            token = name_to_device[p.name]
+        if token is None and p.stem in stem_to_device:
+            token = stem_to_device[p.stem]
+    if token is None:
+        token = default_device or ""
+    if fov_mm is not None:
+        try:
+            if abs(float(fov_mm) - 3.0) >= 0.01:
+                return ""
+        except (TypeError, ValueError):
+            return ""
+    if str(token).strip().lower() in {"optovue", "optovue_3mm"}:
+        return "optovue"
+    return ""
+
+
 def bind_fov_to_batch_paths(
     paths: Sequence[str],
     stem_to_fov: Dict[str, float],
