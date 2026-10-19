@@ -13,6 +13,7 @@ _SRC = _PROJECT_ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from src.utils.mnv_size_class import explicit_mnv_size_class
 from src.utils.vd_batch_csv import VD_LAYOUT_VSL_DENSITY_ONLY
 from src.utils.batch_csv_export import mark_analysis_started
 
@@ -122,6 +123,9 @@ async def get_mnv_view(ctx: AppContext):
                     roi_mask_b64=roi_mask_b64,
                     intelligent_roi=False,
                     use_self_as_fd=_fd_self,
+                    size_class=explicit_mnv_size_class(
+                        scale, ctx.page.session.get("mnv_3mm_device")
+                    ),
                 )
             except Exception as api_err:
                 result = {"error": f"Internal UI/API Connection Crash: {str(api_err)}"}

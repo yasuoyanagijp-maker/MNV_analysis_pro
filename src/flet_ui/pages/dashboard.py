@@ -40,6 +40,7 @@ from src.utils.vd_folder_preflight import (
     scan_vd_folder_pairs,
     vd_pair_suffixes_configured,
 )
+from src.utils.mnv_size_class import explicit_mnv_size_class
 from src.utils.second_reader import (
     FR_ADOPTED_CSV_KEY,
     FR_CSV_PATH_KEY,
@@ -153,13 +154,23 @@ async def get_dashboard_view(ctx: AppContext):
         border_color=PRIMARY,
     )
     
+    def _on_image_scale_change(e):
+        # The numeric dropdown does not name a device. 3.0 stays Zeiss HD.
+        ctx.page.session.set("mnv_3mm_device", "")
+
     scale_mm = ft.Dropdown(
         label="Image Scale (mm)",
         options=[ft.dropdown.Option(str(float(i))) for i in range(1, 13)],
         value="6.0",
         width=150,
         border_color=PRIMARY,
+        on_change=_on_image_scale_change,
     )
+
+    def _mnv_size_class_for_scale(scale_value) -> str:
+        return explicit_mnv_size_class(
+            scale_value, ctx.page.session.get("mnv_3mm_device")
+        ) or ""
 
     vd_sup_suffix = ft.TextField(
         label="VD sup. suffix",
@@ -708,6 +719,7 @@ async def get_dashboard_view(ctx: AppContext):
                         image_path=file_path,
                         scale=float(scale_mm.value),
                         use_self_as_fd=bool(_fd_self),
+                        size_class=_mnv_size_class_for_scale(scale_mm.value) or None,
                     )
                 else:
                     pfp = Path(file_path)
@@ -1169,6 +1181,7 @@ async def get_dashboard_view(ctx: AppContext):
 
         Returns True when the batch was queued successfully.
         """
+        ctx.page.session.set("mnv_3mm_device", "")
         if not fspath:
             return False
         raw = str(fspath).strip().strip("'").strip('"')
@@ -1196,6 +1209,7 @@ async def get_dashboard_view(ctx: AppContext):
             scale_mm.value = scale_txt
             ctx.page.session.set("scale", float(default_fov))
             ctx.page.session.set("mnv_batch_default_fov", float(default_fov))
+            ctx.page.session.set("mnv_3mm_device", "")
             await ctx.add_to_console(
                 f"第2リーダー: export/meta の FOV からスケールを {scale_txt} mm に設定しました。",
                 "INFO",
@@ -1309,6 +1323,7 @@ async def get_dashboard_view(ctx: AppContext):
         だけを通常の ROI→解析キューに投入する。RECHECK指定外のセルは後段の
         トライアッド確定でも一切使用しない。
         """
+        ctx.page.session.set("mnv_3mm_device", "")
         if not fspath:
             return False
         raw = str(fspath).strip().strip("'").strip('"')
@@ -1460,6 +1475,7 @@ async def get_dashboard_view(ctx: AppContext):
             scale_mm.value = scale_txt
             ctx.page.session.set("scale", float(default_fov))
             ctx.page.session.set("mnv_batch_default_fov", float(default_fov))
+            ctx.page.session.set("mnv_3mm_device", "")
         else:
             session_discard(ctx.page.session, "mnv_batch_default_fov")
         stem_to_fov = load_meta_fov_by_stem(meta_files)
@@ -1584,10 +1600,22 @@ async def get_dashboard_view(ctx: AppContext):
     async def show_launch_wizard(_=None):
         """3-step modal that enforces analysis type + scale before folder selection."""
         _pm = ctx.page.session.get("vd_use_pair_mode")
+        def _wizard_device_for_scale(scale_text: str) -> str:
+            try:
+                scale_value = float(scale_text)
+            except (TypeError, ValueError):
+                return ""
+            if abs(scale_value - 3.0) >= 0.01:
+                return ""
+            if ctx.page.session.get("mnv_3mm_device") == "optovue":
+                return "optovue"
+            return "zeiss_hd"
+
         wizard = {
             "step": 1,
             "analysis_type": analysis_type.value or "MNV",
             "scale_mm": scale_mm.value or "6.0",
+            "device": _wizard_device_for_scale(scale_mm.value or "6.0"),
             "vd_sup": vd_sup_suffix.value or "1.tif",
             "vd_deep": vd_deep_suffix.value or "2.tif",
             "vd_side_val": vd_side.value or "right",
@@ -1631,20 +1659,33 @@ async def get_dashboard_view(ctx: AppContext):
             on_change=lambda e: wizard.update({"scale_mm": e.control.value or "6.0"}),
         )
 
-        def _scale_btn(label, val):
-            sel = wizard["scale_mm"] == val
+        def _scale_btn(label, val, device="", width=140):
+            sel = wizard["scale_mm"] == val and wizard.get("device", "") == device
             async def _pick(_=None):
                 wizard["scale_mm"] = val
+                wizard["device"] = device
                 scale_field.value = val
                 _refresh()
             return ft.ElevatedButton(
                 label,
                 bgcolor=ACCENT if sel else Colors.with_opacity(0.1, Colors.WHITE),
                 color=Colors.BLACK if sel else Colors.WHITE,
-                width=105,
+                width=width,
                 on_click=lambda _: ctx.page.run_task(_pick),
                 style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)),
             )
+
+        def _scale_confirm_label() -> str:
+            raw = wizard.get("scale_mm") or ""
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                return f"{raw} mm"
+            if abs(value - 3.0) < 0.01:
+                if wizard.get("device") == "optovue":
+                    return "3 mm (Optovue)"
+                return "3 mm (Zeiss HD)"
+            return f"{value:g} mm"
 
         vd_sup_f = ft.TextField(label="Superficial suffix", value=wizard["vd_sup"],
                                 width=160, border_color=ACCENT,
@@ -1692,10 +1733,21 @@ async def get_dashboard_view(ctx: AppContext):
                 return ft.Column([
                     ft.Text("Select image capture scale:", color=TEXT_MUTED, size=13),
                     ft.Text("Quick select:", color=TEXT_MUTED, size=12),
-                    ft.Row([_scale_btn("3 mm", "3.0"),
-                            _scale_btn("4.5 mm", "4.5"),
-                            _scale_btn("6 mm", "6.0")], spacing=10),
-                    ft.Text("Or enter manually:", color=TEXT_MUTED, size=12),
+                    ft.Row([
+                        _scale_btn("3 mm (Optovue)", "3.0", "optovue", 230),
+                        _scale_btn("3 mm (Zeiss HD)", "3.0", "zeiss_hd", 230),
+                    ], spacing=10, wrap=True),
+                    ft.Row([
+                        _scale_btn("4.5 mm", "4.5", "", 140),
+                        _scale_btn("6 mm", "6.0", "", 140),
+                    ], spacing=10),
+                    ft.Text(
+                        "3 mm (Optovue) uses the Optovue 3mm complexity reference. "
+                        "3 mm (Zeiss HD) uses the CIRRUS 3mm reference.",
+                        color=TEXT_MUTED,
+                        size=11,
+                    ),
+                    ft.Text("Or enter manually (3 mm manual entry uses Zeiss HD):", color=TEXT_MUTED, size=12),
                     scale_field,
                 ], spacing=14)
             elif step == 2.5:
@@ -1810,7 +1862,7 @@ async def get_dashboard_view(ctx: AppContext):
                 rows = [
                     _row(Icons.SCIENCE_ROUNDED, "Analysis", _labels[atype]),
                     _row(Icons.STRAIGHTEN_ROUNDED, "Scale",
-                         f"{wizard['scale_mm']} mm"),
+                         _scale_confirm_label()),
                 ]
                 if atype == "MNV":
                     fd_lbl = ("ON (self-referential)"
@@ -1871,17 +1923,32 @@ async def get_dashboard_view(ctx: AppContext):
         async def _next(_=None):
             s = wizard["step"]
             if s == 2:
+                typed = (scale_field.value or "").strip()
+                if typed != str(wizard["scale_mm"]):
+                    wizard["device"] = ""
+                    wizard["scale_mm"] = typed
                 try:
                     v = float(wizard["scale_mm"])
                     wizard["scale_mm"] = str(v) if v > 0 else "6.0"
                 except (ValueError, TypeError):
                     wizard["scale_mm"] = "6.0"
+                    wizard["device"] = ""
+                if abs(float(wizard["scale_mm"]) - 3.0) >= 0.01:
+                    wizard["device"] = ""
+                elif wizard.get("device") not in ("optovue", "zeiss_hd"):
+                    wizard["device"] = "zeiss_hd"
             wizard["step"] = {1: 2, 2: 2.5, 2.5: 3}.get(s, 3)
             _refresh()
 
         async def _select_folder(_=None):
             analysis_type.value = wizard["analysis_type"]
             scale_mm.value = wizard["scale_mm"]
+            if wizard.get("device") == "optovue":
+                ctx.page.session.set("mnv_3mm_device", "optovue")
+            elif wizard.get("device") == "zeiss_hd":
+                ctx.page.session.set("mnv_3mm_device", "zeiss_hd")
+            else:
+                ctx.page.session.set("mnv_3mm_device", "")
             vd_sup_suffix.value = wizard["vd_sup"]
             vd_deep_suffix.value = wizard["vd_deep"]
             vd_side.value = wizard["vd_side_val"]
@@ -1894,7 +1961,7 @@ async def get_dashboard_view(ctx: AppContext):
             await show_folder_explorer("Select Analysis Folder",
                                        on_select=load_batch_from_directory)
 
-        HEIGHT = {1: 310, 2: 330, 2.5: 370, 3: 340}
+        HEIGHT = {1: 310, 2: 420, 2.5: 370, 3: 340}
 
         def _refresh():
             step = wizard["step"]

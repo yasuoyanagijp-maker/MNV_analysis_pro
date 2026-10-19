@@ -35,6 +35,10 @@ _STABILITY_REF_SMALL_3MM: Optional[Dict[str, object]] = None
 _STABILITY_REF_SMALL_3MM_LOADED: bool = False
 _COMPLEXITY_REF_SMALL_3MM: Optional[Dict[str, object]] = None
 _COMPLEXITY_REF_SMALL_3MM_LOADED: bool = False
+_COMPLEXITY_REF_OPTOVUE_3MM: Optional[Dict[str, object]] = None
+_COMPLEXITY_REF_OPTOVUE_3MM_LOADED: bool = False
+_MNV_CLASSIFICATION_REF_OPTOVUE_3MM: Optional[Dict[str, object]] = None
+_MNV_CLASSIFICATION_REF_OPTOVUE_3MM_LOADED: bool = False
 
 
 def _iter_reference_json_candidates(filename: str):
@@ -170,8 +174,27 @@ def load_stability_ref(size_class: str) -> Optional[Dict[str, object]]:
     return None
 
 
+def _load_complexity_ref_optovue_3mm() -> Optional[Dict[str, object]]:
+    """Load PCA reference for Optovue 3mm complexity from JSON."""
+    global _COMPLEXITY_REF_OPTOVUE_3MM, _COMPLEXITY_REF_OPTOVUE_3MM_LOADED
+
+    if _COMPLEXITY_REF_OPTOVUE_3MM_LOADED:
+        return _COMPLEXITY_REF_OPTOVUE_3MM
+
+    _COMPLEXITY_REF_OPTOVUE_3MM_LOADED = True
+    try:
+        data = _load_reference_json("complexity_ref_optovue_3mm.json")
+        _COMPLEXITY_REF_OPTOVUE_3MM = data
+    except Exception:
+        _COMPLEXITY_REF_OPTOVUE_3MM = None
+
+    return _COMPLEXITY_REF_OPTOVUE_3MM
+
+
 def load_complexity_ref(size_class: str) -> Optional[Dict[str, object]]:
     """Public loader for complexity reference JSON by size_class."""
+    if size_class == "optovue_3mm":
+        return _load_complexity_ref_optovue_3mm()
     if size_class == "small_3mm":
         return _load_complexity_ref_small_3mm()
     if size_class == "small":
@@ -198,6 +221,18 @@ def load_mnv_classification_ref(size_class: str) -> Optional[Dict[str, object]]:
     global _MNV_CLASSIFICATION_REF_SMALL, _MNV_CLASSIFICATION_REF_SMALL_LOADED
     global _MNV_CLASSIFICATION_REF_LARGE, _MNV_CLASSIFICATION_REF_LARGE_LOADED
     global _MNV_CLASSIFICATION_REF_SMALL_3MM, _MNV_CLASSIFICATION_REF_SMALL_3MM_LOADED
+    global _MNV_CLASSIFICATION_REF_OPTOVUE_3MM, _MNV_CLASSIFICATION_REF_OPTOVUE_3MM_LOADED
+
+    if size_class == "optovue_3mm":
+        if _MNV_CLASSIFICATION_REF_OPTOVUE_3MM_LOADED:
+            return _MNV_CLASSIFICATION_REF_OPTOVUE_3MM
+        _MNV_CLASSIFICATION_REF_OPTOVUE_3MM_LOADED = True
+        try:
+            data = _load_reference_json("mnv_classification_ref_optovue_3mm.json")
+            _MNV_CLASSIFICATION_REF_OPTOVUE_3MM = data
+        except Exception:
+            _MNV_CLASSIFICATION_REF_OPTOVUE_3MM = None
+        return _MNV_CLASSIFICATION_REF_OPTOVUE_3MM
 
     if size_class == "small_3mm":
         if _MNV_CLASSIFICATION_REF_SMALL_3MM_LOADED:
@@ -255,6 +290,28 @@ def _piecewise_scale(
     if x_max > x_median:
         result[high] = 50.0 + 50.0 * (x[high] - x_median) / (x_max - x_median)
     return np.clip(result, 0.0, 100.0)
+
+
+def trunk_term_for_complexity(
+    raw_trunk_score: float,
+    ref: Optional[Dict[str, object]],
+) -> float:
+    """Trunk term mixed into Complexity.
+
+    Strata with ``trunk_scale_correction`` map the raw score so the cohort
+    median is 50. Optovue 3mm has no trunk distribution in the reference
+    cohort, so ``trunk_term.value`` (50) is used instead of the raw score.
+    """
+    if isinstance(ref, dict) and isinstance(ref.get("trunk_scale_correction"), dict):
+        return apply_trunk_scale_correction(raw_trunk_score, ref)
+    if isinstance(ref, dict):
+        term = ref.get("trunk_term")
+        if isinstance(term, dict) and term.get("value") is not None:
+            try:
+                return float(np.clip(float(term["value"]), 0.0, 100.0))
+            except (TypeError, ValueError):
+                pass
+    return apply_trunk_scale_correction(raw_trunk_score, ref)
 
 
 def apply_trunk_scale_correction(
@@ -836,7 +893,9 @@ def calculate_complexity_pca(
       - PC2_score = clip(100 * (PC2_raw - PC2_min) / (PC2_max - PC2_min), 0, 100)
       - complexity = PC1_score * evr[0] + PC2_score * evr[1] + trunk_score * (1 - evr[0] - evr[1])
     """
-    if size_class == "small_3mm":
+    if size_class == "optovue_3mm":
+        ref = _load_complexity_ref_optovue_3mm()
+    elif size_class == "small_3mm":
         ref = _load_complexity_ref_small_3mm()
     elif size_class == "small":
         ref = _load_complexity_ref_small()

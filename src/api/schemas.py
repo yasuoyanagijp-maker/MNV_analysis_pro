@@ -10,6 +10,7 @@ class ROI(BaseModel):
 class AnalysisRequest(BaseModel):
     image_path: str
     scale_mm: float = 6.0
+    size_class: Optional[str] = None  # "optovue_3mm" when the 3 mm (Optovue) button is selected
     save_stages: bool = True
     roi: Optional[ROI] = None
     roi_mask_b64: Optional[str] = None  # Base64-encoded pixel-accurate mask (priority over roi bbox)

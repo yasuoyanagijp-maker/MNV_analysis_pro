@@ -352,7 +352,7 @@ def _meta_fov_mm(meta: Dict[str, Any]) -> Optional[float]:
         if v > 0:
             return v
     stratum = str(meta.get("stratum") or "").strip().lower()
-    if stratum in {"small_3mm", "3mm", "3x3"}:
+    if stratum in {"small_3mm", "optovue_3mm", "3mm", "3x3"}:
         return 3.0
     if stratum in {"small", "large", "6mm", "6x6"}:
         return 6.0

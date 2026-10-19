@@ -36,6 +36,7 @@ from src.utils.app_paths import (
 from utils.cv2_path import imread_grayscale
 from utils.mnv_cc_resolve import resolve_flow_deficit_cc_path
 from utils.mnv_imagej_csv import metrics_for_csv_export
+from utils.mnv_size_class import explicit_mnv_size_class
 import shutil
 import cv2
 import numpy as np
@@ -187,7 +188,8 @@ async def analyze_mnv(request: AnalysisRequest):
             scale_mm=request.scale_mm,
             save_stages=request.save_stages,
             enable_roi_refinement=request.intelligent_roi,
-            verbose=True
+            verbose=True,
+            size_class=explicit_mnv_size_class(request.scale_mm, request.size_class),
         )
 
         # Call the actual engine (CC sibling → Flow Deficit R1–R3 when present)
