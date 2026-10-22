@@ -325,6 +325,16 @@ def verify_app(app: Path) -> None:
 
 
 def adhoc_sign(app: Path) -> None:
+    helper = Path(__file__).resolve().parent / "mac_adhoc_codesign.sh"
+    if helper.is_file():
+        print(f"  bash {helper.name} sign", flush=True)
+        proc = _run(["bash", str(helper), "sign", str(app)], check=False)
+        if proc.returncode != 0:
+            sys.stderr.write(proc.stderr or proc.stdout or "codesign failed\n")
+            raise SystemExit(proc.returncode)
+        if proc.stdout:
+            print(proc.stdout, end="" if proc.stdout.endswith("\n") else "\n", flush=True)
+        return
     _run(["xattr", "-cr", str(app)], check=False)
     print("  codesign --force --deep --sign -", flush=True)
     proc = _run(["codesign", "--force", "--deep", "--sign", "-", str(app)], check=False)

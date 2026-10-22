@@ -82,9 +82,12 @@ def _readme(pkg: dict) -> str:
             "2. このフォルダの「パッチ適用.command」を右クリック →「開く」。\n"
             "   初回はダブルクリックだと macOS に止められることがあります。\n"
             "3. 通常は /Applications/ARIAKE_OCTA.app に適用されます。\n"
-            "   別の場所にある場合は、ターミナルで次を実行します。\n"
-            "   bash パッチ適用.command /パス/ARIAKE_OCTA.app\n"
+            "   別の場所にある場合は、このフォルダでターミナルを開き、次を実行します。\n"
+            "   bash パッチ適用.command /Applications/ARIAKE_OCTA.app\n"
             "4. 終わるとアドホック再署名してアプリが開きます。\n"
+            "   shapely/.dylibs で codesign が止まった場合も、この command が\n"
+            "   フォルダ名を署名できる形にしてから署名します。\n"
+            "   ターミナルで codesign --deep だけを繰り返さないでください。\n"
         )
     else:
         how = (
@@ -106,6 +109,7 @@ def _readme(pkg: dict) -> str:
         "  3 mm (Optovue)  … Optovue 3mm の Complexity と形態分類",
         "  3 mm (Zeiss HD) … 従来の CIRRUS HD 3×3",
         "数値欄の 3.0 と、手入力の 3 mm は Zeiss HD のままです。",
+        "画面上部の Image Scale (mm) の数値一覧には、3 mm (Optovue) は出ません。",
         "4.5 mm と 6 mm は変わりません。",
         "",
         "Optovue 3mm の Complexity では Trunk 項は 50 のままです。",
@@ -134,6 +138,7 @@ def build(out_dir: Path) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     mac_cmd = (TOOL_DIR / "apply_mac.command").read_bytes().replace(b"\r\n", b"\n")
+    mac_sign = (TOOL_DIR.parent / "mac_adhoc_codesign.sh").read_bytes().replace(b"\r\n", b"\n")
     win_ps1 = (TOOL_DIR / "apply_windows.ps1").read_bytes()
     if not win_ps1.startswith(b"\xef\xbb\xbf"):
         win_ps1 = b"\xef\xbb\xbf" + win_ps1.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
@@ -152,6 +157,7 @@ def build(out_dir: Path) -> list[Path]:
             ]
             if pkg["platform"] == "mac":
                 entries.append((f"{folder}/パッチ適用.command", mac_cmd, True))
+                entries.append((f"{folder}/mac_adhoc_codesign.sh", mac_sign, True))
             else:
                 entries.append((f"{folder}/パッチ適用.bat", win_bat, False))
                 entries.append((f"{folder}/apply_windows.ps1", win_ps1, False))

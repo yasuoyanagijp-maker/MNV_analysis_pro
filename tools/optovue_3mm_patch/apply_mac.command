@@ -9,6 +9,17 @@ PAYLOAD="${SCRIPT_DIR}/payload"
 APP="${1:-/Applications/ARIAKE_OCTA.app}"
 APP="${APP%/}"
 
+if [[ -f "${SCRIPT_DIR}/mac_adhoc_codesign.sh" ]]; then
+  # shellcheck source=/dev/null
+  source "${SCRIPT_DIR}/mac_adhoc_codesign.sh"
+elif [[ -f "${SCRIPT_DIR}/../mac_adhoc_codesign.sh" ]]; then
+  # shellcheck source=/dev/null
+  source "${SCRIPT_DIR}/../mac_adhoc_codesign.sh"
+else
+  echo "[エラー] mac_adhoc_codesign.sh がパッチと同じフォルダにありません。" >&2
+  exit 1
+fi
+
 echo ""
 echo "╔══════════════════════════════════════════════╗"
 echo "║  ARIAKE OCTA — Optovue 3mm パッチ（Mac）     ║"
@@ -27,6 +38,52 @@ fail() {
   echo "[エラー] $*" >&2
   pause_end
   exit 1
+}
+
+_payload_junk() {
+  case "$(basename "$1")" in
+    .DS_Store|._*) return 0 ;;
+  esac
+  return 1
+}
+
+# PyInstaller noarchive stores dashboard.pyc beside, or instead of, dashboard.py.
+# A sourceless .pyc earlier on sys.path keeps the pre-patch wizard on screen.
+_purge_bytecode() {
+  local rel="$1"
+  local pyc_rel rel_dir base pyc root
+  pyc_rel="${rel%.py}.pyc"
+  rel_dir="$(dirname "$rel")"
+  base="$(basename "$rel" .py)"
+  while IFS= read -r -d '' pyc; do
+    rm -f "$pyc"
+  done < <(find "${APP}/Contents" -path "*/${pyc_rel}" -print0 2>/dev/null || true)
+  while IFS= read -r -d '' pyc; do
+    rm -f "$pyc"
+  done < <(find "${APP}/Contents" -path "*/${rel_dir}/__pycache__/${base}.cpython-*.pyc" -print0 2>/dev/null || true)
+  for root in "$RESOURCES" "${APP}/Contents/Frameworks" "${APP}/Contents/MacOS"; do
+    rm -f "${root}/${pyc_rel}"
+    rm -f "${root}/${rel_dir}/__pycache__/${base}".cpython-*.pyc
+  done
+}
+
+_install_payload_file() {
+  local src="$1"
+  local rel="$2"
+  local root dest parent
+  for root in "$RESOURCES" "${APP}/Contents/Frameworks" "${APP}/Contents/MacOS"; do
+    dest="${root}/${rel}"
+    parent="$(dirname "$dest")"
+    if [[ "$root" == "$RESOURCES" ]]; then
+      mkdir -p "$parent"
+      cp "$src" "$dest"
+    elif [[ -d "$parent" || -L "$parent" ]]; then
+      cp "$src" "$dest"
+    fi
+  done
+  if [[ "$rel" == *.py ]]; then
+    _purge_bytecode "$rel"
+  fi
 }
 
 [[ -d "$PAYLOAD" ]] || fail "payload フォルダがありません。ZIP を展開したフォルダで実行してください。"
@@ -62,19 +119,12 @@ fi
 echo "[1/4] Python と参照 JSON を差し替え..."
 file_count=0
 while IFS= read -r -d '' src; do
-  rel="${src#"${PAYLOAD}/"}"
-  dest="${RESOURCES}/${rel}"
-  mkdir -p "$(dirname "$dest")"
-  cp "$src" "$dest"
-  file_count=$((file_count + 1))
-  if [[ "$dest" == *.py ]]; then
-    base="$(basename "$dest" .py)"
-    dir="$(dirname "$dest")"
-    rm -f "${dir}/${base}.pyc"
-    if [[ -d "${dir}/__pycache__" ]]; then
-      rm -f "${dir}/__pycache__/${base}".cpython-*.pyc
-    fi
+  if _payload_junk "$src"; then
+    continue
   fi
+  rel="${src#"${PAYLOAD}/"}"
+  _install_payload_file "$src" "$rel"
+  file_count=$((file_count + 1))
 done < <(find "$PAYLOAD" -type f -print0)
 echo "       ${file_count} ファイル"
 
@@ -85,12 +135,13 @@ else
   echo "       （このOSではスキップ）"
 fi
 
-echo "[3/4] アドホック再署名（Hardened Runtime なし）..."
+echo "[3/4] アドホック再署名（.dylibs を署名できる形にします）..."
 if [[ "$(uname)" == "Darwin" ]]; then
-  if ! codesign --force --deep --sign - "$APP"; then
-    fail "再署名に失敗しました。ターミナルで次を実行してください: xattr -cr \"${APP}\" && codesign --force --deep --sign - \"${APP}\""
+  if ! sign_mac_adhoc "$APP"; then
+    fail "再署名に失敗しました。ARIAKE OCTA を終了したまま、この「パッチ適用.command」をもう一度実行してください。ターミナルで codesign --deep だけを繰り返すと、shapely/.dylibs で同じエラーになります。"
   fi
 elif [[ "${ARIAKE_PATCH_SKIP_CODESIGN:-}" == "1" ]]; then
+  prepare_mac_codesign "$APP"
   echo "       （検証用に再署名をスキップ）"
 else
   fail "macOS 上で実行してください。"
@@ -98,8 +149,15 @@ fi
 
 echo "[4/4] 完了"
 echo ""
-echo "3 mm (Optovue) と 3 mm (Zeiss HD) が起動ウィザードに出ます。"
-echo "数値の 3.0 と、手入力の 3 mm は Zeiss HD のままです。"
+DASH="${RESOURCES}/src/flet_ui/pages/dashboard.py"
+if [[ -f "$DASH" ]] && grep -q "3 mm (Optovue)" "$DASH"; then
+  echo "確認: アプリ内の画面定義に「3 mm (Optovue)」が入っています。"
+else
+  echo "[警告] アプリ内の dashboard.py に「3 mm (Optovue)」が見つかりません。"
+fi
+echo "起動ウィザードの Step 2 に「3 mm (Optovue)」と「3 mm (Zeiss HD)」が出ます。"
+echo "数値の Image Scale (mm) 一覧には出ません。そこでの 3.0 は Zeiss HD のままです。"
+echo "すでに開いている場合は終了してから、Applications の ARIAKE OCTA を開き直してください。"
 echo ""
 if [[ "$(uname)" == "Darwin" && "${ARIAKE_PATCH_NO_OPEN:-}" != "1" ]]; then
   open "$APP" || true

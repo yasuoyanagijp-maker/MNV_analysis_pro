@@ -261,6 +261,13 @@ fi
 # ── 署名 ─────────────────────────────────────────────────────────────────────
 log_step "コード署名"
 
+# .dylibs などドット付きの実ディレクトリは codesign --deep が bundle と誤認する。
+CODESIGN_PREP="${SCRIPT_DIR}/tools/mac_adhoc_codesign.sh"
+if [[ -f "$CODESIGN_PREP" ]]; then
+    log_info "Frameworks 内のドット付きディレクトリを署名できる形にします..."
+    bash "$CODESIGN_PREP" prepare "$APP_PATH"
+fi
+
 # 拡張属性のクリア（Gatekeeper エラー防止）
 log_info "拡張属性をクリア中..."
 xattr -cr "$APP_PATH"
@@ -279,7 +286,7 @@ log_info "署名中..."
 if [[ "$DEVELOPER_ID" == "-" ]]; then
     log_info "アドホック署名（Hardened Runtime なし・公証なし研究配布）..."
     if ! codesign --force --deep --sign - "${APP_PATH}"; then
-        log_error "codesign に失敗しました。Frameworks 内に *.dist-info が残っていないか確認してください。"
+        log_error "codesign に失敗しました。Frameworks 内の *.dist-info と .dylibs を確認してください。"
         exit 1
     fi
 else
