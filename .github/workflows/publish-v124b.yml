@@ -1,0 +1,107 @@
+name: Publish Mac v1.2.4b
+
+# Bake the Optovue 3mm patch into the published v1.2.4 Mac zips and upload
+# them as v1.2.4b. The cloud agent cannot workflow_dispatch. Delete this
+# file after the run; a commit that removes it does not start the workflow.
+on:
+  push:
+    branches:
+      - cursor/fix-mac-optovue-codesign-058e
+    paths:
+      - .github/workflows/publish-v124b.yml
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout this branch
+        uses: actions/checkout@v4
+
+      - name: Download published v1.2.4 Mac zips
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/in dist/out
+          gh release download v1.2.4-mac \
+            --repo "${{ github.repository }}" \
+            --pattern 'ARIAKE_OCTA_mac.zip' \
+            --pattern 'ARIAKE_OCTA_macOS_Intel_v1.2.4.zip' \
+            --dir dist/in
+          sha256sum dist/in/*.zip
+
+      - name: Build v1.2.4b zips
+        run: |
+          set -euo pipefail
+          python3 tools/build_v124b_mac_zip.py \
+            --input dist/in/ARIAKE_OCTA_mac.zip \
+            --output dist/out/ARIAKE_OCTA_mac_v1.2.4b.zip
+          rm -f dist/in/ARIAKE_OCTA_mac.zip
+          python3 tools/build_v124b_mac_zip.py \
+            --input dist/in/ARIAKE_OCTA_macOS_Intel_v1.2.4.zip \
+            --output dist/out/ARIAKE_OCTA_macOS_Intel_v1.2.4b.zip
+          rm -f dist/in/ARIAKE_OCTA_macOS_Intel_v1.2.4.zip
+          (cd dist/out && sha256sum ./*.zip | tee SHA256SUMS)
+
+      - name: Publish on the source repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create v1.2.4b \
+            dist/out/ARIAKE_OCTA_mac_v1.2.4b.zip \
+            dist/out/ARIAKE_OCTA_macOS_Intel_v1.2.4b.zip \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "ARIAKE OCTA Mac v1.2.4b（Optovue 3mm）" \
+            --notes-file tools/v124b_RELEASE_NOTES.md \
+            --latest
+
+      - name: Publish on the public distribution repository
+        env:
+          GH_TOKEN: ${{ secrets.DISTRIBUTION_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "DISTRIBUTION_SYNC_TOKEN secret is not configured."
+            exit 1
+          fi
+          gh release create v1.2.4b \
+            dist/out/ARIAKE_OCTA_mac_v1.2.4b.zip \
+            dist/out/ARIAKE_OCTA_macOS_Intel_v1.2.4b.zip \
+            --repo yasuoyanagijp-maker/ARIAKE_OCTA-distribution \
+            --title "ARIAKE OCTA Mac v1.2.4b（Optovue 3mm）" \
+            --notes-file tools/v124b_RELEASE_NOTES.md \
+            --latest
+
+      - name: Confirm the public zips match the build
+        env:
+          GH_TOKEN: ${{ secrets.DISTRIBUTION_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pub
+          gh release download v1.2.4b \
+            --repo yasuoyanagijp-maker/ARIAKE_OCTA-distribution \
+            --dir /tmp/pub
+          (cd /tmp/pub && sha256sum ./*.zip) > /tmp/pub/SHA256SUMS
+          diff -u dist/out/SHA256SUMS /tmp/pub/SHA256SUMS
+          python3 - <<'PY'
+          import plistlib
+          import zipfile
+          from pathlib import Path
+          path = Path("/tmp/pub/ARIAKE_OCTA_mac_v1.2.4b.zip")
+          with zipfile.ZipFile(path) as zf:
+              plist_name = next(n for n in zf.namelist() if n.endswith("ARIAKE_OCTA.app/Contents/Info.plist"))
+              info = plistlib.loads(zf.read(plist_name))
+              dashboard = next(n for n in zf.namelist() if n.endswith("Resources/src/flet_ui/pages/dashboard.py"))
+              text = zf.read(dashboard).decode("utf-8")
+          if info.get("CFBundleShortVersionString") != "1.2.4b":
+              raise SystemExit(info)
+          if "3 mm (Optovue)" not in text:
+              raise SystemExit("public zip has no Optovue wizard")
+          print("public Apple Silicon zip is v1.2.4b with Optovue")
+          PY
