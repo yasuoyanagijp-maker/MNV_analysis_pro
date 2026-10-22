@@ -59,7 +59,8 @@ echo "[package_mac_release] copying .app and install helpers..."
 ditto --noqtn --norsrc "$APP_PATH" "${BUNDLE_DIR}/${APP_NAME}.app"
 cp "${SCRIPT_DIR}/インストール.command" "${BUNDLE_DIR}/"
 cp "${SCRIPT_DIR}/Macインストール手順.txt" "${BUNDLE_DIR}/"
-chmod +x "${BUNDLE_DIR}/インストール.command"
+cp "${SCRIPT_DIR}/tools/mac_adhoc_codesign.sh" "${BUNDLE_DIR}/"
+chmod +x "${BUNDLE_DIR}/インストール.command" "${BUNDLE_DIR}/mac_adhoc_codesign.sh"
 
 # Remove AppleDouble resource forks that break Gatekeeper on some Macs
 find "$BUNDLE_DIR" -name '._*' -delete 2>/dev/null || true
