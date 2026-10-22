@@ -44,13 +44,19 @@
 • システム設定 → プライバシーとセキュリティ で、ブロックされた場合は
   「このまま開く」等の許可を試してください。
 
-• ターミナルから（展開したフォルダで）:
+• ターミナルから（展開したフォルダで。cd のパスは展開場所に合わせる）:
 
+    cd （展開したフォルダのパス）
+    xattr -cr .
     xattr -cr ARIAKE_OCTA.app
-    cp -r ARIAKE_OCTA.app /Applications/
+    rm -rf /Applications/ARIAKE_OCTA.app
+    cp -R ARIAKE_OCTA.app /Applications/
     xattr -cr /Applications/ARIAKE_OCTA.app
     codesign --force --deep --sign - /Applications/ARIAKE_OCTA.app
     open /Applications/ARIAKE_OCTA.app
+
+    ※ codesign でパスワードを聞かれたら Mac のログインパスワードです（ariake2024 ではありません）。
+    ※ Apple M 系の Mac では Intel 用 ZIP を使わないでください。
 
 --------------------------------------------------------------------------------
 ■ ログインで「Connection Error: All connection attempts failed」と出る場合
