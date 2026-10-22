@@ -133,32 +133,28 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           NOTES_FILE="$(mktemp)"
-          cat > "${NOTES_FILE}" << 'EOF'
+          NOTES_TEMPLATE="${GITHUB_WORKSPACE}/.github/release-notes/v1.2.4-mac-body.md"
+          if [[ -f "${NOTES_TEMPLATE}" ]]; then
+            cp "${NOTES_TEMPLATE}" "${NOTES_FILE}"
+          else
+            cat > "${NOTES_FILE}" << 'EOF'
           ## macOS release
 
-          Built with PR #43 + PR #44 Mac packaging fixes:
-          - strip `*.dist-info` from Frameworks (fixes codesign / M3 launch SIGKILL)
-          - ad-hoc signing **without** Hardened Runtime (research distribution)
-          - `wrapper.py` runs FastAPI in-process on Darwin (no spawn SIGKILL)
-          - `インストール.command` ad-hoc re-signs after copy to /Applications
-          - post-build architecture verification (PyInstaller slice; Flet universal2 allowed)
-
-          ## Install
-          1. Unzip and run `インストール.command` via **right-click → Open**
-          2. See `Macインストール手順.txt` in the zip
+          See `Macインストール手順.txt` in the zip. Install via **right-click → Open** on `インストール.command`, or use the terminal block in `.github/release-notes/v1.2.4-mac-body.md`.
 
           ## Artifacts
           EOF
-          if [[ "${BUILD_TARGET}" == "arm64" ]]; then
-            cat >> "${NOTES_FILE}" << 'EOF'
+            if [[ "${BUILD_TARGET}" == "arm64" ]]; then
+              cat >> "${NOTES_FILE}" << 'EOF'
           - Apple Silicon (M1/M2/M3/M4): `ARIAKE_OCTA_mac.zip` (arm64 only)
           EOF
-          else
-            cat >> "${NOTES_FILE}" << 'EOF'
+            else
+              cat >> "${NOTES_FILE}" << 'EOF'
           - Intel Mac: `ARIAKE_OCTA_macOS_Intel_v*.zip`
           EOF
+            fi
+            sed -i '' 's/^          //' "${NOTES_FILE}"
           fi
-          sed -i '' 's/^          //' "${NOTES_FILE}"
           gh release create "$TAG" dist/*.zip \
             --title "macOS Release ${TAG}" \
             --notes-file "${NOTES_FILE}" \

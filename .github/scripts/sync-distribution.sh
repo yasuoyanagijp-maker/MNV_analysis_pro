@@ -107,6 +107,12 @@ if [[ "${SYNC_RELEASE:-false}" == "true" && -n "${RELEASE_TAG:-}" ]]; then
   NOTES="$(gh release view "${RELEASE_TAG}" --repo "${SOURCE_REPO}" --json body --jq .body)"
   if gh release view "${RELEASE_TAG}" --repo "${DIST_OWNER}/${DIST_REPO}" >/dev/null 2>&1; then
     gh release upload "${RELEASE_TAG}" "${ASSET_DIR}"/* --repo "${DIST_OWNER}/${DIST_REPO}" --clobber
+    if [[ -n "${NOTES}" ]]; then
+      NOTES_FILE="$(mktemp)"
+      printf '%s\n' "${NOTES}" > "${NOTES_FILE}"
+      gh release edit "${RELEASE_TAG}" --repo "${DIST_OWNER}/${DIST_REPO}" --notes-file "${NOTES_FILE}"
+      rm -f "${NOTES_FILE}"
+    fi
   else
     gh release create "${RELEASE_TAG}" "${ASSET_DIR}"/* \
       --repo "${DIST_OWNER}/${DIST_REPO}" \
