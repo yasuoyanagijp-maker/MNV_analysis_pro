@@ -10,4 +10,4 @@
 
 画素のスケールはどちらも 3.0 mm です。Optovue は Optovue 3mm の Complexity と形態分類を使います。Zeiss HD、数値の 3.0、手入力の 3 mm は従来の CIRRUS HD 3×3 のままです。Caliber Uniformity、病態分類、Caliber U2 も Zeiss HD 3mm の基準のままです。
 
-各 ZIP の `パッチの説明.txt` の手順で適用してください。Mac は適用後にアドホック再署名します。
+各 ZIP の `パッチの説明.txt` の手順で適用してください。Mac は適用後にアドホック再署名します。`shapely/.dylibs` で `bundle format unrecognized` と出る場合は、ターミナルの `codesign --deep` を繰り返さず、更新した「パッチ適用.command」を右クリック →「開く」で実行してください。起動ウィザードの Step 2 に **3 mm (Optovue)** と **3 mm (Zeiss HD)** が出ます。数値の Image Scale (mm) 一覧には出ません。

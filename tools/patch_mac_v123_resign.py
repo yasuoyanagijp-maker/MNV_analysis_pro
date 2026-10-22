@@ -127,51 +127,62 @@ def main() -> int:
     print("[1/4] pip メタデータ（*.dist-info 等）を除去...")
     strip_pip_metadata(app)
 
-    print("[2/4] 隔離属性をクリア (xattr -cr)...")
-    proc = _run(["xattr", "-cr", str(app)], check=False)
-    if proc.returncode != 0:
-        print("[エラー] xattr に失敗しました。", file=sys.stderr)
-        if proc.stderr:
-            print(proc.stderr, file=sys.stderr)
-        if proc.stdout:
-            print(proc.stdout, file=sys.stderr)
-        return 1
+    helper = Path(__file__).resolve().parent / "mac_adhoc_codesign.sh"
+    if helper.is_file():
+        print("[2/4] .dylibs を署名できる形にして、隔離解除と再署名...")
+        proc = subprocess.run(["bash", str(helper), "sign", str(app)], text=True)
+        if proc.returncode != 0:
+            print("[エラー] 再署名に失敗しました。", file=sys.stderr)
+            print("shapely/.dylibs に対して codesign --deep だけを繰り返しても同じエラーになります。", file=sys.stderr)
+            print("このパッチで直らない場合は v1.2.4-mac（または Intel v1.2.4）ZIP をご利用ください。", file=sys.stderr)
+            return 1
+    else:
+        print("[警告] mac_adhoc_codesign.sh がありません。shapely/.dylibs があると codesign が失敗します。", file=sys.stderr)
+        print("[2/4] 隔離属性をクリア (xattr -cr)...")
+        proc = _run(["xattr", "-cr", str(app)], check=False)
+        if proc.returncode != 0:
+            print("[エラー] xattr に失敗しました。", file=sys.stderr)
+            if proc.stderr:
+                print(proc.stderr, file=sys.stderr)
+            if proc.stdout:
+                print(proc.stdout, file=sys.stderr)
+            return 1
 
-    print("[3/4] アドホック再署名（Hardened Runtime なし）...")
-    proc = subprocess.run(
-        ["codesign", "--force", "--deep", "--sign", "-", str(app)],
-        text=True,
-        capture_output=True,
-    )
-    if proc.returncode != 0:
-        print("[エラー] codesign に失敗しました。", file=sys.stderr)
-        if proc.stderr:
-            print(proc.stderr, file=sys.stderr)
-        if proc.stdout:
-            print(proc.stdout, file=sys.stderr)
-        print("", file=sys.stderr)
-        print("失敗箇所の詳細 (codesign --verify --verbose=2):", file=sys.stderr)
-        detail = codesign_verify_verbose(app)
-        if detail:
-            print(detail, file=sys.stderr)
-        else:
-            print("  （詳細を取得できませんでした）", file=sys.stderr)
-        print("", file=sys.stderr)
-        print("このパッチで直らない場合は v1.2.4-mac（または Intel v1.2.4）ZIP をご利用ください。", file=sys.stderr)
-        return 1
+        print("[3/4] アドホック再署名（Hardened Runtime なし）...")
+        proc = subprocess.run(
+            ["codesign", "--force", "--deep", "--sign", "-", str(app)],
+            text=True,
+            capture_output=True,
+        )
+        if proc.returncode != 0:
+            print("[エラー] codesign に失敗しました。", file=sys.stderr)
+            if proc.stderr:
+                print(proc.stderr, file=sys.stderr)
+            if proc.stdout:
+                print(proc.stdout, file=sys.stderr)
+            print("", file=sys.stderr)
+            print("失敗箇所の詳細 (codesign --verify --verbose=2):", file=sys.stderr)
+            detail = codesign_verify_verbose(app)
+            if detail:
+                print(detail, file=sys.stderr)
+            else:
+                print("  （詳細を取得できませんでした）", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("このパッチで直らない場合は v1.2.4-mac（または Intel v1.2.4）ZIP をご利用ください。", file=sys.stderr)
+            return 1
 
-    print("[4/4] 署名を検証 (codesign --verify --deep --strict)...")
-    proc = subprocess.run(
-        ["codesign", "--verify", "--deep", "--strict", str(app)],
-        text=True,
-        capture_output=True,
-    )
-    if proc.returncode != 0:
-        print("[エラー] 署名検証に失敗しました。", file=sys.stderr)
-        detail = codesign_verify_verbose(app)
-        if detail:
-            print(detail, file=sys.stderr)
-        return 1
+        print("[4/4] 署名を検証 (codesign --verify --deep --strict)...")
+        proc = subprocess.run(
+            ["codesign", "--verify", "--deep", "--strict", str(app)],
+            text=True,
+            capture_output=True,
+        )
+        if proc.returncode != 0:
+            print("[エラー] 署名検証に失敗しました。", file=sys.stderr)
+            detail = codesign_verify_verbose(app)
+            if detail:
+                print(detail, file=sys.stderr)
+            return 1
 
     print("")
     print("✅ 再署名が完了しました。")

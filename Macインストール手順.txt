@@ -76,7 +76,8 @@
     codesign --force --deep --sign - /Applications/ARIAKE_OCTA.app
     open /Applications/ARIAKE_OCTA.app
 
-または、同梱の「インストール.command」をもう一度右クリック →「開く」で
-上書きインストールしてください。
+「bundle format unrecognized」と shapely/.dylibs と出たときは、上の codesign を
+繰り返さないでください。同梱の「インストール.command」を右クリック →「開く」で
+入れ直すと、.dylibs を署名できる形にしてから再署名します。
 
 ================================================================================

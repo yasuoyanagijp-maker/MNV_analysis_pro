@@ -60,15 +60,33 @@ fi
 
 # この Mac 向けアドホック再署名。--options runtime は付けない
 # （Hardened Runtime だと未公証の解析エンジンが SIGKILL される）。
+# shapely/.dylibs のようなドット付き実ディレクトリは、先にシンボリックリンクへ
+# 置き換えないと codesign --deep が bundle format unrecognized で止まる。
 echo -e "${GREEN}[3/4]${NC} このMac向けに再署名中（公証なし）..."
-xattr -cr "$APP_DEST"
-if codesign --force --deep --sign - "$APP_DEST"; then
-    echo "       再署名が完了しました。"
+SIGN_HELPER=""
+if [[ -f "${SCRIPT_DIR}/mac_adhoc_codesign.sh" ]]; then
+    SIGN_HELPER="${SCRIPT_DIR}/mac_adhoc_codesign.sh"
+elif [[ -f "${SCRIPT_DIR}/tools/mac_adhoc_codesign.sh" ]]; then
+    SIGN_HELPER="${SCRIPT_DIR}/tools/mac_adhoc_codesign.sh"
+fi
+if [[ -n "$SIGN_HELPER" ]]; then
+    if bash "$SIGN_HELPER" sign "$APP_DEST"; then
+        echo "       再署名が完了しました。"
+    else
+        echo -e "${YELLOW}[警告]${NC} 再署名に失敗しました。ログインで Connection Error になることがあります。"
+        echo "       codesign --deep だけを繰り返さないでください（shapely/.dylibs で同じエラーになります）。"
+        echo "       この「インストール.command」をもう一度、右クリック →「開く」で実行してください。"
+    fi
 else
-    echo -e "${YELLOW}[警告]${NC} 再署名に失敗しました。ログインで Connection Error になることがあります。"
-    echo "       ターミナルで次を実行してから、アプリを起動し直してください:"
-    echo "         xattr -cr \"${APP_DEST}\""
-    echo "         codesign --force --deep --sign - \"${APP_DEST}\""
+    xattr -cr "$APP_DEST"
+    if codesign --force --deep --sign - "$APP_DEST"; then
+        echo "       再署名が完了しました。"
+    else
+        echo -e "${YELLOW}[警告]${NC} 再署名に失敗しました。ログインで Connection Error になることがあります。"
+        echo "       ターミナルで次を実行してから、アプリを起動し直してください:"
+        echo "         xattr -cr \"${APP_DEST}\""
+        echo "         codesign --force --deep --sign - \"${APP_DEST}\""
+    fi
 fi
 
 # 起動
