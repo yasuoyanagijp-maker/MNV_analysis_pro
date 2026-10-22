@@ -1,0 +1,76 @@
+name: Republish Optovue 3mm patch
+
+# Rebuild the patch ZIPs from this branch and replace the existing
+# v1.2.4-optovue-3mm-patch assets. The cloud agent cannot workflow_dispatch
+# "Release Optovue 3mm patch" or "Sync distribution repo". Delete this file
+# after the run; a commit that removes it does not start the workflow.
+on:
+  push:
+    branches:
+      - cursor/fix-mac-optovue-codesign-058e
+    paths:
+      - .github/workflows/republish-optovue-3mm-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  republish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this branch
+        uses: actions/checkout@v4
+
+      - name: Build patch ZIPs
+        run: python3 tools/optovue_3mm_patch/build_patches.py --out dist/patches
+
+      - name: Replace source release assets and notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v1.2.4-optovue-3mm-patch"
+          REPO="${{ github.repository }}"
+          gh release upload "$TAG" dist/patches/*.zip --clobber --repo "$REPO"
+          gh release edit "$TAG" --repo "$REPO" \
+            --notes-file tools/optovue_3mm_patch/RELEASE_NOTES.md
+
+      - name: Replace public distribution release assets and notes
+        env:
+          GH_TOKEN: ${{ secrets.DISTRIBUTION_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "DISTRIBUTION_SYNC_TOKEN secret is not configured."
+            exit 1
+          fi
+          TAG="v1.2.4-optovue-3mm-patch"
+          REPO="yasuoyanagijp-maker/ARIAKE_OCTA-distribution"
+          gh release upload "$TAG" dist/patches/*.zip --clobber --repo "$REPO"
+          gh release edit "$TAG" --repo "$REPO" \
+            --notes-file tools/optovue_3mm_patch/RELEASE_NOTES.md
+
+      - name: Confirm the public Apple Silicon zip contains the codesign fix
+        env:
+          GH_TOKEN: ${{ secrets.DISTRIBUTION_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/check
+          gh release download v1.2.4-optovue-3mm-patch \
+            --repo yasuoyanagijp-maker/ARIAKE_OCTA-distribution \
+            --pattern 'ARIAKE_OCTA_optovue_3mm_patch_mac_apple_silicon.zip' \
+            --dir /tmp/check
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          path = next(Path("/tmp/check").glob("*.zip"))
+          with zipfile.ZipFile(path) as zf:
+              names = zf.namelist()
+              helper = next(n for n in names if n.endswith("mac_adhoc_codesign.sh"))
+              command = next(n for n in names if n.endswith("パッチ適用.command"))
+              helper_text = zf.read(helper).decode("utf-8")
+              command_text = zf.read(command).decode("utf-8")
+          if "__dot__" not in helper_text or "sign_mac_adhoc" not in command_text:
+              raise SystemExit("public zip is missing the codesign fix")
+          print(f"confirmed {path.name} ({path.stat().st_size} bytes)")
+          PY
