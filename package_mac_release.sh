@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="ARIAKE_OCTA"
 APP_PATH="${SCRIPT_DIR}/dist/${APP_NAME}.app"
 DIST_DIR="${SCRIPT_DIR}/dist"
-VERSION="1.2.4c"
+VERSION="1.2.4d"
 TARGET_ARCH="arm64"
 
 while [[ $# -gt 0 ]]; do

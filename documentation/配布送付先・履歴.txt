@@ -353,7 +353,8 @@ CC: 013 寺尾 亮 先生宛メールに CC / To
   - 2026-10 関東中央病院眼科として Optovue 3mm CSV 補正を依頼。v1.2.4 パッチは shapely/.dylibs の再署名で失敗 → **v1.2.4b** で起動と 3 mm (Optovue)/(Zeiss HD) を確認
   - 2026-10-23 v1.2.4b: Select Analysis Folder が空白（ファイル/フォルダ非表示）。ウィザードと Advanced Settings の両方。新規解析画像はなしとのこと
   - 2026-10-23 空白の原因（Desktop TCC）と Optional path 回避を返信済。次ビルドで画面修正予定。再試行は求めず
-ステータス: 送付完了・使用中（v1.2.4b 起動確認。フォルダ選択空白の案内返信済 2026-10-23）
+  - 2026-10-24 v1.2.4d 準備: 開始位置をホームに戻し、エラー表示・Confirm 検証・Optional path Load・mac_adhoc 再署名を同梱。ローカルで動作確認済。Mac ZIP ビルド／配布準備中
+ステータス: 送付完了・使用中（v1.2.4b。v1.2.4d ビルド／配布準備中 2026-10-24）
 
 ---
 
@@ -446,6 +447,13 @@ CC: （なし）
 
 ---
 
+
+日付: 2026-10-24
+宛先: （内部）Mac v1.2.4d 版番号・ビルド・配布準備
+内容: フォルダ選択修正を 1.2.4d として版番号付け。タグ v1.2.4d-mac で Apple Silicon ZIP をビルド予定
+備考: PR #57（cursor/fix-folder-select-v124d-4f39）。リリースノート .github/release-notes/v1.2.4d-body.md。公開配布ミラーは DISTRIBUTION_SYNC_TOKEN 要確認。津須先生への案内は ZIP 公開後。
+
+---
 日付: 2026-10-23
 宛先: 津須 ちひろ 先生
 内容: フォルダ選択空白の原因と Optional path 回避の案内を返信
