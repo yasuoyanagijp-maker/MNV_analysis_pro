@@ -2,7 +2,7 @@ name: Mirror Mac v1.2.4d to distribution
 
 # One-shot: GITHUB_TOKEN release creates do not start sync-distribution.yml.
 # Pushing this file runs the mirror with DISTRIBUTION_SYNC_TOKEN. Delete after success.
-# retry-after-secret-update
+# retry-after-secret-update-3
 on:
   push:
     branches:
