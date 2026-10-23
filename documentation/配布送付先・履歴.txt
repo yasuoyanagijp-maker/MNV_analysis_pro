@@ -439,6 +439,14 @@ CC: （なし）
 【送付履歴】（新しい順）
 
 日付: 2026-10-23
+宛先: （公開）
+内容: Mac v1.2.4c Apple Silicon ZIP を本体 Releases に公開
+添付: ARIAKE_OCTA_mac_v1.2.4c.zip
+備考: タグ v1.2.4c-mac。フォルダ選択空白の修正。Intel は未ビルド（Actions 手動実行が 403）。公開配布リポへのミラーは DISTRIBUTION_SYNC_TOKEN 失効で失敗。本体 URL: https://github.com/yasuoyanagijp-maker/MNV_analysis_pro/releases/tag/v1.2.4c-mac
+
+---
+
+日付: 2026-10-23
 宛先: 津須 ちひろ 先生
 内容: フォルダ選択空白の原因と Optional path 回避の案内を返信
 メール: chihiro.kawano.r6@alumni.tohoku.ac.jp
