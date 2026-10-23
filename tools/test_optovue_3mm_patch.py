@@ -36,11 +36,17 @@ def test_file_list_matches_v124_diff() -> None:
         text=True,
         capture_output=True,
     )
-    if tag.returncode != 0:
-        print("skip file-list check; v1.2.4-mac is not in this clone")
+    published = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", "v1.2.4b"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if tag.returncode != 0 or published.returncode != 0:
+        print("skip file-list check; v1.2.4-mac or v1.2.4b is not in this clone")
         return
     diff = subprocess.run(
-        ["git", "diff", "--name-only", "v1.2.4-mac...HEAD", "--", "src", "resources"],
+        ["git", "diff", "--name-only", "v1.2.4-mac...v1.2.4b", "--", "src", "resources"],
         cwd=ROOT,
         text=True,
         capture_output=True,

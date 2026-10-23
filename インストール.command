@@ -89,6 +89,15 @@ else
     fi
 fi
 
+# 再署名でコード署名が変わると、以前のデスクトップ/書類/ダウンロードの許可は無効になる。
+# 古い許可記録を消し、初回のフォルダ選択で許可ダイアログが出るようにする。
+APP_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_DEST/Contents/Info.plist" 2>/dev/null || true)"
+if [[ -n "$APP_BUNDLE_ID" ]] && command -v tccutil >/dev/null 2>&1; then
+    for svc in SystemPolicyDesktopFolder SystemPolicyDocumentsFolder SystemPolicyDownloadsFolder; do
+        tccutil reset "$svc" "$APP_BUNDLE_ID" >/dev/null 2>&1 || true
+    done
+fi
+
 # 起動
 echo -e "${GREEN}[4/4]${NC} アプリを起動中..."
 open "$APP_DEST"
