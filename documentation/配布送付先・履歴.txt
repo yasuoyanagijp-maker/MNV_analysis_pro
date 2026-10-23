@@ -475,9 +475,9 @@ CC: （なし）
 
 日付: 2026-10-24
 宛先: （公開）
-内容: Mac v1.2.4d Apple Silicon ZIP を本体 Releases に公開
+内容: Mac v1.2.4d Apple Silicon ZIP を公開配布リポへミラー完了
 添付: ARIAKE_OCTA_mac_v1.2.4d.zip
-備考: タグ v1.2.4d-mac。フォルダ選択をホーム開始に戻し、エラー表示・Confirm 検証・Optional path Load・mac_adhoc 再署名。ローカル確認済。公開配布リポへのミラーは DISTRIBUTION_SYNC_TOKEN 未更新のため未実施。URL: https://github.com/yasuoyanagijp-maker/MNV_analysis_pro/releases/tag/v1.2.4d-mac
+備考: タグ v1.2.4d-mac。本体 URL と公開 URL の両方。公開: https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/releases/tag/v1.2.4d-mac 。本体: https://github.com/yasuoyanagijp-maker/MNV_analysis_pro/releases/tag/v1.2.4d-mac 。DISTRIBUTION_SYNC_TOKEN 再生成後にミラー成功。
 
 ---
 
