@@ -15,7 +15,8 @@ from src.flet_ui.components.shared import (
     persist_client_storage_async,
     APP_DISPLAY_NAME,
 )
-from src.utils.app_paths import get_upload_dir, sanitize_path_component, default_picker_dir
+from src.utils.app_paths import get_base_data_dir, get_upload_dir, sanitize_path_component
+from src.utils.folder_list import first_listable_picker_dir
 from src.utils.cv2_path import (
     BGR_READ_OK,
     BGR_READ_PERMISSION,
@@ -435,41 +436,37 @@ async def get_dashboard_view(ctx: AppContext):
             size=11,
             color=PRIMARY,
         )
+        status_text = ft.Text(size=11, color=Colors.ORANGE_300, visible=False)
+        path_field = ft.TextField(
+            label="Folder path (paste from Finder if the list is empty)",
+            border_color=PRIMARY,
+            text_size=12,
+            height=40,
+            expand=True,
+        )
 
-        state = {"path": str(default_picker_dir()), "selected_file": None}
+        state = {"path": str(first_listable_picker_dir()), "selected_file": None}
+        path_field.value = state["path"]
 
-        async def load_dir(target_path):
-            state["path"] = target_path
-            state["selected_file"] = None
-            selection_hint.value = (
-                f"Ready: analyze images in this folder → {Path(target_path).name}"
-            )
-            res = await ctx.client.list_dir(target_path)
-            if "error" in res:
-                await ctx.add_to_console(f"Explorer Error: {res['error']}", "ERROR")
-                return
+        async def handle_item_click(e):
+            path = e.control.data["path"]
+            is_dir = e.control.data["is_dir"]
+            if is_dir:
+                await load_dir(path)
+            else:
+                state["selected_file"] = path
+                parent_name = Path(path).parent.name
+                selection_hint.value = (
+                    f"Image clicked — Confirm will analyze the whole folder "
+                    f"「{parent_name}」(not only this file)."
+                )
+                ctx.page.update()
 
-            current_path_text.value = res.get("current_path")
+        def _render_items(items):
             explorer_list.controls.clear()
-
-            async def handle_item_click(e):
-                path = e.control.data["path"]
-                is_dir = e.control.data["is_dir"]
-                if is_dir:
-                    await load_dir(path)
-                else:
-                    state["selected_file"] = path
-                    parent_name = Path(path).parent.name
-                    selection_hint.value = (
-                        f"Image clicked — Confirm will analyze the whole folder "
-                        f"「{parent_name}」(not only this file)."
-                    )
-                    ctx.page.update()
-
-            for item in res.get("items", []):
+            for item in items:
                 icon = Icons.FOLDER_ROUNDED if item["is_dir"] else Icons.INSERT_DRIVE_FILE_OUTLINED
                 color = PRIMARY if item["is_dir"] else Colors.WHITE
-
                 explorer_list.controls.append(
                     ft.ListTile(
                         leading=ft.Icon(icon, color=color),
@@ -479,7 +476,61 @@ async def get_dashboard_view(ctx: AppContext):
                         subtitle=ft.Text(item["path"], size=10, color=TEXT_MUTED) if item["name"] == ".." else None
                     )
                 )
+            if not items:
+                explorer_list.controls.append(
+                    ft.ListTile(
+                        leading=ft.Icon(Icons.INFO_OUTLINE, color=Colors.ORANGE_300),
+                        title=ft.Text("No folders are visible here.", size=14),
+                        subtitle=ft.Text(
+                            "Paste a folder path above, or open Home / App Data.",
+                            size=10,
+                            color=TEXT_MUTED,
+                        ),
+                    )
+                )
+
+        async def load_dir(target_path):
+            raw = (target_path or "").strip().strip("'").strip('"')
+            if not raw:
+                raw = state["path"]
+            state["path"] = raw
+            state["selected_file"] = None
+            path_field.value = raw
+            selection_hint.value = (
+                f"Ready: analyze images in this folder → {Path(raw).name or raw}"
+            )
+            res = await ctx.client.list_dir(raw)
+            shown_path = res.get("current_path") or raw
+            current_path_text.value = shown_path
+            if res.get("current_path"):
+                state["path"] = res["current_path"]
+                path_field.value = res["current_path"]
+            warning = res.get("warning")
+            error = res.get("error")
+            if error and not res.get("items"):
+                status_text.value = f"Could not list this folder: {error}"
+                status_text.visible = True
+                await ctx.add_to_console(f"Explorer Error: {error}", "ERROR")
+            elif warning:
+                status_text.value = warning
+                status_text.visible = True
+                await ctx.add_to_console(f"Explorer: {warning}", "WARN")
+            else:
+                status_text.value = ""
+                status_text.visible = False
+            _render_items(res.get("items") or [])
             ctx.page.update()
+
+        async def go_typed_path(_=None):
+            await load_dir(path_field.value)
+
+        async def go_home(_=None):
+            await load_dir(str(Path.home()))
+
+        async def go_app_data(_=None):
+            await load_dir(str(get_base_data_dir()))
+
+        path_field.on_submit = lambda _: ctx.page.run_task(go_typed_path)
 
         async def confirm_selection(_=None):
             ctx.page.close(dlg)
@@ -487,7 +538,8 @@ async def get_dashboard_view(ctx: AppContext):
                 try:
                     # Prefer current folder; if a file was clicked, still pass that path —
                     # load_batch_from_directory normalizes files → parent folder.
-                    final_path = state.get("selected_file") or state["path"]
+                    typed = (path_field.value or "").strip().strip("'").strip('"')
+                    final_path = state.get("selected_file") or typed or state["path"]
                     await on_select(final_path)
                 except Exception as ex:
                     import traceback
@@ -505,11 +557,37 @@ async def get_dashboard_view(ctx: AppContext):
                     how_to_text,
                     current_path_text,
                     selection_hint,
+                    status_text,
+                    ft.Row(
+                        [
+                            path_field,
+                            ft.ElevatedButton(
+                                "Go",
+                                bgcolor=PRIMARY,
+                                color=Colors.BLACK,
+                                on_click=lambda _: ctx.page.run_task(go_typed_path),
+                            ),
+                        ],
+                        spacing=8,
+                    ),
+                    ft.Row(
+                        [
+                            ft.TextButton(
+                                "Home",
+                                on_click=lambda _: ctx.page.run_task(go_home),
+                            ),
+                            ft.TextButton(
+                                "App Data",
+                                on_click=lambda _: ctx.page.run_task(go_app_data),
+                            ),
+                        ],
+                        spacing=4,
+                    ),
                     ft.Divider(color=Colors.with_opacity(0.1, Colors.WHITE)),
-                    ft.Container(explorer_list, height=360, border=ft.border.all(1, Colors.with_opacity(0.1, Colors.WHITE)), border_radius=10),
-                ], spacing=10),
-                width=620,
-                height=520
+                    ft.Container(explorer_list, height=280, border=ft.border.all(1, Colors.with_opacity(0.1, Colors.WHITE)), border_radius=10),
+                ], spacing=8),
+                width=640,
+                height=560
             ),
             actions=[
                 ft.TextButton("Cancel", on_click=lambda _: ctx.page.run_task(cancel_selection)),

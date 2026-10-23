@@ -31,8 +31,8 @@ from src.utils.app_paths import (
     get_output_dir,
     get_exports_dir,
     sanitize_path_component,
-    default_picker_dir,
 )
+from src.utils.folder_list import list_directory_contents
 from utils.cv2_path import imread_grayscale
 from utils.mnv_cc_resolve import resolve_flow_deficit_cc_path
 from utils.mnv_imagej_csv import metrics_for_csv_export
@@ -476,29 +476,7 @@ async def get_status(job_id: str):
 @app.get("/ls")
 async def list_directory(path: str = None):
     """Lists contents of a directory for the custom file explorer."""
-    if not path or path == "":
-        path = str(default_picker_dir())
-    
-    p = Path(path)
-    if not p.exists() or not p.is_dir():
-        return {"error": "Invalid directory path", "path": path}
-    
-    try:
-        items = []
-        # Add parent directory
-        if p.parent != p:
-            items.append({"name": "..", "path": str(p.parent), "is_dir": True})
-            
-        for item in sorted(p.iterdir()):
-            if item.name.startswith("."): continue
-            items.append({
-                "name": item.name,
-                "path": str(item.absolute()),
-                "is_dir": item.is_dir()
-            })
-        return {"items": items, "current_path": str(p.absolute())}
-    except Exception as e:
-        return {"error": str(e)}
+    return list_directory_contents(path)
 
 if __name__ == "__main__":
     from src.utils.local_ports import resolve_api_port

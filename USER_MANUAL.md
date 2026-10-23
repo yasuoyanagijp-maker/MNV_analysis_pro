@@ -269,7 +269,7 @@ Optovue 3mm の Complexity では、Trunk の分布が基準に無いため Trun
   - **Web**：サーバー側パスを選ぶ UI や、**手動パス**が主な手段です。
 - **サーバー側のフォルダ一覧（エクスプローラ型）**でファイルを選んだあと、**「Confirm Selection」** ボタンで確定します。**画像のダブルクリックでは進みません**（仕様）。要点だけ知りたい場合は **[documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md](documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md)** を参照してください。
 - **Manual Path**  
-  ファイルまたはフォルダの**絶対パス**を貼り付けて利用できます。引用符（`'` `"`）は自動で除かれることがあります。
+  ファイルまたはフォルダの**絶対パス**を貼り付けて利用できます。引用符（`'` `"`）は自動で除かれることがあります。フォルダ一覧が空のときは、Finder で Option + 右クリック →「パス名をコピー」して **Optional path** に貼るか、エクスプローラ上のパス欄へ貼ってください（macOS が Desktop の一覧を止めることがあります）。
 - **ドラッグ＆ドロップ**  
   対応している場合、ドロップしたパスで処理が始まります。
 
@@ -563,6 +563,7 @@ Optovue 3mm の Complexity では、Trunk の分布が基準に無いため Trun
 
 | 日付 | 内容 |
 |------|------|
+| 2026-10-23 | フォルダ選択が一覧空になるとき、Desktop の読み取り失敗を Home / アプリデータへ切り替え、画面にパス貼り付け欄を出す。§8.2 に Optional path の案内を追記。 |
 | 2026-10-19 | 起動ウィザードの 3 mm を **Optovue** と **Zeiss HD** に分割。§8.1.1 に選択画面・確認画面と操作動画を追加。インストール済み Mac v1.2.4 / Windows v1.2.3 向けパッチは Releases の `v1.2.4-optovue-3mm-patch`。 |
 | 2026-08-29 | Connection Error（Mac）: 第一対応は新ZIPではなく `xattr` + ad-hoc `codesign --sign -`。`xattr` だけでは不十分。病院業務用 Windows のファイアウォールは別原因。 |
 | 2026-08-28 | Connection Error: Mac で `CODESIGNING Invalid Page` なら現行配布（ad-hoc・未公証）が解析エンジン子プロセスを殺している。当面は Windows 版。病院業務用 Windows のファイアウォールは別原因。 |
