@@ -353,8 +353,9 @@ CC: 013 寺尾 亮 先生宛メールに CC / To
   - 2026-10 関東中央病院眼科として Optovue 3mm CSV 補正を依頼。v1.2.4 パッチは shapely/.dylibs の再署名で失敗 → **v1.2.4b** で起動と 3 mm (Optovue)/(Zeiss HD) を確認
   - 2026-10-23 v1.2.4b: Select Analysis Folder が空白（ファイル/フォルダ非表示）。ウィザードと Advanced Settings の両方。新規解析画像はなしとのこと
   - 2026-10-23 空白の原因（Desktop TCC）と Optional path 回避を返信済。次ビルドで画面修正予定。再試行は求めず
-  - 2026-10-24 v1.2.4d 準備: 開始位置をホームに戻し、エラー表示・Confirm 検証・Optional path Load・mac_adhoc 再署名を同梱。ローカルで動作確認済。Mac ZIP ビルド／配布準備中
-ステータス: 送付完了・使用中（v1.2.4b。v1.2.4d ビルド／配布準備中 2026-10-24）
+  - 2026-10-24 v1.2.4d 準備: 開始位置をホームに戻し、エラー表示・Confirm 検証・Optional path Load・mac_adhoc 再署名を同梱。ローカルで動作確認済
+  - 2026-10-24 v1.2.4d 公開と再インストール案内メール送信済（お詫び・Apple Silicon ZIP）
+ステータス: 送付完了・使用中（v1.2.4d 再インストール案内済 2026-10-24）
 
 ---
 
@@ -437,7 +438,48 @@ CC: （なし）
 ステータス: 送付完了・使用中（受領確認 2026-07-14）
 
 ================================================================================
+
+---
+
+ID: 027
+氏名: 間瀬 陽子 先生（ませ）
+所属: 三重大学（メール署名・スレッド「三重大学の間瀬」）
+メール: yokosun9@gmail.com
+CC: （なし）
+送付OS: **Mac**（Apple M3 Pro / Apple Silicon）
+主な用途: MNV（通常）— 前向き研究（2026-10 開始）
+文脈: 2026-10 Mac インストール／ログイン支援。Intel ZIP 誤選択 → Apple Silicon ZIP でログイン成功
+備考:
+  - 2026-10-22 Apple Silicon ZIP でログイン成功の返信あり
+  - 2026-10-24 v1.2.4d 再インストール案内（お詫び）送信済
+ステータス: 送付完了・使用中（v1.2.4d 再インストール案内済 2026-10-24）
+
 【送付履歴】（新しい順）
+
+
+日付: 2026-10-24
+宛先: 間瀬 陽子 先生
+内容: Mac v1.2.4d 再インストール案内（お詫び）
+メール: yokosun9@gmail.com
+備考: 既存スレッド返信。公開 URL https://github.com/yasuoyanagijp-maker/MNV_analysis_pro/releases/tag/v1.2.4d-mac 。ARIAKE_OCTA_mac_v1.2.4d.zip（Apple Silicon）。送信済。
+
+---
+
+日付: 2026-10-24
+宛先: 津須 ちひろ 先生
+内容: Mac v1.2.4d 再インストール案内（お詫び・フォルダ選択修正）
+メール: chihiro.kawano.r6@alumni.tohoku.ac.jp
+備考: Optional path 無反応の報告への返信。公開 URL v1.2.4d-mac。新規解析は急がず。送信済。
+
+---
+
+日付: 2026-10-24
+宛先: （公開）
+内容: Mac v1.2.4d Apple Silicon ZIP を本体 Releases に公開
+添付: ARIAKE_OCTA_mac_v1.2.4d.zip
+備考: タグ v1.2.4d-mac。フォルダ選択をホーム開始に戻し、エラー表示・Confirm 検証・Optional path Load・mac_adhoc 再署名。ローカル確認済。公開配布リポへのミラーは DISTRIBUTION_SYNC_TOKEN 未更新のため未実施。URL: https://github.com/yasuoyanagijp-maker/MNV_analysis_pro/releases/tag/v1.2.4d-mac
+
+---
 
 日付: 2026-10-23
 宛先: （公開）
