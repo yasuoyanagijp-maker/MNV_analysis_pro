@@ -16,21 +16,21 @@
 ```bash
 cd ~/Desktop/ARIAKE_OCTA_mac_vVERSION
 xattr -cr .
-xattr -cr ARIAKE_OCTA.app
+bash mac_adhoc_codesign.sh sign ARIAKE_OCTA.app
 rm -rf /Applications/ARIAKE_OCTA.app
 cp -R ARIAKE_OCTA.app /Applications/
-xattr -cr /Applications/ARIAKE_OCTA.app
-codesign --force --deep --sign - /Applications/ARIAKE_OCTA.app
+bash mac_adhoc_codesign.sh sign /Applications/ARIAKE_OCTA.app
 open /Applications/ARIAKE_OCTA.app
 ```
 
-- `codesign --sign -` は **この Mac 向けのアドホック再署名** です（Apple 公証は不要）。
+- `mac_adhoc_codesign.sh` は **この Mac 向けのアドホック再署名** です（Apple 公証は不要）。`shapely/.dylibs` を先に直してから署名します。ZIP に同梱されていない古い版では `codesign --force --deep --sign -` を使いますが、**`--deep` だけを繰り返さないでください**。
 - パスワードを聞かれたら **Mac のログインパスワード** です（アプリの `ariake2024` ではありません）。
-- **`codesign` だけを何度も `--deep` で繰り返さないでください**（`shapely/.dylibs` 等で `bundle format unrecognized` になることがあります）。上記は **xattr → コピー → 再署名 → 起動** の順です。
+- 上記は **xattr →（補助スクリプトで）再署名 → コピー → 再署名 → 起動** の順です。
 
 ## ログインで「Connection Error: All connection attempts failed」
 
 パスワードや施設コードの入力ミスではありません。同じ Mac 内の解析エンジンに届いていない状態です。
 
-- **v1.2.4 以降**: 上記手順Bの **`xattr` + `codesign` 2行** を `/Applications/ARIAKE_OCTA.app` に対して実行し、再起動。または **`インストール.command` をもう一度** 右クリック →「開く」で上書き。
-- **v1.2.3-mac のみ**: ログイン後 Connection Error は既知不具合です。**v1.2.4-mac へ入れ替え** を推奨します。
+- **v1.2.4d 以降**: 上記手順Bの **`mac_adhoc_codesign.sh sign`** を `/Applications/ARIAKE_OCTA.app` に対して実行し、再起動。または **`インストール.command` をもう一度** 右クリック →「開く」で上書き。
+- **v1.2.4 / v1.2.4b / v1.2.4c**: `xattr -cr` のあと `codesign --force --deep --sign -`（`bundle format unrecognized` なら v1.2.4d へ入れ替え）。
+- **v1.2.3-mac のみ**: ログイン後 Connection Error は既知不具合です。**v1.2.4d-mac へ入れ替え** を推奨します。

@@ -1,16 +1,19 @@
 """Server-side folder listing for the in-app explorer.
 
 macOS TCC can make Desktop / Documents / Downloads exist but unlistable
-(``Operation not permitted``) when the app has no Files-and-Folders grant.
-The explorer used to treat that as a hard error and render an empty dialog.
+(``Operation not permitted``) when the app has no Files-and-Folders grant,
+and the first read can block on the permission prompt. The explorer therefore
+starts in the home folder (as v1.2.1 did) and only touches those folders when
+the user asks for them.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from src.utils.app_paths import default_picker_dir, get_base_data_dir
+from src.utils.folder_inputs import describe_os_error, normalize_user_path
 
 
 def is_listable_dir(path: Path) -> bool:
@@ -29,9 +32,9 @@ def first_listable_picker_dir(
     *,
     data_dir: Optional[Path] = None,
 ) -> Path:
-    """Desktop (or OS equivalent) when listable, else home, else app data."""
+    """Home when listable, else app data. Never probes Desktop or Documents."""
     home_path = Path(home) if home is not None else Path.home()
-    candidates: List[Path] = [default_picker_dir(home_path), home_path]
+    candidates: List[Path] = [home_path]
     fallback = _resolve_data_dir(data_dir)
     if fallback is not None:
         candidates.append(fallback)
@@ -63,7 +66,7 @@ def list_directory_contents(
     can show ``..`` / siblings instead of a blank pane.
     """
     home_path = Path(home) if home is not None else Path.home()
-    requested = (path or "").strip()
+    requested = normalize_user_path(path)
     start = Path(requested) if requested else first_listable_picker_dir(
         home_path, data_dir=data_dir
     )
@@ -87,6 +90,33 @@ def list_directory_contents(
         "path": str(start),
         "items": [],
     }
+
+
+def shortcut_dirs(
+    home: Optional[Path] = None,
+    *,
+    data_dir: Optional[Path] = None,
+) -> List[Tuple[str, str]]:
+    """(label, path) buttons for the explorer. Existence checks only, no listing."""
+    home_path = Path(home) if home is not None else Path.home()
+    entries: List[Tuple[str, Path]] = [("Home", home_path)]
+    desktop = default_picker_dir(home_path)
+    if desktop != home_path.resolve():
+        entries.append(("Desktop", desktop))
+    for label, name in (("Documents", "Documents"), ("Downloads", "Downloads")):
+        entries.append((label, home_path / name))
+    fallback = _resolve_data_dir(data_dir)
+    if fallback is not None:
+        entries.append(("App Data", fallback))
+
+    shortcuts: List[Tuple[str, str]] = []
+    for label, cand in entries:
+        try:
+            if label in ("Home", "App Data") or cand.is_dir():
+                shortcuts.append((label, str(cand)))
+        except OSError:
+            continue
+    return shortcuts
 
 
 def _listing_targets(
@@ -122,12 +152,12 @@ def _try_list(path: Path):
         if not path.exists() or not path.is_dir():
             return None, "Invalid directory path"
     except OSError as exc:
-        return None, str(exc)
+        return None, describe_os_error(exc, path)
 
     try:
         children = list(path.iterdir())
     except OSError as exc:
-        return None, str(exc)
+        return None, describe_os_error(exc, path)
 
     items = []
     try:

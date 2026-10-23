@@ -476,7 +476,9 @@ async def get_status(job_id: str):
 @app.get("/ls")
 async def list_directory(path: str = None):
     """Lists contents of a directory for the custom file explorer."""
-    return list_directory_contents(path)
+    # A blocked or cloud-backed folder can stall on a macOS permission prompt;
+    # keep the event loop (and /login, /analyze) responsive meanwhile.
+    return await asyncio.to_thread(list_directory_contents, path)
 
 if __name__ == "__main__":
     from src.utils.local_ports import resolve_api_port

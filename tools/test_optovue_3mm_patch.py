@@ -36,11 +36,17 @@ def test_file_list_matches_v124_diff() -> None:
         text=True,
         capture_output=True,
     )
-    if tag.returncode != 0:
-        print("skip file-list check; v1.2.4-mac is not in this clone")
+    published = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", "v1.2.4b"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if tag.returncode != 0 or published.returncode != 0:
+        print("skip file-list check; v1.2.4-mac or v1.2.4b is not in this clone")
         return
     diff = subprocess.run(
-        ["git", "diff", "--name-only", "v1.2.4-mac...HEAD", "--", "src", "resources"],
+        ["git", "diff", "--name-only", "v1.2.4-mac...v1.2.4b", "--", "src", "resources"],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -78,6 +84,12 @@ def test_zips_and_mac_apply() -> None:
             "ARIAKE_OCTA_optovue_3mm_patch_mac_apple_silicon/パッチ適用.command"
         )
         assert info.external_attr >> 16 & stat.S_IXUSR
+        sign_info = zipfile.ZipFile(mac_zip).getinfo(
+            "ARIAKE_OCTA_optovue_3mm_patch_mac_apple_silicon/mac_adhoc_codesign.sh"
+        )
+        assert sign_info.external_attr >> 16 & stat.S_IXUSR
+        intel_names = zipfile.ZipFile(intel_zip).namelist()
+        assert any(name.endswith("/mac_adhoc_codesign.sh") for name in intel_names)
 
         with zipfile.ZipFile(win_zip) as zf:
             win_payload = sorted(
@@ -103,6 +115,25 @@ def test_zips_and_mac_apply() -> None:
         cache = core / "__pycache__"
         cache.mkdir()
         (cache / "mnv_pipeline.cpython-39.pyc").write_bytes(b"stale")
+        frameworks = app / "Contents" / "Frameworks"
+        fw_core = frameworks / "src" / "core"
+        fw_core.mkdir(parents=True)
+        (fw_core / "mnv_pipeline.pyc").write_bytes(b"oldpyc")
+        dylibs = frameworks / "shapely" / ".dylibs"
+        dylibs.mkdir(parents=True)
+        (dylibs / "libgeos.dylib").write_bytes(b"geos")
+        numpy_libs = frameworks / "numpy.libs"
+        numpy_libs.mkdir()
+        (numpy_libs / "libquadmath.dylib").write_bytes(b"quad")
+        fw_keep = frameworks / "Python.framework" / "lib-dynload" / ".dylibs"
+        fw_keep.mkdir(parents=True)
+        (fw_keep / "keep.dylib").write_bytes(b"keep")
+        (frameworks / "Python.framework" / "Versions").mkdir()
+        res_meta = app / "Contents" / "Resources" / "pkg.dist-info"
+        res_meta.mkdir()
+        (res_meta / "METADATA").write_text("name\n", encoding="utf-8")
+        (patch_dir / "payload" / ".DS_Store").write_bytes(b"finder")
+        (patch_dir / "payload" / "src" / "._mnv_pipeline.py").write_bytes(b"appledouble")
 
         env = os.environ.copy()
         env["ARIAKE_PATCH_SKIP_CODESIGN"] = "1"
@@ -116,10 +147,27 @@ def test_zips_and_mac_apply() -> None:
             capture_output=True,
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert f"{len(MAC_FILES)} ファイル" in proc.stdout
         patched = (core / "mnv_pipeline.py").read_text(encoding="utf-8")
         assert "optovue_3mm" in patched
         assert not (core / "mnv_pipeline.pyc").exists()
         assert not (cache / "mnv_pipeline.cpython-39.pyc").exists()
+        assert not (fw_core / "mnv_pipeline.pyc").exists()
+        assert "optovue_3mm" in (fw_core / "mnv_pipeline.py").read_text(encoding="utf-8")
+        assert not (app / "Contents" / "Resources" / ".DS_Store").exists()
+        assert not (app / "Contents" / "Resources" / "src" / "._mnv_pipeline.py").exists()
+        link = frameworks / "shapely" / ".dylibs"
+        assert link.is_symlink()
+        assert os.readlink(link) == "__dot__dylibs"
+        assert (frameworks / "shapely" / "__dot__dylibs" / "libgeos.dylib").read_bytes() == b"geos"
+        assert (frameworks / "numpy__dot__libs").is_dir()
+        assert (frameworks / "numpy.libs").is_symlink()
+        framework = frameworks / "Python.framework"
+        assert framework.is_dir() and not framework.is_symlink()
+        assert (fw_keep / "keep.dylib").read_bytes() == b"keep"
+        assert not (fw_keep.parent / "__dot__dylibs").exists()
+        assert (res_meta / "METADATA").is_file()
+        assert "3 mm (Optovue)" in proc.stdout
         json_path = (
             app
             / "Contents"

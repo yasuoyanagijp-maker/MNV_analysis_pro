@@ -15,8 +15,13 @@ from src.flet_ui.components.shared import (
     persist_client_storage_async,
     APP_DISPLAY_NAME,
 )
-from src.utils.app_paths import get_base_data_dir, get_upload_dir, sanitize_path_component
-from src.utils.folder_list import first_listable_picker_dir
+from src.utils.app_paths import get_upload_dir, sanitize_path_component
+from src.utils.folder_inputs import (
+    describe_os_error,
+    inspect_image_folder,
+    normalize_user_path,
+)
+from src.utils.folder_list import shortcut_dirs
 from src.utils.cv2_path import (
     BGR_READ_OK,
     BGR_READ_PERMISSION,
@@ -166,9 +171,51 @@ async def get_dashboard_view(ctx: AppContext):
         border_color=PRIMARY,
     )
     
+    def _scale_is_3mm() -> bool:
+        try:
+            return abs(float(scale_mm.value) - 3.0) < 0.01
+        except (TypeError, ValueError):
+            return False
+
+    def _sync_device_dropdown():
+        device_dd.visible = _scale_is_3mm()
+        device_dd.value = (
+            "optovue"
+            if ctx.page.session.get("mnv_3mm_device") == "optovue"
+            else "zeiss_hd"
+        )
+
+    def _on_device_change(e):
+        ctx.page.session.set(
+            "mnv_3mm_device", "optovue" if device_dd.value == "optovue" else "zeiss_hd"
+        )
+
     def _on_image_scale_change(e):
-        # The numeric dropdown does not name a device. 3.0 stays Zeiss HD.
-        ctx.page.session.set("mnv_3mm_device", "")
+        if _scale_is_3mm():
+            ctx.page.session.set(
+                "mnv_3mm_device",
+                "optovue" if device_dd.value == "optovue" else "zeiss_hd",
+            )
+        else:
+            ctx.page.session.set("mnv_3mm_device", "")
+        device_dd.visible = _scale_is_3mm()
+        try:
+            ctx.page.update()
+        except Exception:
+            pass
+
+    device_dd = ft.Dropdown(
+        label="3 mm device",
+        options=[
+            ft.dropdown.Option("zeiss_hd", "3 mm (Zeiss HD)"),
+            ft.dropdown.Option("optovue", "3 mm (Optovue)"),
+        ],
+        value="zeiss_hd",
+        width=200,
+        border_color=PRIMARY,
+        visible=False,
+        on_change=_on_device_change,
+    )
 
     scale_mm = ft.Dropdown(
         label="Image Scale (mm)",
@@ -242,17 +289,51 @@ async def get_dashboard_view(ctx: AppContext):
 
     manual_path = ft.TextField(
         label="Optional path (folder on server host — paste if you already know the path)",
+        hint_text="Finder: select the folder, Option+Cmd+C, paste here, press Enter or Load",
         border_color=PRIMARY,
         expand=True,
         text_size=12,
         height=40,
     )
 
+    load_status = ft.Text("", size=12, visible=False, selectable=True)
+
+    def _set_load_status(message: str, level: str = "INFO") -> None:
+        palette = {
+            "ERROR": Colors.RED_300,
+            "WARN": Colors.AMBER_300,
+            "OK": Colors.GREEN_300,
+        }
+        load_status.value = message or ""
+        load_status.color = palette.get(level, PRIMARY)
+        load_status.visible = bool(message)
+        try:
+            ctx.page.update()
+        except Exception as ex:
+            print(f"load_status update failed: {ex}", flush=True)
+
+    async def _report_load_error(message: str) -> None:
+        _set_load_status(message, "ERROR")
+        await ctx.add_to_console(message, "ERROR")
+
     async def on_manual_submit(_=None):
-        raw = (manual_path.value or "").strip().strip("'").strip('"')
+        raw = normalize_user_path(manual_path.value)
         if not raw:
+            _set_load_status("フォルダのパスを入力してください。", "WARN")
             return
-        await ctx.process_target_path(raw)
+        manual_path.value = raw
+        _set_load_status(f"フォルダを確認しています: {raw}")
+        try:
+            await ctx.process_target_path(raw)
+        except Exception as ex:
+            import traceback
+
+            print(traceback.format_exc(), flush=True)
+            await _report_load_error(
+                describe_os_error(ex, raw)
+                if isinstance(ex, OSError)
+                else f"読み込みに失敗しました: {type(ex).__name__}: {ex}"
+            )
 
     manual_path.on_submit = lambda _: ctx.page.run_task(on_manual_submit)
 
@@ -413,15 +494,18 @@ async def get_dashboard_view(ctx: AppContext):
     async def start_unified_analysis(e):
         print(f"DEBUG: [START_ANALYSIS] Clicked. Mode: {analysis_type.value}", flush=True)
         if manual_path.value:
-            await ctx.process_target_path(manual_path.value)
+            await on_manual_submit()
         else:
             # Native OS pickers can be flaky in frozen apps; use server explorer by default
             await show_folder_explorer(
                 "Select folder/file (Server Path Explorer)",
                 on_select=ctx.process_target_path,
+                validate_images=True,
             )
 
-    async def show_folder_explorer(title="Select Folder", on_select=None):
+    async def show_folder_explorer(
+        title="Select Folder", on_select=None, validate_images=False
+    ):
         explorer_list = ft.ListView(expand=True, spacing=5)
         current_path_text = ft.Text(size=12, color=TEXT_MUTED, weight=FontWeight.BOLD)
         how_to_text = ft.Text(
@@ -445,7 +529,7 @@ async def get_dashboard_view(ctx: AppContext):
             expand=True,
         )
 
-        state = {"path": str(first_listable_picker_dir()), "selected_file": None}
+        state = {"path": str(Path.home()), "selected_file": None}
         path_field.value = state["path"]
 
         async def handle_item_click(e):
@@ -490,7 +574,7 @@ async def get_dashboard_view(ctx: AppContext):
                 )
 
         async def load_dir(target_path):
-            raw = (target_path or "").strip().strip("'").strip('"')
+            raw = normalize_user_path(target_path)
             if not raw:
                 raw = state["path"]
             state["path"] = raw
@@ -507,10 +591,20 @@ async def get_dashboard_view(ctx: AppContext):
                 path_field.value = res["current_path"]
             warning = res.get("warning")
             error = res.get("error")
-            if error and not res.get("items"):
+            items = list(res.get("items") or [])
+            if "error" in res and not items:
+                error = str(error or "").strip() or "フォルダ一覧の取得に失敗しました（理由不明）"
                 status_text.value = f"Could not list this folder: {error}"
                 status_text.visible = True
-                await ctx.add_to_console(f"Explorer Error: {error}", "ERROR")
+                await ctx.add_to_console(f"Explorer Error: {error}", "WARN")
+                # Never leave a dead end: keep a way up and back home.
+                try:
+                    parent = Path(raw).parent
+                    if str(parent) != raw:
+                        items.append({"name": "..", "path": str(parent), "is_dir": True})
+                except (OSError, ValueError):
+                    pass
+                items.append({"name": "Home", "path": str(Path.home()), "is_dir": True})
             elif warning:
                 status_text.value = warning
                 status_text.visible = True
@@ -518,34 +612,70 @@ async def get_dashboard_view(ctx: AppContext):
             else:
                 status_text.value = ""
                 status_text.visible = False
-            _render_items(res.get("items") or [])
+            _render_items(items)
             ctx.page.update()
 
         async def go_typed_path(_=None):
             await load_dir(path_field.value)
 
-        async def go_home(_=None):
-            await load_dir(str(Path.home()))
+        def _shortcut_button(label, target):
+            async def _go(_=None):
+                await load_dir(target)
 
-        async def go_app_data(_=None):
-            await load_dir(str(get_base_data_dir()))
+            return ft.TextButton(
+                label, on_click=lambda _: ctx.page.run_task(_go)
+            )
+
+        shortcut_buttons = [
+            _shortcut_button(label, target)
+            for label, target in shortcut_dirs()
+        ]
 
         path_field.on_submit = lambda _: ctx.page.run_task(go_typed_path)
 
         async def confirm_selection(_=None):
+            # A file click still means "use this file's folder".
+            typed = normalize_user_path(path_field.value)
+            final_path = state.get("selected_file") or typed or state["path"]
+            check_images = (
+                validate_images
+                and not is_second_reader(ctx.page.session)
+                and not is_final_reader(ctx.page.session)
+            )
+            if check_images:
+                status_text.value = "画像を確認しています…"
+                status_text.color = PRIMARY
+                status_text.visible = True
+                ctx.page.update()
+                try:
+                    info = await asyncio.to_thread(inspect_image_folder, final_path)
+                except Exception as ex:
+                    info = None
+                    problem = f"フォルダを確認できませんでした: {type(ex).__name__}: {ex}"
+                else:
+                    problem = info.error
+                status_text.color = Colors.ORANGE_300
+                if problem:
+                    status_text.value = problem
+                    status_text.visible = True
+                    ctx.page.update()
+                    await ctx.add_to_console(problem, "WARN")
+                    return
+                final_path = str(info.folder)
+                status_text.visible = False
             ctx.page.close(dlg)
             if on_select:
                 try:
-                    # Prefer current folder; if a file was clicked, still pass that path —
-                    # load_batch_from_directory normalizes files → parent folder.
-                    typed = (path_field.value or "").strip().strip("'").strip('"')
-                    final_path = state.get("selected_file") or typed or state["path"]
                     await on_select(final_path)
                 except Exception as ex:
                     import traceback
 
                     print(traceback.format_exc(), flush=True)
-                    await ctx.add_to_console(f"Confirm selection failed: {ex}", "ERROR")
+                    await _report_load_error(
+                        describe_os_error(ex, final_path)
+                        if isinstance(ex, OSError)
+                        else f"Confirm selection failed: {type(ex).__name__}: {ex}"
+                    )
 
         async def cancel_selection(_=None):
             ctx.page.close(dlg)
@@ -570,19 +700,7 @@ async def get_dashboard_view(ctx: AppContext):
                         ],
                         spacing=8,
                     ),
-                    ft.Row(
-                        [
-                            ft.TextButton(
-                                "Home",
-                                on_click=lambda _: ctx.page.run_task(go_home),
-                            ),
-                            ft.TextButton(
-                                "App Data",
-                                on_click=lambda _: ctx.page.run_task(go_app_data),
-                            ),
-                        ],
-                        spacing=4,
-                    ),
+                    ft.Row(shortcut_buttons, spacing=4, wrap=True),
                     ft.Divider(color=Colors.with_opacity(0.1, Colors.WHITE)),
                     ft.Container(explorer_list, height=280, border=ft.border.all(1, Colors.with_opacity(0.1, Colors.WHITE)), border_radius=10),
                 ], spacing=8),
@@ -605,7 +723,7 @@ async def get_dashboard_view(ctx: AppContext):
         await load_dir(state["path"])
 
     async def upload_folder_direct(e):
-         await show_folder_explorer("Select VD Batch Folder", on_select=ctx.process_target_path)
+         await show_folder_explorer("Select VD Batch Folder", on_select=ctx.process_target_path, validate_images=True)
 
     async def upload_file_direct(e):
          await show_folder_explorer("Select MNV Image (Navigate and choose folder, then paste filename if needed - or just use current picker)", on_select=ctx.process_target_path)
@@ -1035,55 +1153,59 @@ async def get_dashboard_view(ctx: AppContext):
         Returns True when a batch queue was started successfully.
         """
         if not fspath:
+            await _report_load_error("フォルダのパスが空です。")
             return False
-        p = Path(fspath)
-        # Forgiving UX: if the user clicked an image then Confirm, use its parent folder
-        # (common “normalize selection to container” pattern for batch tools).
-        if p.is_file():
-            parent = p.parent
-            await ctx.add_to_console(
-                f"File selected ({p.name}) — using parent folder for batch: {parent}",
-                "INFO",
+        _set_load_status("フォルダを確認しています…")
+        try:
+            info = await asyncio.to_thread(inspect_image_folder, fspath)
+        except Exception as ex:
+            await _report_load_error(
+                f"フォルダを確認できませんでした: {type(ex).__name__}: {ex}"
             )
-            p = parent
-        if not p.is_dir():
-            await ctx.add_to_console(f"Not a directory: {fspath}", "ERROR")
             return False
+        if info.note:
+            await ctx.add_to_console(info.note, "INFO")
+        if info.error:
+            await _report_load_error(info.error)
+            return False
+        p = info.folder
+        files = info.files
 
         # Save resolved input directory for output path determination later
         ctx.page.session.set("original_input_dir", str(p.resolve()))
         await ctx.add_to_console(f"Scanning directory: {p.name}", "INFO")
 
-        patterns = ["*.tif", "*.tiff", "*.png", "*.jpg", "*.jpeg"]
-        files = []
-        for pat in patterns:
-            files.extend(list(p.glob(pat)))
-        files.sort(key=lambda x: x.name.lower())
-
-        if not files:
-            await ctx.add_to_console("No supported images found in directory.", "ERROR")
-            return False
-
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        staging_root = get_upload_dir() / "batch_staging" / stamp
-        staging_root.mkdir(parents=True, exist_ok=True)
+        staging_root = Path("")
+        try:
+            staging_root = get_upload_dir() / "batch_staging" / stamp
+            staging_root.mkdir(parents=True, exist_ok=True)
+        except OSError as ex:
+            await _report_load_error(
+                f"作業用フォルダを作れませんでした: {describe_os_error(ex, staging_root)}"
+            )
+            return False
         await ctx.add_to_console(
             f"OneDrive-safe staging: copying {len(files)} file(s) to {staging_root}", "INFO",
         )
         staged_files = []
-        for src in files:
+        for idx, src in enumerate(files, start=1):
             dst = staging_root / src.name
             if dst.exists():
                 dst = staging_root / f"{src.stem}_{len(staged_files):03d}{src.suffix}"
+            _set_load_status(f"画像をコピーしています… {idx}/{len(files)}")
             try:
-                shutil.copy2(src, dst)
+                await asyncio.to_thread(shutil.copy2, src, dst)
                 staged_files.append(dst)
             except Exception as ex:
                 await ctx.add_to_console(f"Stage copy failed [{src.name}]: {ex}", "ERROR")
         files = staged_files
         if not files:
-            await ctx.add_to_console("Staging failed for all files. Batch queue not created.", "ERROR")
+            await _report_load_error(
+                "画像をコピーできませんでした。フォルダの権限と空き容量を確認してください。"
+            )
             return False
+        _set_load_status(f"{len(files)} 枚を読み込みました。", "OK")
 
         batch_table.rows.clear()
         batch_plan = analysis_type.value
@@ -1737,14 +1859,13 @@ async def get_dashboard_view(ctx: AppContext):
 
     async def load_batch_from_directory(fspath):
         if is_second_reader(ctx.page.session):
-            await load_second_reader_batch(fspath)
-            return
+            return await load_second_reader_batch(fspath)
         # A normal folder load must not keep a previous reader batch's device maps.
         # Those maps would replace the wizard's Optovue / Zeiss HD choice.
         if ctx.page.session.get("mnv_batch_device_from_meta"):
             ctx.page.session.set("mnv_3mm_device", "")
         _discard_export_device_maps()
-        await _load_batch_from_directory_core(fspath)
+        return await _load_batch_from_directory_core(fspath)
 
     ctx.folder_batch_loader = load_batch_from_directory
     ctx.process_target_path = load_batch_from_directory
@@ -1763,7 +1884,11 @@ async def get_dashboard_view(ctx: AppContext):
 
     async def handle_select_folder(_=None):
         print("DEBUG: [SELECT_FOLDER] Clicked", flush=True)
-        await show_folder_explorer("Select batch folder (Server Path)", on_select=load_batch_from_directory)
+        await show_folder_explorer(
+            "Select batch folder (Server Path)",
+            on_select=load_batch_from_directory,
+            validate_images=True,
+        )
 
     async def handle_second_reader_start(_=None):
         await show_folder_explorer(
@@ -2141,9 +2266,14 @@ async def get_dashboard_view(ctx: AppContext):
             ctx.page.session.set("mnv_fd_self_ref", wizard["mnv_fd_self_ref"])
             ctx.page.session.set("mnv_select_all_images", bool(wizard["mnv_select_all_images"]))
             mnv_select_all_switch.value = bool(wizard["mnv_select_all_images"])
+            _sync_device_dropdown()
             ctx.page.close(dlg)
+            # Opening a dialog in the same tick as closing the previous one can
+            # drop it in Flet 0.28.
+            await asyncio.sleep(0.2)
             await show_folder_explorer("Select Analysis Folder",
-                                       on_select=load_batch_from_directory)
+                                       on_select=load_batch_from_directory,
+                                       validate_images=True)
 
         HEIGHT = {1: 310, 2: 420, 2.5: 370, 3: 340}
 
@@ -2282,12 +2412,25 @@ async def get_dashboard_view(ctx: AppContext):
     )
 
     def _advanced_settings_body():
+        _sync_device_dropdown()
         return ft.Column([
             ft.Row([
                 analysis_type,
                 scale_mm,
+                device_dd,
+            ], spacing=20, wrap=True,
+                vertical_alignment=ft.CrossAxisAlignment.END),
+            ft.Row([
                 manual_path,
-            ], spacing=20,
+                ft.ElevatedButton(
+                    "Load",
+                    icon=Icons.FOLDER_OPEN,
+                    bgcolor=PRIMARY,
+                    color=Colors.BLACK,
+                    on_click=lambda _: ctx.page.run_task(on_manual_submit),
+                    tooltip="Load the images in the pasted folder path",
+                ),
+            ], spacing=10,
                 vertical_alignment=ft.CrossAxisAlignment.END),
             ft.Row([
                 output_path_input,
@@ -2470,6 +2613,7 @@ async def get_dashboard_view(ctx: AppContext):
                     ),
 
                     ft.Divider(height=10, color=Colors.TRANSPARENT),
+                    load_status,
                     advanced_tile,
                     ft.Divider(height=10, color=Colors.TRANSPARENT),
                     batch_container,

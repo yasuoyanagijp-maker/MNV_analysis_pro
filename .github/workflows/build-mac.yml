@@ -11,9 +11,9 @@ on:
           - x86_64
         default: arm64
       app_version:
-        description: Release version (e.g. 1.2.4c)
+        description: Release version (e.g. 1.2.4d)
         type: string
-        default: "1.2.4c"
+        default: "1.2.4d"
       attach_to_release:
         description: Upload zip onto existing GitHub Release v{version}-mac
         type: boolean
@@ -73,7 +73,7 @@ jobs:
 
       - name: Build .app (ad-hoc, no notarization)
         run: |
-          chmod +x build_mac.sh tools/verify_mac_app_arch.sh tools/strip_mac_codesign_poison.sh tools/verify_mac_codesign_ready.sh tools/require_mac_python_arch.sh tools/mac_openssl_coexistence.py package_mac_release.sh
+          chmod +x build_mac.sh tools/verify_mac_app_arch.sh tools/strip_mac_codesign_poison.sh tools/verify_mac_codesign_ready.sh tools/require_mac_python_arch.sh tools/mac_openssl_coexistence.py tools/mac_adhoc_codesign.sh package_mac_release.sh
           export ARIAKE_MAC_APP_VERSION="${{ steps.arch.outputs.version }}"
           if [[ "${{ steps.arch.outputs.target }}" == "arm64" ]]; then
             ./build_mac.sh --skip-notarize --clean --arm64
@@ -141,7 +141,7 @@ jobs:
           VER="${VER%-mac}"
           NOTES_TEMPLATE="${GITHUB_WORKSPACE}/.github/release-notes/v${VER}-body.md"
           if [[ ! -f "${NOTES_TEMPLATE}" ]]; then
-            NOTES_TEMPLATE="${GITHUB_WORKSPACE}/.github/release-notes/v1.2.4c-body.md"
+            NOTES_TEMPLATE="${GITHUB_WORKSPACE}/.github/release-notes/v1.2.4d-body.md"
           fi
           if [[ -f "${NOTES_TEMPLATE}" ]]; then
             cp "${NOTES_TEMPLATE}" "${NOTES_FILE}"

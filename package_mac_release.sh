@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="ARIAKE_OCTA"
 APP_PATH="${SCRIPT_DIR}/dist/${APP_NAME}.app"
 DIST_DIR="${SCRIPT_DIR}/dist"
-VERSION="1.2.4c"
+VERSION="1.2.4d"
 TARGET_ARCH="arm64"
 
 while [[ $# -gt 0 ]]; do
@@ -59,7 +59,8 @@ echo "[package_mac_release] copying .app and install helpers..."
 ditto --noqtn --norsrc "$APP_PATH" "${BUNDLE_DIR}/${APP_NAME}.app"
 cp "${SCRIPT_DIR}/インストール.command" "${BUNDLE_DIR}/"
 cp "${SCRIPT_DIR}/Macインストール手順.txt" "${BUNDLE_DIR}/"
-chmod +x "${BUNDLE_DIR}/インストール.command"
+cp "${SCRIPT_DIR}/tools/mac_adhoc_codesign.sh" "${BUNDLE_DIR}/"
+chmod +x "${BUNDLE_DIR}/インストール.command" "${BUNDLE_DIR}/mac_adhoc_codesign.sh"
 
 # Remove AppleDouble resource forks that break Gatekeeper on some Macs
 find "$BUNDLE_DIR" -name '._*' -delete 2>/dev/null || true

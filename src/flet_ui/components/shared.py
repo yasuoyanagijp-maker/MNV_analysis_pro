@@ -350,13 +350,20 @@ class BackendClient:
         )
 
     async def list_dir(self, path=None):
-        async with local_async_client() as client:
+        async with local_async_client(timeout=30.0) as client:
             try:
                 params = {"path": path} if path else {}
                 response = await client.get(f"{self.base_url}/ls", params=params)
-                return response.json()
+                if response.status_code >= 400:
+                    return {"error": f"フォルダ一覧の取得に失敗しました (HTTP {response.status_code})"}
+                data = response.json()
+                if isinstance(data, dict) and "error" in data and not str(data["error"]).strip():
+                    data["error"] = "フォルダ一覧の取得に失敗しました（理由不明）"
+                return data
             except Exception as e:
-                return {"error": str(e)}
+                detail = str(e).strip()
+                label = type(e).__name__
+                return {"error": f"{label}: {detail}" if detail else f"{label}（応答がありません。権限の確認待ちか、フォルダが大きすぎる可能性があります）"}
     
     async def export_csv(self, data, is_vd=False):
         import csv
@@ -411,6 +418,20 @@ class AppContext:
         colors = {"INFO": PRIMARY, "ERROR": Colors.RED_400, "WARN": Colors.AMBER_400}
         color = colors.get(level, PRIMARY)
         timestamp = time.strftime("%H:%M:%S")
+        # No console control is mounted on the dashboard; keep a trace in the
+        # launcher log and tell the user about errors instead of dropping them.
+        print(f"[{timestamp}] {level}: {message}", flush=True)
+        if level == "ERROR":
+            try:
+                self.page.open(
+                    ft.SnackBar(
+                        ft.Text(str(message), color=Colors.WHITE),
+                        bgcolor=Colors.RED_700,
+                        duration=8000,
+                    )
+                )
+            except Exception as e:
+                print(f"Snack bar failed: {e}", flush=True)
         if self.log_console_ref.current:
             self.log_console_ref.current.controls.append(
                 ft.Row([
