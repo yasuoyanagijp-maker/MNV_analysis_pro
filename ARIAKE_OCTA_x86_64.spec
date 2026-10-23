@@ -10,7 +10,7 @@ project_root = os.getcwd()
 sys.path.insert(0, project_root)
 from tools.mac_pyinstaller_filters import collect_pkg_without_metadata, filter_analysis_metadata
 
-MAC_APP_VERSION = os.environ.get("ARIAKE_MAC_APP_VERSION", "1.2.4")
+MAC_APP_VERSION = os.environ.get("ARIAKE_MAC_APP_VERSION", "1.2.4c")
 
 # venv（Python 3.9）の Pillow 内にある libtiff を使用する
 venv_site_packages = os.path.join(project_root, '.venv/lib/python3.9/site-packages')

@@ -43,7 +43,7 @@ DEVELOPER_ID="Developer ID Application: Your Name (XXXXXXXXXX)"
 KEYCHAIN_PROFILE="ARIAKE_NOTARY"             # notarytool store-credentials で設定した名前
 APP_NAME="ARIAKE_OCTA"                        # .app / .dmg のベース名
 APP_BUNDLE_ID="com.ariake.octa"              # Bundle Identifier
-APP_VERSION="1.2.4"
+APP_VERSION="${ARIAKE_MAC_APP_VERSION:-1.2.4c}"
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── パス設定 ──────────────────────────────────────────────────────────────────
