@@ -1,0 +1,40 @@
+name: Mirror Mac v1.2.4d to distribution
+
+# One-shot: GITHUB_TOKEN-created releases do not start sync-distribution.yml.
+# Pushing this file runs the mirror with DISTRIBUTION_SYNC_TOKEN. Delete after success.
+on:
+  push:
+    branches:
+      - cursor/record-v124d-notice-4f39
+    paths:
+      - .github/workflows/mirror-v124d.yml
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mirror docs and v1.2.4d-mac zip
+        env:
+          GH_TOKEN: ${{ secrets.DISTRIBUTION_SYNC_TOKEN }}
+          SYNC_RELEASE: "true"
+          RELEASE_TAG: v1.2.4d-mac
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "DISTRIBUTION_SYNC_TOKEN is empty. Update the Actions secret, then re-push this workflow."
+            exit 1
+          fi
+          chmod +x .github/scripts/sync-distribution.sh
+          .github/scripts/sync-distribution.sh
+          gh release view v1.2.4d-mac \
+            --repo yasuoyanagijp-maker/ARIAKE_OCTA-distribution \
+            --json tagName,assets \
+            --jq '{tag:.tagName, assets:[.assets[].name]}'
