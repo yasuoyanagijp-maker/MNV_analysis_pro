@@ -11,9 +11,9 @@ on:
           - x86_64
         default: arm64
       app_version:
-        description: Release version (e.g. 1.2.4)
+        description: Release version (e.g. 1.2.4c)
         type: string
-        default: "1.2.4"
+        default: "1.2.4c"
       attach_to_release:
         description: Upload zip onto existing GitHub Release v{version}-mac
         type: boolean
@@ -74,6 +74,7 @@ jobs:
       - name: Build .app (ad-hoc, no notarization)
         run: |
           chmod +x build_mac.sh tools/verify_mac_app_arch.sh tools/strip_mac_codesign_poison.sh tools/verify_mac_codesign_ready.sh tools/require_mac_python_arch.sh tools/mac_openssl_coexistence.py package_mac_release.sh
+          export ARIAKE_MAC_APP_VERSION="${{ steps.arch.outputs.version }}"
           if [[ "${{ steps.arch.outputs.target }}" == "arm64" ]]; then
             ./build_mac.sh --skip-notarize --clean --arm64
           else
@@ -104,7 +105,10 @@ jobs:
         run: |
           TAG="v${APP_VERSION}-mac"
           if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Release ${TAG} does not exist yet; zip stays in Actions artifacts only."
+            TAG="v${APP_VERSION}"
+          fi
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release v${APP_VERSION}-mac / v${APP_VERSION} does not exist yet; zip stays in Actions artifacts only."
             exit 0
           fi
           gh release upload "$TAG" dist/*.zip --clobber --repo "${{ github.repository }}"
@@ -133,7 +137,12 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           NOTES_FILE="$(mktemp)"
-          NOTES_TEMPLATE="${GITHUB_WORKSPACE}/.github/release-notes/v1.2.4-mac-body.md"
+          VER="${GITHUB_REF_NAME#v}"
+          VER="${VER%-mac}"
+          NOTES_TEMPLATE="${GITHUB_WORKSPACE}/.github/release-notes/v${VER}-body.md"
+          if [[ ! -f "${NOTES_TEMPLATE}" ]]; then
+            NOTES_TEMPLATE="${GITHUB_WORKSPACE}/.github/release-notes/v1.2.4c-body.md"
+          fi
           if [[ -f "${NOTES_TEMPLATE}" ]]; then
             cp "${NOTES_TEMPLATE}" "${NOTES_FILE}"
           else

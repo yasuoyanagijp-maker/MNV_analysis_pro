@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="ARIAKE_OCTA"
 APP_PATH="${SCRIPT_DIR}/dist/${APP_NAME}.app"
 DIST_DIR="${SCRIPT_DIR}/dist"
-VERSION="1.2.4"
+VERSION="1.2.4c"
 TARGET_ARCH="arm64"
 
 while [[ $# -gt 0 ]]; do
@@ -48,7 +48,7 @@ STAGE="${DIST_DIR}/release_mac_${TARGET_ARCH}"
 rm -rf "$STAGE"
 if [[ "$TARGET_ARCH" == "arm64" ]]; then
     BUNDLE_DIR="${STAGE}/ARIAKE_OCTA_mac_v${VERSION}"
-    ZIP_NAME="ARIAKE_OCTA_mac.zip"
+    ZIP_NAME="ARIAKE_OCTA_mac_v${VERSION}.zip"
 else
     BUNDLE_DIR="${STAGE}/ARIAKE_OCTA_macOS_Intel_v${VERSION}"
     ZIP_NAME="ARIAKE_OCTA_macOS_Intel_v${VERSION}.zip"
