@@ -113,5 +113,14 @@ app = BUNDLE(
         "CFBundleName": "ARIAKE OCTA Pro",
         "CFBundleShortVersionString": MAC_APP_VERSION,
         "CFBundleVersion": MAC_APP_VERSION,
+        "NSDesktopFolderUsageDescription": (
+            "ARIAKE OCTA needs Desktop access to select OCT-A image folders."
+        ),
+        "NSDocumentsFolderUsageDescription": (
+            "ARIAKE OCTA needs Documents access to select OCT-A image folders."
+        ),
+        "NSDownloadsFolderUsageDescription": (
+            "ARIAKE OCTA needs Downloads access to select OCT-A image folders."
+        ),
     },
 )

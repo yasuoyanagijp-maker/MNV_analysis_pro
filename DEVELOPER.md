@@ -66,6 +66,7 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 
 - **Web** では Flet の **`get_directory_path` は事実上使えない**（公式制限）。`pages/dashboard.py` は `getattr(page, "web", False)` により、Web 時は**サーバ側 `list_dir` ベースのエクスプローラ**等へ分岐。
 - **ネイティブ**（`FLET_USE_WEB=0`）では OS ダイアログが使える想定。
+- **`GET /ls`** は `src/utils/folder_list.py`。Desktop が TCC で読めないときは Home / `ARIAKE_OCTA_Data` に落とす。画面は error を握りつぶさず、パス貼り付けと Home / App Data を出す（津須先生 2026-10-23 の空白画面）。
 
 ### 4.5 ナビゲーション
 
