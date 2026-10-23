@@ -1,6 +1,6 @@
 name: Mirror Mac v1.2.4d to distribution
 
-# One-shot: GITHUB_TOKEN-created releases do not start sync-distribution.yml.
+# One-shot: GITHUB_TOKEN release creates do not start sync-distribution.yml.
 # Pushing this file runs the mirror with DISTRIBUTION_SYNC_TOKEN. Delete after success.
 on:
   push:
@@ -20,21 +20,82 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Mirror docs and v1.2.4d-mac zip
+      - name: Check DISTRIBUTION_SYNC_TOKEN
         env:
           GH_TOKEN: ${{ secrets.DISTRIBUTION_SYNC_TOKEN }}
-          SYNC_RELEASE: "true"
-          RELEASE_TAG: v1.2.4d-mac
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           if [[ -z "${GH_TOKEN}" ]]; then
-            echo "DISTRIBUTION_SYNC_TOKEN is empty. Update the Actions secret, then re-push this workflow."
+            echo "DISTRIBUTION_SYNC_TOKEN is empty."
             exit 1
           fi
+          echo "token length: ${#GH_TOKEN}"
+          echo "token prefix: ${GH_TOKEN:0:4}..."
+          gh api user --jq '"login=\(.login)"'
+          gh api repos/yasuoyanagijp-maker/ARIAKE_OCTA-distribution \
+            --jq '"dist permissions=\(.permissions | tostring) private=\(.private)"'
+          gh api repos/yasuoyanagijp-maker/MNV_analysis_pro \
+            --jq '"src permissions=\(.permissions | tostring)"'
+
+      - name: Mirror v1.2.4d-mac zip with gh
+        env:
+          GH_TOKEN: ${{ secrets.DISTRIBUTION_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          SRC=yasuoyanagijp-maker/MNV_analysis_pro
+          DIST=yasuoyanagijp-maker/ARIAKE_OCTA-distribution
+          TAG=v1.2.4d-mac
+          TITLE="ARIAKE OCTA Mac v1.2.4d（フォルダ選択修正）"
+          ASSET_DIR="$(mktemp -d)"
+          gh release download "$TAG" --repo "$SRC" --dir "$ASSET_DIR"
+          ls -lh "$ASSET_DIR"
+          NOTES="$(gh release view "$TAG" --repo "$SRC" --json body --jq .body)"
+          NOTES_FILE="$(mktemp)"
+          printf '%s\n' "$NOTES" > "$NOTES_FILE"
+          if gh release view "$TAG" --repo "$DIST" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ASSET_DIR"/* --repo "$DIST" --clobber
+            gh release edit "$TAG" --repo "$DIST" --title "$TITLE" --notes-file "$NOTES_FILE"
+          else
+            gh release create "$TAG" "$ASSET_DIR"/* \
+              --repo "$DIST" \
+              --title "$TITLE" \
+              --notes-file "$NOTES_FILE"
+          fi
+          gh release view "$TAG" --repo "$DIST" --json tagName,url,assets \
+            --jq '{tag:.tagName, url:.url, assets:[.assets[].name]}'
+
+      - name: Sync manuals (git push)
+        env:
+          GH_TOKEN: ${{ secrets.DISTRIBUTION_SYNC_TOKEN }}
+          SYNC_RELEASE: "false"
+          RELEASE_TAG: ""
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Fine-grained PAT: try oauth2 username if x-access-token fails in the script.
           chmod +x .github/scripts/sync-distribution.sh
-          .github/scripts/sync-distribution.sh
-          gh release view v1.2.4d-mac \
-            --repo yasuoyanagijp-maker/ARIAKE_OCTA-distribution \
-            --json tagName,assets \
-            --jq '{tag:.tagName, assets:[.assets[].name]}'
+          if ! .github/scripts/sync-distribution.sh; then
+            echo "Default sync script git push failed; retrying with oauth2 remote URL..."
+            STAGING="$(mktemp -d)"
+            CONTENT="${STAGING}/content"
+            mkdir -p "${CONTENT}/documentation"
+            cp USER_MANUAL.md "${CONTENT}/"
+            cp documentation/README.md "${CONTENT}/documentation/"
+            cp documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md "${CONTENT}/documentation/"
+            cp documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md "${CONTENT}/documentation/"
+            cp documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md "${CONTENT}/documentation/"
+            cp documentation/collaboration.md "${CONTENT}/documentation/"
+            cp documentation/roi_method.md "${CONTENT}/documentation/"
+            CLONE="${STAGING}/repo"
+            git clone --depth 1 "https://oauth2:${GH_TOKEN}@github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution.git" "${CLONE}"
+            rsync -a --delete --exclude='.git' "${CONTENT}/" "${CLONE}/"
+            cd "${CLONE}"
+            git add -A
+            if git diff --cached --quiet; then
+              echo "No documentation changes"
+            else
+              git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                commit -m "Sync user manuals from yasuoyanagijp-maker/MNV_analysis_pro"
+              git push
+            fi
+          fi
