@@ -37,11 +37,13 @@ class RegistrationResult:
     reference_kind: str = "analysis_slab"
     n_register_slabs: int = 1
     combine_mode: str = "none"
+    analysis_score: float = float("nan")
 
     def to_record(self) -> dict:
         return {
             "registration_cc": self.score,
             "registration_cc_persistent": self.persistent_score,
+            "registration_cc_analysis_slab": self.analysis_score,
             "registration_method": self.method,
             "registration_failed": self.failed,
             "registration_tx_px": self.translation_xy[0],

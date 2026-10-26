@@ -51,8 +51,9 @@ python tools/pdr_nve/run_pdr_nve.py --before ... --after ... --output ... --case
 | Option | Meaning |
 |--------|---------|
 | `--scan-size-mm` / `--pixel-width` / `--um-per-px` | Physical scale. Recorded in the CSV. |
-| `--roi-mask` / `--roi-polygon` | Shared freeform ROI in **before** pixels (after is registered first). |
-| `--roi-mode auto\|full` | If no mask/polygon: density-based lesion contour, or whole frame. |
+| `--roi-mask` / `--roi-polygon` / `--roi-box x,y,w,h` | Shared freeform ROI in **before** pixels (after is registered first). `--roi-box` is repeatable (sparse tufts). |
+| `--roi-mode auto\|full` | If no mask/polygon/box: density-excess lesion contour (rejected if > `--max-roi-frac`, default 0.40), or whole frame. |
+| `--min-cc-mm2` | Drop isolated vessel-mask speckle smaller than this area (default 0.012 mm²). |
 | `--no-register` | Pair already aligned. |
 | `--register-before` / `--register-after` | **Registration-only slabs** (repeatable). Do **not** align on the ILM+49 analysis slab after treatment — NVE vanishes. Prefer Retina, device **VRI+Retina Global**, or every exported slab. Combined with `--register-combine` (default `mean` = stack_reg Image 5 / ImageJ Z-project average; `sum` is a rescaled total). The estimated transform is then applied to the analysis pair. |
 | `--large-vessel-um` | Diameter gate for trunk vessels (default 100 µm). |

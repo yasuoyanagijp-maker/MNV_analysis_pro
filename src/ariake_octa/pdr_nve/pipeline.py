@@ -10,10 +10,11 @@ import numpy as np
 
 from .io import load_gray_u8, write_csv, write_json
 from .metrics import PAIR_METRIC_KEYS, assert_raw_only, compute_raw_metrics, pair_record
-from .overlay import save_analysis_images, save_gray_png
+from .overlay import create_register_qa, save_analysis_images, save_gray_png, save_rgb_png
 from .quality import collect_flags
 from .register import (
     combine_slabs,
+    compute_alignment_cc,
     register_after_to_before,
     register_using_reference_slabs,
     warp_gray,
@@ -45,6 +46,9 @@ class PdrNveConfig:
     register_before_paths: Optional[Sequence[str]] = None
     register_after_paths: Optional[Sequence[str]] = None
     register_combine: str = "mean"
+    roi_boxes: Optional[Sequence[tuple]] = None
+    min_cc_mm2: float = 0.012
+    max_auto_roi_frac: float = 0.40
     precomputed_before_binary: Optional[Any] = None
     precomputed_after_binary: Optional[Any] = None
 
@@ -145,6 +149,7 @@ def analyze_pair(
         large_vessel_um=cfg.large_vessel_um,
         exclude_large_vessels=cfg.exclude_large_vessels,
         precomputed_binary=cfg.precomputed_before_binary,
+        min_cc_mm2=cfg.min_cc_mm2,
     )
     maps_a_full = build_vessel_maps(
         after_reg,
@@ -154,6 +159,7 @@ def analyze_pair(
         large_vessel_um=cfg.large_vessel_um,
         exclude_large_vessels=cfg.exclude_large_vessels,
         precomputed_binary=pre_after,
+        min_cc_mm2=cfg.min_cc_mm2,
     )
 
     roi, roi_used, roi_extra = resolve_roi(
@@ -165,7 +171,9 @@ def analyze_pair(
         roi_mask_path=cfg.roi_mask_path,
         roi_polygon_path=cfg.roi_polygon_path,
         roi_polygon=cfg.roi_polygon,
+        roi_boxes=cfg.roi_boxes,
         exclude_disc_flag=cfg.exclude_disc,
+        max_auto_roi_frac=cfg.max_auto_roi_frac,
     )
 
     if cfg.trim_roi_margin and roi_used in {"mask", "polygon"}:
@@ -215,10 +223,52 @@ def analyze_pair(
         image_paths["register_ref_after"] = str(
             save_gray_png(out_dir / f"{cfg.case_id}_register_ref_after.png", ref_after)
         )
+        ref_after_warped = warp_gray(ref_after, registration.matrix, before.shape)
         image_paths["register_ref_after_warped"] = str(
             save_gray_png(
                 out_dir / f"{cfg.case_id}_register_ref_after_warped.png",
-                warp_gray(ref_after, registration.matrix, before.shape),
+                ref_after_warped,
+            )
+        )
+        cc_analysis = compute_alignment_cc(before, after, registration.matrix)
+        image_paths["register_qa"] = str(
+            save_rgb_png(
+                out_dir / f"{cfg.case_id}_register_qa.png",
+                create_register_qa(
+                    ref_before,
+                    ref_after_warped,
+                    before,
+                    after_reg,
+                    cc_ref=float(registration.score),
+                    cc_ref_persistent=float(registration.persistent_score),
+                    cc_analysis=float(cc_analysis),
+                    tx=float(registration.translation_xy[0]),
+                    ty=float(registration.translation_xy[1]),
+                    method=registration.method,
+                    reference_kind=registration.reference_kind,
+                ),
+            )
+        )
+        registration.analysis_score = float(cc_analysis)
+    else:
+        cc_analysis = compute_alignment_cc(before, after, registration.matrix)
+        registration.analysis_score = float(cc_analysis)
+        image_paths["register_qa"] = str(
+            save_rgb_png(
+                out_dir / f"{cfg.case_id}_register_qa.png",
+                create_register_qa(
+                    before,
+                    after_reg,
+                    before,
+                    after_reg,
+                    cc_ref=float(registration.score),
+                    cc_ref_persistent=float(registration.persistent_score),
+                    cc_analysis=float(cc_analysis),
+                    tx=float(registration.translation_xy[0]),
+                    ty=float(registration.translation_xy[1]),
+                    method=registration.method,
+                    reference_kind=registration.reference_kind,
+                ),
             )
         )
 
@@ -229,6 +279,8 @@ def analyze_pair(
         "roi_mode": roi_used,
         "exclude_large_vessels": bool(cfg.exclude_large_vessels),
         "large_vessel_threshold_um": float(cfg.large_vessel_um),
+        "min_cc_mm2": float(cfg.min_cc_mm2),
+        "max_auto_roi_frac": float(cfg.max_auto_roi_frac),
         "segment_mode": maps_b_full.segment_mode,
         "blank_border_top": 0 if crop is None else crop.top,
         "blank_border_bottom": 0 if crop is None else crop.bottom,

@@ -22,17 +22,48 @@ def _as_u8(mask: np.ndarray) -> np.ndarray:
     return ((mask > 0).astype(np.uint8)) * 255
 
 
+def boxes_to_mask(boxes: Sequence[tuple], shape: tuple) -> np.ndarray:
+    """Rasterize one or more axis-aligned boxes ``(x, y, w, h)`` in pixel coords."""
+    mask = np.zeros(shape[:2], dtype=np.uint8)
+    h, w = shape[:2]
+    for box in boxes:
+        if len(box) != 4:
+            raise ValueError(f"ROI box must be x,y,w,h; got {box}")
+        x, y, bw, bh = (int(round(float(v))) for v in box)
+        if bw <= 0 or bh <= 0:
+            raise ValueError(f"ROI box width/height must be positive: {box}")
+        x0 = max(0, x)
+        y0 = max(0, y)
+        x1 = min(w, x + bw)
+        y1 = min(h, y + bh)
+        if x1 > x0 and y1 > y0:
+            mask[y0:y1, x0:x1] = 255
+    if int((mask > 0).sum()) == 0:
+        raise ValueError("ROI boxes did not cover any pixels inside the image")
+    return mask
+
+
+def parse_roi_box(text: str) -> tuple:
+    """Parse ``x,y,w,h`` (commas or spaces)."""
+    parts = [p for p in text.replace(",", " ").split() if p]
+    if len(parts) != 4:
+        raise ValueError(f"ROI box must be x,y,w,h; got {text!r}")
+    return tuple(float(p) for p in parts)
+
+
 def auto_lesion_roi(
     maps: VesselMaps,
     scale: PixelScale,
-    min_component_mm2: float = 0.15,
+    min_component_mm2: float = 0.12,
+    max_roi_frac: float = 0.40,
 ) -> Optional[np.ndarray]:
     """
     Estimate a freeform NVE contour from the *before* frame.
 
-    After large-vessel removal, keep regions of locally high remaining-vessel
-    density, close gaps, and retain the largest component(s). Returns None if
-    nothing usable is found (caller should fall back to full field).
+    Uses local vessel-density *excess* after a wide opening so small tufts
+    (case 2) are not swallowed by the retinal tree. The mask is rejected if
+    it covers more than ``max_roi_frac`` of the frame (that used to become
+    an accidental full-field ROI).
     """
     nve = maps.binary_no_large
     if int(nve.sum()) < 32:
@@ -40,7 +71,7 @@ def auto_lesion_roi(
     if int(nve.sum()) < 16:
         return None
 
-    win_um = 250.0
+    win_um = 220.0
     k = max(9, int(round(win_um / scale.um_per_px)))
     if k % 2 == 0:
         k += 1
@@ -48,48 +79,66 @@ def auto_lesion_roi(
     peak = float(dens.max())
     if peak <= 0:
         return None
-    # Local excess over a wide opening: isolates NVE tufts from the regular
-    # retinal tree (case 2) while still capturing a dense NVE mesh (case 1).
-    bg_k = max(k * 3, int(round(900.0 / scale.um_per_px)))
+    bg_k = max(k * 4, int(round(1200.0 / scale.um_per_px)))
     if bg_k % 2 == 0:
         bg_k += 1
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (bg_k, bg_k))
     background = cv2.morphologyEx(dens, cv2.MORPH_OPEN, kernel)
     residual = np.clip(dens - background, 0, None)
     res_peak = float(residual.max())
-    if res_peak > 0.02 and res_peak > 0.15 * peak:
-        mask = residual >= max(0.015, 0.28 * res_peak)
-    else:
-        mask = dens >= max(0.04, 0.28 * peak)
-    # Close at ~0.35 mm so the lesion is an envelope, not a vessel-shaped ribbon.
-    close_um = 350.0
-    close_r = max(3, int(round(close_um / scale.um_per_px)))
-    mask = binary_closing(mask, disk(close_r))
-    min_px = max(64, int(round(min_component_mm2 / (scale.mm_per_px**2))))
-    mask = remove_small_objects(mask, min_size=min_px, connectivity=2)
-    hole_px = max(min_px, int(round((0.15**2) / (scale.mm_per_px**2))))
-    mask = remove_small_holes(mask, area_threshold=hole_px)
-    if int(mask.sum()) == 0:
+    if res_peak < 0.02:
+        residual = np.clip(dens - float(np.median(dens)), 0, None)
+        res_peak = float(residual.max())
+    if res_peak <= 0:
         return None
 
-    n_lab, labels, stats, _ = cv2.connectedComponentsWithStats(
-        mask.astype(np.uint8), connectivity=8
-    )
-    if n_lab <= 1:
+    min_px = max(64, int(round(min_component_mm2 / (scale.mm_per_px**2))))
+    close_r = max(3, int(round(220.0 / scale.um_per_px)))
+    hole_px = max(min_px, int(round((0.12**2) / (scale.mm_per_px**2))))
+    frame = float(nve.size)
+    best = None
+    best_score = -1.0
+
+    for frac in (0.45, 0.55, 0.65, 0.75):
+        mask = residual >= max(0.03, frac * res_peak)
+        mask = binary_closing(mask, disk(close_r))
+        mask = remove_small_objects(mask, min_size=min_px, connectivity=2)
+        mask = remove_small_holes(mask, area_threshold=hole_px)
+        if int(mask.sum()) < min_px:
+            continue
+        n_lab, labels, stats, _ = cv2.connectedComponentsWithStats(
+            mask.astype(np.uint8), connectivity=8
+        )
+        if n_lab <= 1:
+            continue
+        # Rank by residual mass (tufts / dense mesh), not raw area.
+        masses = []
+        for idx in range(1, n_lab):
+            sel = labels == idx
+            masses.append((float(residual[sel].sum()), idx, int(sel.sum())))
+        masses.sort(reverse=True)
+        keep = np.zeros_like(mask, dtype=bool)
+        kept_mass = 0.0
+        total_mass = sum(m[0] for m in masses) or 1.0
+        for mass, idx, area in masses:
+            trial = keep | (labels == idx)
+            if float(trial.mean()) > max_roi_frac:
+                continue
+            keep = trial
+            kept_mass += mass
+            if kept_mass >= 0.80 * total_mass:
+                break
+        roi_frac = float(keep.mean())
+        if int(keep.sum()) < min_px or roi_frac > max_roi_frac:
+            continue
+        score = kept_mass / (roi_frac * frame + 1.0)
+        if score > best_score:
+            best = keep
+            best_score = score
+
+    if best is None:
         return None
-    areas = stats[1:, cv2.CC_STAT_AREA]
-    order = np.argsort(areas)[::-1]
-    keep = np.zeros_like(mask, dtype=bool)
-    kept_area = 0
-    total = int(areas.sum())
-    for idx in order:
-        keep |= labels == (idx + 1)
-        kept_area += int(areas[idx])
-        if kept_area >= 0.85 * total:
-            break
-    if int(keep.sum()) < min_px:
-        return None
-    return _as_u8(keep)
+    return _as_u8(best)
 
 
 def exclude_disc(
@@ -160,18 +209,24 @@ def resolve_roi(
     roi_mask_path: Optional[str] = None,
     roi_polygon_path: Optional[str] = None,
     roi_polygon: Optional[Sequence[tuple]] = None,
+    roi_boxes: Optional[Sequence[tuple]] = None,
     exclude_disc_flag: bool = False,
+    max_auto_roi_frac: float = 0.40,
 ) -> Tuple[np.ndarray, str, dict]:
     """
     Return ``(roi_u8, mode_used, extra)``.
 
-    Modes: ``mask``, ``polygon``, ``auto``, ``full``.
+    Modes: ``mask``, ``polygon``, ``box``, ``auto``, ``full``.
     """
     extra: dict = {}
     mode = (roi_mode or "auto").strip().lower()
     if roi_mask_path:
         roi = load_mask_u8(roi_mask_path, shape=shape)
         used = "mask"
+    elif roi_boxes:
+        roi = boxes_to_mask(roi_boxes, shape)
+        used = "box"
+        extra["n_roi_boxes"] = len(list(roi_boxes))
     elif roi_polygon is not None or roi_polygon_path:
         poly: List[tuple] = (
             list(roi_polygon) if roi_polygon is not None else load_polygon(roi_polygon_path)
@@ -183,7 +238,9 @@ def resolve_roi(
         roi = np.ones(shape[:2], dtype=np.uint8) * 255
         used = "full"
     else:
-        auto = auto_lesion_roi(maps_before, scale)
+        auto = auto_lesion_roi(
+            maps_before, scale, max_roi_frac=max_auto_roi_frac
+        )
         if auto is None:
             roi = np.ones(shape[:2], dtype=np.uint8) * 255
             used = "full_fallback"

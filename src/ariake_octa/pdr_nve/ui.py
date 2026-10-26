@@ -33,6 +33,10 @@ def main():
         scan_tf = ft.TextField(label="Scan size (mm)", value="15", width=140)
         um_tf = ft.TextField(label="µm/px (optional)", value="", width=160)
         roi_tf = ft.TextField(label="ROI mask (optional)", expand=True)
+        roi_box_tf = ft.TextField(
+            label="Manual ROI boxes x,y,w,h (optional, semicolon-separated)",
+            expand=True,
+        )
         reg_b_tf = ft.TextField(
             label="Register-before slabs (optional, comma-separated). Prefer Retina / all-slab mean",
             expand=True,
@@ -69,11 +73,20 @@ def main():
                 def _split(val: str):
                     return [p.strip() for p in val.split(",") if p.strip()] or None
 
+                from .roi import parse_roi_box
+
+                boxes = []
+                for chunk in (roi_box_tf.value or "").split(";"):
+                    chunk = chunk.strip()
+                    if chunk:
+                        boxes.append(parse_roi_box(chunk))
+
                 cfg = PdrNveConfig(
                     case_id=case_tf.value.strip() or "case",
                     scan_size_mm=float(scan_tf.value or 15),
                     um_per_px=um,
                     roi_mask_path=roi_tf.value.strip() or None,
+                    roi_boxes=boxes or None,
                     register_before_paths=_split(reg_b_tf.value or ""),
                     register_after_paths=_split(reg_a_tf.value or ""),
                     large_vessel_um=float(large_tf.value or 100),
@@ -122,6 +135,7 @@ def main():
                             ft.ElevatedButton("Browse", on_click=lambda e: pick(roi_tf)),
                         ]
                     ),
+                    roi_box_tf,
                     ft.Text(
                         "重ね合わせは解析スラブではなく、Retina / VRI+Retina Global / 全スラブ平均を使う（stack_reg の Image 5 と同じ）。",
                         color="#8B9BB4",

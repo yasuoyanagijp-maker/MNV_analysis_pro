@@ -10,6 +10,7 @@ from ._paths import ensure_import_paths
 ensure_import_paths()
 
 from .pipeline import PdrNveConfig, analyze_pair  # noqa: E402
+from .roi import parse_roi_box  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,10 +49,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional polygon JSON/CSV of (x,y) vertices in before-image pixels",
     )
     p.add_argument(
+        "--roi-box",
+        action="append",
+        default=None,
+        metavar="X,Y,W,H",
+        help=(
+            "Manual axis-aligned ROI box in before-image pixels (repeatable). "
+            "Use this when auto-ROI swallows the whole field (sparse NVE tufts)."
+        ),
+    )
+    p.add_argument(
         "--roi-mode",
-        choices=["auto", "full", "mask", "polygon"],
+        choices=["auto", "full", "mask", "polygon", "box"],
         default="auto",
-        help="ROI source when --roi-mask/--roi-polygon are omitted (default: auto)",
+        help="ROI source when --roi-mask/--roi-polygon/--roi-box are omitted (default: auto)",
+    )
+    p.add_argument(
+        "--max-roi-frac",
+        type=float,
+        default=0.40,
+        help="Reject auto-ROI if it covers more than this fraction of the frame (default: 0.40)",
+    )
+    p.add_argument(
+        "--min-cc-mm2",
+        type=float,
+        default=0.012,
+        help="Drop isolated vessel-mask components smaller than this mm² (default: 0.012)",
     )
     p.add_argument(
         "--no-register",
@@ -120,6 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    boxes = [parse_roi_box(t) for t in (args.roi_box or [])] or None
     cfg = PdrNveConfig(
         case_id=args.case_id,
         scan_size_mm=args.scan_size_mm,
@@ -128,6 +152,9 @@ def main(argv=None) -> int:
         roi_mode=args.roi_mode,
         roi_mask_path=args.roi_mask,
         roi_polygon_path=args.roi_polygon,
+        roi_boxes=boxes,
+        min_cc_mm2=args.min_cc_mm2,
+        max_auto_roi_frac=args.max_roi_frac,
         register=not args.no_register,
         register_before_paths=args.register_before,
         register_after_paths=args.register_after,
@@ -147,6 +174,7 @@ def main(argv=None) -> int:
         f"  um/px={rec['um_per_px']:.4f}  roi={rec['roi_mode']}  "
         f"reg_cc={rec['registration_cc']:.3f}  "
         f"persistent={rec.get('registration_cc_persistent', float('nan')):.3f}  "
+        f"analysis_cc={rec.get('registration_cc_analysis_slab', float('nan')):.3f}  "
         f"({rec['registration_method']}, ref={rec.get('registration_reference')})"
     )
     print(
@@ -164,6 +192,7 @@ def main(argv=None) -> int:
     print("  images:")
     for key in (
         "overlay_qa",
+        "register_qa",
         "before_rgb",
         "after_rgb",
         "before_vessel_mask",

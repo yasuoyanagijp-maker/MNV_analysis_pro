@@ -51,8 +51,9 @@ python tools/pdr_nve/run_pdr_nve.py --before ... --after ... --output ... --case
 | オプション | 意味 |
 |-------------|------|
 | `--scan-size-mm` / `--pixel-width` / `--um-per-px` | 物理スケール。CSV に記録。 |
-| `--roi-mask` / `--roi-polygon` | **before** 座標の自由形状 ROI（after は先に位置合わせ）。 |
-| `--roi-mode auto\|full` | マスク未指定時: 病変らしい輪郭を自動推定、または全画面。 |
+| `--roi-mask` / `--roi-polygon` / `--roi-box x,y,w,h` | **before** 座標の自由形状 ROI（after は先に位置合わせ）。`--roi-box` は繰り返し可（散在 tuft 用）。 |
+| `--roi-mode auto\|full` | マスク未指定時: 密度残差で病変輪郭を推定（`--max-roi-frac` 超は棄却、既定 0.40）、または全画面。 |
+| `--min-cc-mm2` | これより小さい孤立成分を血管マスクから除去（既定 0.012 mm²、点状ノイズ対策）。 |
 | `--no-register` | すでに位置合わせ済みのとき。 |
 | `--register-before` / `--register-after` | **位置合わせ専用スラブ**（繰り返し指定可）。治療後に NVE が消える ILM+49 解析スラブで重ねないこと。Retina、装置の **VRI+Retina Global**、または全スラブ。`--register-combine` 既定 `mean` は stack_reg の Image 5 / ImageJ Z-project 平均。`sum` は合計して 8-bit に再スケール。推定した変換を解析スラブへ適用。 |
 | `--large-vessel-um` | 太い網膜血管の直径閾値（既定 100 µm）。 |

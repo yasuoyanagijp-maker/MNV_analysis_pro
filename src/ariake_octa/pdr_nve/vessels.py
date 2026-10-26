@@ -93,6 +93,24 @@ def segment_vessels_mnv(image_u8: np.ndarray, roi: Optional[np.ndarray] = None) 
     return binary
 
 
+def remove_speckle(
+    binary: np.ndarray,
+    scale: PixelScale,
+    min_area_mm2: float = 0.012,
+) -> np.ndarray:
+    """
+    Drop isolated vessel-mask dots.
+
+    The MNV preprocessor on 15 mm display exports leaves salt-like CCs of
+    roughly 25–60 px. Default 0.012 mm² is ~56 px at 15 mm / 1024, which
+    removes those dots while keeping isolated NVE tufts (typically >100 px)
+    and the connected retinal tree.
+    """
+    bw = _as_bool(binary)
+    min_px = max(16, int(round(float(min_area_mm2) / (scale.mm_per_px**2))))
+    return remove_small_objects(bw, min_size=min_px, connectivity=2)
+
+
 def segment_vessels(
     image_u8: np.ndarray,
     roi: Optional[np.ndarray] = None,
@@ -173,6 +191,7 @@ def build_vessel_maps(
     large_vessel_um: float = 100.0,
     exclude_large_vessels: bool = True,
     precomputed_binary: Optional[np.ndarray] = None,
+    min_cc_mm2: float = 0.012,
 ) -> VesselMaps:
     binary = (
         _as_bool(precomputed_binary)
@@ -181,6 +200,8 @@ def build_vessel_maps(
     )
     if roi is not None:
         binary = binary & (roi > 0)
+    if min_cc_mm2 and min_cc_mm2 > 0:
+        binary = remove_speckle(binary, scale, min_area_mm2=min_cc_mm2)
     distance_px = distance_transform_edt(binary)
     if exclude_large_vessels:
         large = large_vessel_from_intensity(

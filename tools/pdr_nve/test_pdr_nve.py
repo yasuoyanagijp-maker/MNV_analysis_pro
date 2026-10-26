@@ -29,6 +29,7 @@ from ariake_octa.pdr_nve.metrics import (  # noqa: E402
 )
 from ariake_octa.pdr_nve.pipeline import PdrNveConfig, analyze_pair  # noqa: E402
 from ariake_octa.pdr_nve.quality import collect_flags  # noqa: E402
+from ariake_octa.pdr_nve.roi import auto_lesion_roi, boxes_to_mask, parse_roi_box  # noqa: E402
 from ariake_octa.pdr_nve.register import (  # noqa: E402
     combine_slabs,
     identity_result,
@@ -41,7 +42,11 @@ from ariake_octa.pdr_nve.trim import (  # noqa: E402
     detect_blank_border,
     trim_roi_blank_margin,
 )
-from ariake_octa.pdr_nve.vessels import build_vessel_maps, large_vessel_mask  # noqa: E402
+from ariake_octa.pdr_nve.vessels import (  # noqa: E402
+    build_vessel_maps,
+    large_vessel_mask,
+    remove_speckle,
+)
 
 
 def _network(shape=(128, 128), prune=False):
@@ -210,6 +215,54 @@ class TestVesselsAndMetrics(unittest.TestCase):
         self.assertAlmostEqual(percent_change(10, 7), -30.0)
         self.assertTrue(np.isnan(percent_change(0, 1)))
 
+    def test_remove_speckle_keeps_network(self):
+        img = _network((96, 96))
+        binary = img > 0
+        noisy = binary.copy()
+        rng = np.random.default_rng(0)
+        dots = rng.random(noisy.shape) < 0.02
+        # isolated 1-px dots away from the mesh
+        dots[30:100, 30:100] = False
+        noisy = noisy | dots
+        scale = resolve_pixel_scale((96, 96), scan_size_mm=15.0, pixel_width_px=96)
+        cleaned = remove_speckle(noisy, scale, min_area_mm2=0.05)
+        self.assertGreater(int(cleaned.sum()), 200)
+        self.assertLess(int(cleaned.sum()), int(noisy.sum()))
+        self.assertLess(int((cleaned & ~binary).sum()), 20)
+
+
+class TestRoi(unittest.TestCase):
+    def test_parse_and_rasterize_box(self):
+        self.assertEqual(parse_roi_box("10,20,30,40"), (10.0, 20.0, 30.0, 40.0))
+        mask = boxes_to_mask([(10, 20, 30, 40), (50, 50, 10, 10)], (80, 80))
+        self.assertEqual(int((mask > 0).sum()), 30 * 40 + 10 * 10)
+        self.assertTrue(mask[25, 15] > 0)
+        self.assertEqual(int(mask[0, 0]), 0)
+
+    def test_auto_roi_does_not_swallow_whole_field(self):
+        """A sparse tuft on a thin tree must not become a full-field ROI."""
+        img = np.zeros((128, 128), dtype=np.uint8)
+        img[64, 8:120] = 220
+        img[8:120, 64] = 220
+        img[20:44, 20:44] = 0
+        for y in range(20, 44, 3):
+            img[y, 20:44] = 200
+        for x in range(20, 44, 3):
+            img[20:44, x] = 200
+        scale = resolve_pixel_scale((128, 128), scan_size_mm=15.0, pixel_width_px=128)
+        maps = build_vessel_maps(
+            img,
+            scale,
+            segment_mode="adaptive",
+            large_vessel_um=80.0,
+            min_cc_mm2=0.002,
+        )
+        roi = auto_lesion_roi(maps, scale, min_component_mm2=0.02, max_roi_frac=0.40)
+        self.assertIsNotNone(roi)
+        frac = float((roi > 0).mean())
+        self.assertLess(frac, 0.40)
+        self.assertGreater(int((roi[20:44, 20:44] > 0).sum()), 20)
+
 
 class TestRegistration(unittest.TestCase):
     def test_identity_when_disabled(self):
@@ -326,6 +379,7 @@ class TestPipelineArtifacts(unittest.TestCase):
             required = [
                 "metrics_csv",
                 "overlay_qa",
+                "register_qa",
                 "before_rgb",
                 "after_rgb",
                 "before_vessel_mask",
@@ -386,6 +440,7 @@ class TestPipelineArtifacts(unittest.TestCase):
                 "register_ref_before",
                 "register_ref_after",
                 "register_ref_after_warped",
+                "register_qa",
             ):
                 self.assertTrue(Path(result.paths[key]).is_file(), msg=key)
 
@@ -395,6 +450,8 @@ class TestPipelineArtifacts(unittest.TestCase):
         help_text = build_parser().format_help()
         self.assertIn("--scan-size-mm", help_text)
         self.assertIn("--register-before", help_text)
+        self.assertIn("--roi-box", help_text)
+        self.assertIn("--min-cc-mm2", help_text)
         self.assertIn("RAW", help_text)
         self.assertIn("bmp", help_text.lower())
 

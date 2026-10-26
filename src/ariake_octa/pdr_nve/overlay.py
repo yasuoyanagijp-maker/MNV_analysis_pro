@@ -250,3 +250,74 @@ def save_analysis_images(
         save_gray_png(output_dir / f"{case_id}_shared_roi_mask.png", roi)
     )
     return paths
+
+
+def _checkerboard(a: np.ndarray, b: np.ndarray, block: int = 32) -> np.ndarray:
+    h, w = a.shape[:2]
+    yy, xx = np.indices((h, w))
+    sel = ((yy // block) + (xx // block)) % 2 == 0
+    out = a.copy()
+    out[sel] = b[sel]
+    return out
+
+
+def create_register_qa(
+    ref_before: np.ndarray,
+    ref_after_warped: np.ndarray,
+    analysis_before: np.ndarray,
+    analysis_after_warped: np.ndarray,
+    *,
+    cc_ref: float,
+    cc_ref_persistent: float,
+    cc_analysis: float,
+    tx: float,
+    ty: float,
+    method: str,
+    reference_kind: str,
+) -> np.ndarray:
+    """Two-row registration QA: Global (or other ref) vs analysis slab."""
+    h, w = ref_before.shape[:2]
+    ref_after_warped = _resize_to(ref_after_warped, (h, w))
+    analysis_before = _resize_to(analysis_before, (h, w))
+    analysis_after_warped = _resize_to(analysis_after_warped, (h, w))
+
+    def color_overlay(g_before, g_after):
+        panel = np.zeros((h, w, 3), dtype=np.uint8)
+        panel[..., 1] = g_before
+        panel[..., 0] = g_after
+        panel[..., 2] = ((g_before.astype(np.uint16) + g_after.astype(np.uint16)) // 2).astype(
+            np.uint8
+        )
+        return panel
+
+    def board(g_before, g_after):
+        return _to_rgb(_checkerboard(g_before, g_after, block=32))
+
+    header = (
+        f"ref={reference_kind}  method={method}  "
+        f"cc_ref={cc_ref:.3f}  cc_persist={cc_ref_persistent:.3f}  "
+        f"cc_analysis={cc_analysis:.3f}  tx={tx:.1f}  ty={ty:.1f} px"
+    )
+    row1 = np.concatenate(
+        [
+            _label(color_overlay(ref_before, ref_after_warped), "ref overlay R=after G=before"),
+            _label(board(ref_before, ref_after_warped), "ref checkerboard 32px"),
+        ],
+        axis=1,
+    )
+    row2 = np.concatenate(
+        [
+            _label(
+                color_overlay(analysis_before, analysis_after_warped),
+                "analysis overlay R=after G=before",
+            ),
+            _label(board(analysis_before, analysis_after_warped), "analysis checkerboard 32px"),
+        ],
+        axis=1,
+    )
+    canvas = np.concatenate([row1, row2], axis=0)
+    bar = np.zeros((28, canvas.shape[1], 3), dtype=np.uint8)
+    cv2.putText(
+        bar, header, (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 0), 1, cv2.LINE_AA
+    )
+    return np.concatenate([bar, canvas], axis=0)
