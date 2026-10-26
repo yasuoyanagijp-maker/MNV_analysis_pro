@@ -30,9 +30,11 @@ def frame_quality(image: np.ndarray, label: str) -> Dict:
     sat = float(np.mean(image >= 250))
     dark = float(np.mean(image <= 2))
     flags: List[str] = []
-    if snr < 8.0:
+    # Display-rendered OCTA often has mean ≈ std; SNR dB is not a useful gate
+    # unless contrast is also collapsed.
+    if snr < 4.0 and contrast < 0.25:
         flags.append(f"{label}_low_snr")
-    if contrast < 0.15:
+    if contrast < 0.12:
         flags.append(f"{label}_low_contrast")
     if n_unique < 40:
         flags.append(f"{label}_low_dynamic_range")
@@ -72,8 +74,10 @@ def collect_flags(
 
     if registration.failed:
         flags.append("registration_failed")
-    elif registration.score < 0.80:
+    elif registration.persistent_score < 0.25 and registration.score < 0.40:
         flags.append("low_registration_cc")
+    elif registration.score < 0.80:
+        flags.append("low_fullimage_cc_expected_if_pruned")
     if registration.valid_overlap_frac < 0.70:
         flags.append("low_registration_overlap")
 
@@ -112,6 +116,7 @@ def collect_flags(
             "quality_flags": flags,
             "exclude_suggested": exclude,
             "roi_frac": roi_frac,
+            "registration_cc_persistent": registration.persistent_score,
         }
     )
     return record

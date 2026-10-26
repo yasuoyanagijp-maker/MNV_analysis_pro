@@ -59,6 +59,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip after→before registration (pair already aligned)",
     )
     p.add_argument(
+        "--register-before",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Slab used only to estimate the after→before transform "
+            "(repeat for several slabs). Prefer Retina, VRI+Retina Global, "
+            "or every exported slab — same idea as stack_reg Image 5 average. "
+            "Must pair with --register-after."
+        ),
+    )
+    p.add_argument(
+        "--register-after",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help="Matching after-treatment slab(s) for --register-before.",
+    )
+    p.add_argument(
+        "--register-combine",
+        choices=["mean", "sum", "max"],
+        default="mean",
+        help="How to merge --register-before/--register-after slabs (default: mean)",
+    )
+    p.add_argument(
         "--no-trim-border",
         action="store_true",
         help="Do not crop common near-black export borders",
@@ -104,6 +129,9 @@ def main(argv=None) -> int:
         roi_mask_path=args.roi_mask,
         roi_polygon_path=args.roi_polygon,
         register=not args.no_register,
+        register_before_paths=args.register_before,
+        register_after_paths=args.register_after,
+        register_combine=args.register_combine,
         trim_blank_border=not args.no_trim_border,
         trim_roi_margin=not args.no_trim_roi,
         exclude_disc=args.exclude_disc,
@@ -115,8 +143,12 @@ def main(argv=None) -> int:
     result = analyze_pair(args.before, args.after, cfg)
     rec = result.record
     print(f"Wrote {result.paths.get('metrics_csv')}")
-    print(f"  um/px={rec['um_per_px']:.4f}  roi={rec['roi_mode']}  "
-          f"reg_cc={rec['registration_cc']:.3f} ({rec['registration_method']})")
+    print(
+        f"  um/px={rec['um_per_px']:.4f}  roi={rec['roi_mode']}  "
+        f"reg_cc={rec['registration_cc']:.3f}  "
+        f"persistent={rec.get('registration_cc_persistent', float('nan')):.3f}  "
+        f"({rec['registration_method']}, ref={rec.get('registration_reference')})"
+    )
     print(
         f"  vessel_area_density  before={rec['before_vessel_area_density']:.4f}  "
         f"after={rec['after_vessel_area_density']:.4f}  "

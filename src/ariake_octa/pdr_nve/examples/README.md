@@ -10,3 +10,5 @@ No physical scale in the files; analysis assumes **15 mm / 1024 px**.
 
 Sample run products (CSV, QA overlay, ARIAKE RGB, binary masks) live in `sample_runs/`.
 These two cases are for engineering QA only — not a clinical validation set.
+
+Registration on these sample runs used the **ILM+49 analysis slab** (the only files attached). For real work, pass Retina / VRI+Retina Global / a mean of all slabs via `--register-before` / `--register-after` — the same average-stack idea as stack_reg Image 5. The sample CSVs therefore carry `registration_on_analysis_slab`.

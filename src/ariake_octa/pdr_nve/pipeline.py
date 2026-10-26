@@ -10,9 +10,14 @@ import numpy as np
 
 from .io import load_gray_u8, write_csv, write_json
 from .metrics import PAIR_METRIC_KEYS, assert_raw_only, compute_raw_metrics, pair_record
-from .overlay import save_analysis_images
+from .overlay import save_analysis_images, save_gray_png
 from .quality import collect_flags
-from .register import register_after_to_before
+from .register import (
+    combine_slabs,
+    register_after_to_before,
+    register_using_reference_slabs,
+    warp_gray,
+)
 from .roi import resolve_roi
 from .scale import PixelScale, resolve_pixel_scale
 from .trim import common_blank_border, maybe_compute_color_mask, trim_roi_blank_margin
@@ -37,6 +42,9 @@ class PdrNveConfig:
     large_vessel_um: float = 100.0
     segment_mode: str = "mnv"
     output_dir: str = "pdr_nve_output"
+    register_before_paths: Optional[Sequence[str]] = None
+    register_after_paths: Optional[Sequence[str]] = None
+    register_combine: str = "mean"
     precomputed_before_binary: Optional[Any] = None
     precomputed_after_binary: Optional[Any] = None
 
@@ -82,7 +90,44 @@ def analyze_pair(
         um_per_px=cfg.um_per_px,
     )
 
-    registration = register_after_to_before(before, after, enabled=cfg.register)
+    ref_before_imgs = _load_optional_slabs(cfg.register_before_paths)
+    ref_after_imgs = _load_optional_slabs(cfg.register_after_paths)
+    if bool(ref_before_imgs) != bool(ref_after_imgs):
+        raise ValueError(
+            "Provide both register-before and register-after slabs, or neither."
+        )
+    used_ref_slabs = bool(ref_before_imgs) and bool(ref_after_imgs)
+    if used_ref_slabs:
+        if len(ref_before_imgs) != len(ref_after_imgs):
+            raise ValueError(
+                "register-before and register-after must have the same number of slabs "
+                f"({len(ref_before_imgs)} vs {len(ref_after_imgs)})"
+            )
+        ref_before = combine_slabs(
+            ref_before_imgs, mode=cfg.register_combine, target_shape=before.shape[:2]
+        )
+        ref_after = combine_slabs(
+            ref_after_imgs, mode=cfg.register_combine, target_shape=after.shape[:2]
+        )
+        kind = (
+            "single_other_slab"
+            if len(ref_before_imgs) == 1
+            else f"combined_{cfg.register_combine}"
+        )
+        registration = register_using_reference_slabs(
+            before,
+            after,
+            ref_before,
+            ref_after,
+            enabled=cfg.register,
+            reference_kind=kind,
+            n_register_slabs=len(ref_before_imgs),
+            combine_mode=cfg.register_combine,
+        )
+    else:
+        registration = register_after_to_before(before, after, enabled=cfg.register)
+        ref_before = before
+        ref_after = after
     after_reg = registration.warped_after
 
     pre_after = cfg.precomputed_after_binary
@@ -123,7 +168,7 @@ def analyze_pair(
         exclude_disc_flag=cfg.exclude_disc,
     )
 
-    if cfg.trim_roi_margin:
+    if cfg.trim_roi_margin and roi_used in {"mask", "polygon"}:
         color = maybe_compute_color_mask(
             before, roi, vessel_binary=(maps_b_full.binary.astype(np.uint8) * 255)
         )
@@ -163,6 +208,19 @@ def analyze_pair(
         before_m,
         after_m,
     )
+    if used_ref_slabs:
+        image_paths["register_ref_before"] = str(
+            save_gray_png(out_dir / f"{cfg.case_id}_register_ref_before.png", ref_before)
+        )
+        image_paths["register_ref_after"] = str(
+            save_gray_png(out_dir / f"{cfg.case_id}_register_ref_after.png", ref_after)
+        )
+        image_paths["register_ref_after_warped"] = str(
+            save_gray_png(
+                out_dir / f"{cfg.case_id}_register_ref_after_warped.png",
+                warp_gray(ref_after, registration.matrix, before.shape),
+            )
+        )
 
     record: Dict[str, Any] = {
         "case_id": cfg.case_id,
@@ -178,8 +236,10 @@ def analyze_pair(
         "blank_border_right": 0 if crop is None else crop.right,
         "notes": (
             "raw metrics only; no MNV standardized score or maturity index; "
-            "after_* images are in the registered before frame"
+            "after_* images are in the registered before frame; "
+            "prefer Retina / VRI+Retina Global / mean-of-all-slabs for registration"
         ),
+        "registration_used_analysis_slab": not used_ref_slabs,
     }
     record.update(scale.to_record())
     record.update(registration.to_record())
@@ -197,6 +257,10 @@ def analyze_pair(
             "disc_excluded": bool(roi_extra.get("disc_excluded", False)),
         }
     )
+    if not used_ref_slabs and cfg.register:
+        flags = record.get("quality_flags") or ""
+        extra = "registration_on_analysis_slab"
+        record["quality_flags"] = f"{flags};{extra}" if flags else extra
     for key, path in image_paths.items():
         record[f"file_{key}"] = path
 
@@ -218,3 +282,9 @@ def analyze_pair(
     image_paths["metrics_csv"] = str(csv_path)
     image_paths["params_json"] = str(json_path)
     return PdrNveResult(record=record, paths=image_paths, scale=scale)
+
+
+def _load_optional_slabs(paths: Optional[Sequence[str]]):
+    if not paths:
+        return []
+    return [load_gray_u8(p) for p in paths]

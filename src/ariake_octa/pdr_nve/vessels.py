@@ -110,6 +110,36 @@ def segment_vessels(
         return segment_vessels_adaptive(image_u8, roi)
 
 
+def large_vessel_from_intensity(
+    image_u8: np.ndarray,
+    scale: PixelScale,
+    threshold_um: float,
+    roi: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """
+    Thick ridges on the *original* image.
+
+    The MNV preprocessor often thins vessels to 1–2 px, so EDT on that binary
+    never reaches a 100 µm diameter at 15 mm / 1024 px. This helper uses CLAHE
+    + Li so trunk width is closer to the rendered caliber.
+    """
+    from skimage.filters import threshold_li
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(image_u8)
+    blurred = cv2.GaussianBlur(enhanced, (0, 0), 1.2)
+    thr = float(threshold_li(blurred))
+    wide = blurred > max(thr, 10.0)
+    if roi is not None:
+        wide = wide & (roi > 0)
+    min_px = max(48, int(round(0.008 / (scale.mm_per_px**2))))
+    wide = remove_small_objects(wide, min_size=min_px, connectivity=2)
+    large = large_vessel_mask(wide, scale, threshold_um)
+    # Drop speckles that survive EDT by chance.
+    large = remove_small_objects(large, min_size=min_px, connectivity=2)
+    return large
+
+
 def large_vessel_mask(
     binary: np.ndarray,
     scale: PixelScale,
@@ -153,9 +183,13 @@ def build_vessel_maps(
         binary = binary & (roi > 0)
     distance_px = distance_transform_edt(binary)
     if exclude_large_vessels:
-        large = large_vessel_mask(
-            binary, scale, threshold_um=large_vessel_um, distance_px=distance_px
+        large = large_vessel_from_intensity(
+            image_u8, scale, threshold_um=large_vessel_um, roi=roi
         )
+        if int(large.sum()) == 0:
+            large = large_vessel_mask(
+                binary, scale, threshold_um=large_vessel_um, distance_px=distance_px
+            )
         no_large = binary & np.logical_not(large)
     else:
         large = np.zeros(binary.shape, dtype=bool)

@@ -1,0 +1,80 @@
+{
+  "config": {
+    "case_id": "case2",
+    "scan_size_mm": 15.0,
+    "pixel_width_px": 1024,
+    "um_per_px": null,
+    "roi_mode": "auto",
+    "roi_mask_path": null,
+    "roi_polygon_path": null,
+    "register": true,
+    "trim_blank_border": true,
+    "trim_roi_margin": true,
+    "exclude_disc": false,
+    "exclude_large_vessels": true,
+    "large_vessel_um": 100.0,
+    "segment_mode": "mnv",
+    "output_dir": "src/ariake_octa/pdr_nve/examples/sample_runs/case2"
+  },
+  "scale": {
+    "scan_size_mm": 15.0,
+    "pixel_width_px": 1024,
+    "pixel_height_px": 1024,
+    "um_per_px": 14.6484375,
+    "mm_per_px": 0.0146484375
+  },
+  "registration": {
+    "registration_cc": 0.542836418883423,
+    "registration_cc_persistent": -0.31470947600208304,
+    "registration_method": "ecc_pyramid",
+    "registration_failed": false,
+    "registration_tx_px": 1.194977879524231,
+    "registration_ty_px": -19.103111267089844,
+    "registration_overlap_frac": 0.9806461334228516
+  },
+  "roi": {
+    "roi_px": 808455
+  },
+  "pair_metric_keys": [
+    "roi_area_mm2",
+    "vessel_area_px",
+    "vessel_area_mm2",
+    "vessel_area_density",
+    "vessel_area_density_no_large",
+    "skeleton_length_mm",
+    "skeleton_length_density_mm_per_mm2",
+    "skeleton_length_mm_no_large",
+    "n_junctions",
+    "junction_density_per_mm2",
+    "n_endpoints",
+    "n_branches",
+    "n_loops",
+    "euler_number",
+    "n_components",
+    "fractal_dimension",
+    "fractal_r_squared",
+    "lacunarity_mean",
+    "lacunarity_r8",
+    "caliber_mean_um",
+    "caliber_cv_pct",
+    "caliber_mean_um_no_large",
+    "caliber_cv_pct_no_large",
+    "ij_mean_diameter_um",
+    "ij_cv_diameter"
+  ],
+  "output_files": {
+    "before_rgb": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_before_rgb.png",
+    "after_rgb": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_after_rgb.png",
+    "before_vessel_mask": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_before_vessel_mask.png",
+    "before_roi_mask": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_before_roi_mask.png",
+    "before_vessel_mask_no_large": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_before_vessel_mask_no_large.png",
+    "before_large_vessel_mask": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_before_large_vessel_mask.png",
+    "after_vessel_mask": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_after_vessel_mask.png",
+    "after_roi_mask": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_after_roi_mask.png",
+    "after_vessel_mask_no_large": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_after_vessel_mask_no_large.png",
+    "after_large_vessel_mask": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_after_large_vessel_mask.png",
+    "overlay_qa": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_overlay_qa.png",
+    "shared_roi_mask": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_shared_roi_mask.png"
+  },
+  "csv": "src/ariake_octa/pdr_nve/examples/sample_runs/case2/case2_metrics.csv"
+}

@@ -15,7 +15,7 @@ without importing that repo:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
@@ -29,19 +29,27 @@ class RegistrationResult:
     warped_after: np.ndarray
     matrix: np.ndarray
     score: float
+    persistent_score: float
     method: str
     translation_xy: Tuple[float, float]
     failed: bool
     valid_overlap_frac: float
+    reference_kind: str = "analysis_slab"
+    n_register_slabs: int = 1
+    combine_mode: str = "none"
 
     def to_record(self) -> dict:
         return {
             "registration_cc": self.score,
+            "registration_cc_persistent": self.persistent_score,
             "registration_method": self.method,
             "registration_failed": self.failed,
             "registration_tx_px": self.translation_xy[0],
             "registration_ty_px": self.translation_xy[1],
             "registration_overlap_frac": self.valid_overlap_frac,
+            "registration_reference": self.reference_kind,
+            "registration_n_slabs": int(self.n_register_slabs),
+            "registration_combine": self.combine_mode,
         }
 
 
@@ -176,16 +184,95 @@ def _orb_refine(
     return matrix, compute_alignment_cc(reference, source, matrix)
 
 
+def _persistent_cc(reference: np.ndarray, warped: np.ndarray) -> float:
+    """
+    Correlation on the brightest 15% of *either* frame.
+
+    Full-image CC collapses after NVE pruning (the lesion signal disappears).
+    Persistent bright ridges (trunks, disc star) are the structures used to
+    judge whether the pair is still in the same coordinate frame.
+    """
+    ref = reference.astype(np.float32)
+    src = warped.astype(np.float32)
+    thr = float(np.percentile(np.concatenate([ref.ravel(), src.ravel()]), 85))
+    mask = (ref >= thr) | (src >= thr)
+    if int(mask.sum()) < 32:
+        return 0.0
+    a = ref[mask] - ref[mask].mean()
+    b = src[mask] - src[mask].mean()
+    denom = float(np.sqrt((a * a).sum() * (b * b).sum()))
+    if denom <= 1e-9:
+        return 0.0
+    return float(np.clip((a * b).sum() / denom, -1.0, 1.0))
+
+
+def combine_slabs(
+    images: Sequence[np.ndarray],
+    mode: str = "mean",
+    target_shape: Optional[Tuple[int, int]] = None,
+) -> np.ndarray:
+    """
+    Build one registration reference from several en-face slabs.
+
+    Same idea as stack_reg / ImageJ ``Z Project`` (Image 5 = average intensity)
+    and device exports such as VRI+Retina Global. ``mode='sum'`` adds the
+    slabs then rescales to 8-bit so the result does not clip.
+    """
+    if not images:
+        raise ValueError("combine_slabs requires at least one image")
+    mode = (mode or "mean").strip().lower()
+    if mode not in {"mean", "sum", "max"}:
+        raise ValueError(f"Unknown combine mode: {mode}")
+    resized = []
+    for img in images:
+        arr = np.asarray(img)
+        if arr.ndim != 2:
+            raise ValueError(f"Slabs must be 2-D grayscale, got {arr.shape}")
+        if target_shape is not None and arr.shape[:2] != target_shape:
+            arr = cv2.resize(
+                arr.astype(np.uint8),
+                (target_shape[1], target_shape[0]),
+                interpolation=cv2.INTER_LINEAR,
+            )
+        resized.append(arr.astype(np.float32))
+    stack = np.stack(resized, axis=0)
+    if mode == "sum":
+        combined = stack.sum(axis=0)
+        mx = float(combined.max())
+        if mx > 0:
+            combined = combined * (255.0 / mx)
+    elif mode == "max":
+        combined = stack.max(axis=0)
+    else:
+        combined = stack.mean(axis=0)
+    return np.clip(np.rint(combined), 0, 255).astype(np.uint8)
+
+
+def warp_gray(image: np.ndarray, matrix: np.ndarray, shape: tuple) -> np.ndarray:
+    h, w = shape[:2]
+    return cv2.warpAffine(
+        image.astype(np.uint8),
+        matrix.astype(np.float32),
+        (w, h),
+        flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0,
+    )
+
+
 def identity_result(after: np.ndarray) -> RegistrationResult:
-    h, w = after.shape[:2]
     return RegistrationResult(
         warped_after=after.copy(),
         matrix=np.eye(2, 3, dtype=np.float32),
         score=1.0,
+        persistent_score=1.0,
         method="identity",
         translation_xy=(0.0, 0.0),
         failed=False,
         valid_overlap_frac=1.0,
+        reference_kind="identity",
+        n_register_slabs=0,
+        combine_mode="none",
     )
 
 
@@ -236,16 +323,66 @@ def register_after_to_before(
         borderValue=0,
     )
     overlap = float((warped > 0).mean())
-    failed = score < 0.30 or overlap < 0.40
+    persistent = _persistent_cc(ref, _clahe(warped))
+    shift = float(np.hypot(matrix[0, 2], matrix[1, 2]))
+    huge_shift = shift > 0.35 * max(h, w)
+    failed = overlap < 0.40 or huge_shift
     return RegistrationResult(
         warped_after=warped,
         matrix=matrix.astype(np.float32),
         score=float(score),
+        persistent_score=float(persistent),
         method=method,
         translation_xy=(float(matrix[0, 2]), float(matrix[1, 2])),
         failed=failed,
         valid_overlap_frac=overlap,
+        reference_kind="analysis_slab",
+        n_register_slabs=1,
+        combine_mode="none",
     )
+
+
+def register_using_reference_slabs(
+    analysis_before: np.ndarray,
+    analysis_after: np.ndarray,
+    ref_before: np.ndarray,
+    ref_after: np.ndarray,
+    *,
+    enabled: bool = True,
+    reference_kind: str = "combined_slabs",
+    n_register_slabs: int = 1,
+    combine_mode: str = "mean",
+) -> RegistrationResult:
+    """
+    Estimate after→before on *reference* slabs (Retina / VRI+Retina Global /
+    mean of all slabs), then warp the analysis slab with that matrix.
+
+    ILM+49 NVE can vanish after anti-VEGF, so aligning on that slab alone
+    is unreliable. Persistent inner-retina vasculature is what stack_reg
+    uses as Image 5 (average projection).
+    """
+    if not enabled:
+        return identity_result(analysis_after)
+    shape = analysis_before.shape[:2]
+    if ref_before.shape[:2] != shape:
+        ref_before = cv2.resize(
+            ref_before, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR
+        )
+    if ref_after.shape[:2] != shape:
+        ref_after = cv2.resize(
+            ref_after, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR
+        )
+    if analysis_after.shape[:2] != shape:
+        analysis_after = cv2.resize(
+            analysis_after, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR
+        )
+    est = register_after_to_before(ref_before, ref_after, enabled=True)
+    warped = warp_gray(analysis_after, est.matrix, shape)
+    est.warped_after = warped
+    est.reference_kind = reference_kind
+    est.n_register_slabs = int(n_register_slabs)
+    est.combine_mode = combine_mode
+    return est
 
 
 def warp_mask(mask: np.ndarray, matrix: np.ndarray, shape: tuple) -> np.ndarray:

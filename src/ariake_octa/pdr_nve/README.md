@@ -18,12 +18,25 @@ export PYTHONPATH=".:src"
 
 ```bash
 python -m ariake_octa.pdr_nve \
-  --before path/to/before.png \
-  --after  path/to/after.png \
+  --before path/to/ILM+49_before.png \
+  --after  path/to/ILM+49_after.png \
+  --register-before path/to/VRI+Retina_Global_before.png \
+  --register-after  path/to/VRI+Retina_Global_after.png \
   --output out/case1 \
   --case-id case1 \
   --scan-size-mm 15 \
   --pixel-width 1024
+```
+
+Or mean/sum every slab (same idea as stack_reg Image 5):
+
+```bash
+python -m ariake_octa.pdr_nve \
+  --before ilm49_before.png --after ilm49_after.png \
+  --register-before vri_before.png --register-before retina_before.png --register-before global_before.png \
+  --register-after  vri_after.png  --register-after  retina_after.png  --register-after  global_after.png \
+  --register-combine mean \
+  --output out/case1 --case-id case1 --scan-size-mm 15
 ```
 
 Convenience wrapper (sets `sys.path`):
@@ -40,6 +53,7 @@ python tools/pdr_nve/run_pdr_nve.py --before ... --after ... --output ... --case
 | `--roi-mask` / `--roi-polygon` | Shared freeform ROI in **before** pixels (after is registered first). |
 | `--roi-mode auto\|full` | If no mask/polygon: density-based lesion contour, or whole frame. |
 | `--no-register` | Pair already aligned. |
+| `--register-before` / `--register-after` | **Registration-only slabs** (repeatable). Do **not** align on the ILM+49 analysis slab after treatment — NVE vanishes. Prefer Retina, device **VRI+Retina Global**, or every exported slab. Combined with `--register-combine` (default `mean` = stack_reg Image 5 / ImageJ Z-project average; `sum` is a rescaled total). The estimated transform is then applied to the analysis pair. |
 | `--large-vessel-um` | Diameter gate for trunk vessels (default 100 µm). |
 | `--exclude-disc` | Optional compact disc punch-out. |
 | `--segment-mode mnv\|adaptive` | MNV preprocessor (default) or CLAHE+Li fallback. |
@@ -66,6 +80,7 @@ All names start with `{case_id}_` so they can be opened without a sidecar.
 | `{id}_shared_roi_mask.png` | Same ROI, single copy. |
 | `{id}_{before\|after}_vessel_mask_no_large.png` | Vessels after large-caliber exclusion. |
 | `{id}_{before\|after}_large_vessel_mask.png` | Large-caliber / trunk mask. |
+| `{id}_register_ref_before.png` / `_after.png` / `_after_warped.png` | Combined registration slabs (only if `--register-before/after` were given). |
 
 ### Metrics (raw)
 
@@ -79,7 +94,7 @@ Quality flags (SNR, contrast, registration CC, empty vessels, full-field ROI, �
 - Skeleton / Euler / fractal / ImageJ diameter: `core.skeleton_analysis`.
 - RGB: `ariake_octa.mnv.visualization_rgb.VisualizationRGB` (large-caliber map in the high-skew / red channel).
 - ROI 余白trim: method-B-prime rule (drop only uncolored padding that touches the ROI exterior).
-- Registration idea: `yasuoyanagijp-maker/stack_reg` (CLAHE, pyramid ECC affine, ORB+RANSAC refine, `WARP_INVERSE_MAP`). That repo is **not** imported or modified. Phase-correlation seeds translation because same-size `matchTemplate` is a no-op for unregistered visit pairs.
+- Registration idea: `yasuoyanagijp-maker/stack_reg` (CLAHE, pyramid ECC affine, ORB+RANSAC refine, `WARP_INVERSE_MAP`, **Image 5 = average of the stack**). That repo is **not** imported or modified. Estimate the transform on a persistent slab (Retina / VRI+Retina Global / mean of all slabs) and warp the analysis slab. Phase-correlation seeds translation because same-size `matchTemplate` is a no-op for unregistered visit pairs. If no register slabs are given, the tool falls back to the analysis pair and flags `registration_on_analysis_slab`.
 
 ## Tests
 

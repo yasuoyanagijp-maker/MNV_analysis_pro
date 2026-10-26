@@ -33,6 +33,14 @@ def main():
         scan_tf = ft.TextField(label="Scan size (mm)", value="15", width=140)
         um_tf = ft.TextField(label="µm/px (optional)", value="", width=160)
         roi_tf = ft.TextField(label="ROI mask (optional)", expand=True)
+        reg_b_tf = ft.TextField(
+            label="Register-before slabs (optional, comma-separated). Prefer Retina / all-slab mean",
+            expand=True,
+        )
+        reg_a_tf = ft.TextField(
+            label="Register-after slabs (optional, comma-separated)",
+            expand=True,
+        )
         large_tf = ft.TextField(label="Large vessel µm", value="100", width=140)
         status = ft.Text("", color="#8B9BB4", selectable=True)
         log = ft.Text("", color="#CFD8DC", selectable=True, size=12)
@@ -55,11 +63,16 @@ def main():
             page.update()
             try:
                 um = float(um_tf.value) if um_tf.value.strip() else None
+                def _split(val: str):
+                    return [p.strip() for p in val.split(",") if p.strip()] or None
+
                 cfg = PdrNveConfig(
                     case_id=case_tf.value.strip() or "case",
                     scan_size_mm=float(scan_tf.value or 15),
                     um_per_px=um,
                     roi_mask_path=roi_tf.value.strip() or None,
+                    register_before_paths=_split(reg_b_tf.value or ""),
+                    register_after_paths=_split(reg_a_tf.value or ""),
                     large_vessel_um=float(large_tf.value or 100),
                     output_dir=out_tf.value.strip() or "pdr_nve_output",
                 )
@@ -106,6 +119,13 @@ def main():
                             ft.ElevatedButton("Browse", on_click=lambda e: pick(roi_tf)),
                         ]
                     ),
+                    ft.Text(
+                        "重ね合わせは解析スラブではなく、Retina / VRI+Retina Global / 全スラブ平均を使う（stack_reg の Image 5 と同じ）。",
+                        color="#8B9BB4",
+                        size=12,
+                    ),
+                    reg_b_tf,
+                    reg_a_tf,
                     ft.Row([out_tf, case_tf, scan_tf, um_tf, large_tf]),
                     ft.ElevatedButton("Run analysis", on_click=run, bgcolor="#00B8D4"),
                     status,

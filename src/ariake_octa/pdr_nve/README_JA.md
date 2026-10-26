@@ -18,12 +18,25 @@ export PYTHONPATH=".:src"
 
 ```bash
 python -m ariake_octa.pdr_nve \
-  --before path/to/before.png \
-  --after  path/to/after.png \
+  --before path/to/ILM+49_before.png \
+  --after  path/to/ILM+49_after.png \
+  --register-before path/to/VRI+Retina_Global_before.png \
+  --register-after  path/to/VRI+Retina_Global_after.png \
   --output out/case1 \
   --case-id case1 \
   --scan-size-mm 15 \
   --pixel-width 1024
+```
+
+全スラブの平均／合計（stack_reg の「画像 5」と同じ考え方）:
+
+```bash
+python -m ariake_octa.pdr_nve \
+  --before ilm49_before.png --after ilm49_after.png \
+  --register-before vri_before.png --register-before retina_before.png --register-before global_before.png \
+  --register-after  vri_after.png  --register-after  retina_after.png  --register-after  global_after.png \
+  --register-combine mean \
+  --output out/case1 --case-id case1 --scan-size-mm 15
 ```
 
 ラッパー:
@@ -40,6 +53,7 @@ python tools/pdr_nve/run_pdr_nve.py --before ... --after ... --output ... --case
 | `--roi-mask` / `--roi-polygon` | **before** 座標の自由形状 ROI（after は先に位置合わせ）。 |
 | `--roi-mode auto\|full` | マスク未指定時: 病変らしい輪郭を自動推定、または全画面。 |
 | `--no-register` | すでに位置合わせ済みのとき。 |
+| `--register-before` / `--register-after` | **位置合わせ専用スラブ**（繰り返し指定可）。治療後に NVE が消える ILM+49 解析スラブで重ねないこと。Retina、装置の **VRI+Retina Global**、または全スラブ。`--register-combine` 既定 `mean` は stack_reg の Image 5 / ImageJ Z-project 平均。`sum` は合計して 8-bit に再スケール。推定した変換を解析スラブへ適用。 |
 | `--large-vessel-um` | 太い網膜血管の直径閾値（既定 100 µm）。 |
 | `--exclude-disc` | 視神経乳頭の円形除外（任意）。 |
 | `--segment-mode mnv\|adaptive` | MNV 前処理（既定）または CLAHE+Li。 |
@@ -66,6 +80,7 @@ PYTHONPATH=.:src python -m ariake_octa.pdr_nve.ui
 | `{id}_shared_roi_mask.png` | 共有 ROI の単体コピー。 |
 | `{id}_{before\|after}_vessel_mask_no_large.png` | 太径除外後の血管。 |
 | `{id}_{before\|after}_large_vessel_mask.png` | 太径 / 主干マスク。 |
+| `{id}_register_ref_before.png` / `_after.png` / `_after_warped.png` | 位置合わせ用に合成したスラブ（`--register-before/after` 指定時のみ）。 |
 
 ### 指標（生値）
 
@@ -79,7 +94,7 @@ PYTHONPATH=.:src python -m ariake_octa.pdr_nve.ui
 - スケルトン / Euler / フラクタル / 径: `core.skeleton_analysis`
 - RGB: `ariake_octa.mnv.visualization_rgb.VisualizationRGB`（太径を high-skew / 赤チャンネルに使用）
 - 余白trim: method-B-prime（ROI 外縁に接する未着色パディングだけを除く）
-- 位置合わせの考え方: `yasuoyanagijp-maker/stack_reg`（CLAHE、ピラミッド ECC、ORB+RANSAC、`WARP_INVERSE_MAP`）。当該リポジトリは**読み込みも改変もしません**。同一サイズの `matchTemplate` は並進の種にならないため、位相相関で種を置いています。
+- 位置合わせの考え方: `yasuoyanagijp-maker/stack_reg`（CLAHE、ピラミッド ECC、ORB+RANSAC、`WARP_INVERSE_MAP`、**画像 5 = スタック平均**）。当該リポジトリは**読み込みも改変もしません**。残る網膜血管が見えるスラブ（Retina / VRI+Retina Global / 全スラブ平均）で変換を推定し、解析スラブへ適用します。位置合わせスラブを省略すると解析ペアにフォールバックし、`registration_on_analysis_slab` を立てます。
 
 ## テスト
 

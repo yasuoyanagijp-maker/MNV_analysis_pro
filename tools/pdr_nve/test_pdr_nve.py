@@ -28,8 +28,10 @@ from ariake_octa.pdr_nve.metrics import (  # noqa: E402
 from ariake_octa.pdr_nve.pipeline import PdrNveConfig, analyze_pair  # noqa: E402
 from ariake_octa.pdr_nve.quality import collect_flags  # noqa: E402
 from ariake_octa.pdr_nve.register import (  # noqa: E402
+    combine_slabs,
     identity_result,
     register_after_to_before,
+    register_using_reference_slabs,
 )
 from ariake_octa.pdr_nve.scale import resolve_pixel_scale  # noqa: E402
 from ariake_octa.pdr_nve.trim import (  # noqa: E402
@@ -167,6 +169,41 @@ class TestRegistration(unittest.TestCase):
         overlap = float(np.mean((src > 0) == (r.warped_after > 40)))
         self.assertGreater(overlap, 0.75)
 
+    def test_combine_slabs_mean_and_sum(self):
+        a = np.zeros((16, 16), dtype=np.uint8)
+        b = np.zeros((16, 16), dtype=np.uint8)
+        a[4:12, 4:12] = 100
+        b[4:12, 4:12] = 50
+        mean = combine_slabs([a, b], mode="mean")
+        summed = combine_slabs([a, b], mode="sum")
+        self.assertEqual(int(mean[8, 8]), 75)
+        self.assertEqual(int(summed[8, 8]), 255)
+        self.assertEqual(int(mean[0, 0]), 0)
+
+    def test_register_on_persistent_slab_warps_analysis(self):
+        """Align using a stable 'retina' slab; apply that matrix to a pruned NVE slab."""
+        import cv2
+
+        retina = _network((96, 96), prune=False)
+        nve_before = retina.copy()
+        nve_after = _network((96, 96), prune=True)
+        M = np.float32([[1, 0, 7], [0, 1, -4]])
+        retina_moved = cv2.warpAffine(retina, M, (96, 96), flags=cv2.INTER_NEAREST)
+        nve_after_moved = cv2.warpAffine(nve_after, M, (96, 96), flags=cv2.INTER_NEAREST)
+        r = register_using_reference_slabs(
+            nve_before,
+            nve_after_moved,
+            retina,
+            retina_moved,
+            reference_kind="combined_mean",
+            n_register_slabs=2,
+            combine_mode="mean",
+        )
+        self.assertEqual(r.reference_kind, "combined_mean")
+        self.assertEqual(r.n_register_slabs, 2)
+        overlap = float(np.mean((nve_after > 40) == (r.warped_after > 40)))
+        self.assertGreater(overlap, 0.70)
+
 
 class TestQualityAndRawOnly(unittest.TestCase):
     def test_flags_and_forbidden_keys(self):
@@ -252,11 +289,51 @@ class TestPipelineArtifacts(unittest.TestCase):
             self.assertIn("um_per_px", rows[0])
             self.assertNotIn("Maturity Index", rows[0])
 
+    def test_pipeline_register_slabs_write_refs(self):
+        before = _network((96, 96), prune=False)
+        after = _network((96, 96), prune=True)
+        retina_b = before.copy()
+        retina_a = after.copy()
+        retina_a[10:20, 10:20] = 180  # extra persistent structure
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            Image.fromarray(before).save(td / "nve_b.png")
+            Image.fromarray(after).save(td / "nve_a.png")
+            Image.fromarray(retina_b).save(td / "ret_b.png")
+            Image.fromarray(retina_a).save(td / "ret_a.png")
+            out = td / "out"
+            cfg = PdrNveConfig(
+                case_id="regref",
+                scan_size_mm=15.0,
+                pixel_width_px=96,
+                roi_mode="full",
+                register=True,
+                trim_blank_border=False,
+                trim_roi_margin=False,
+                segment_mode="adaptive",
+                output_dir=str(out),
+                register_before_paths=[str(td / "ret_b.png")],
+                register_after_paths=[str(td / "ret_a.png")],
+                register_combine="mean",
+                precomputed_before_binary=before > 0,
+                precomputed_after_binary=after > 0,
+            )
+            result = analyze_pair(str(td / "nve_b.png"), str(td / "nve_a.png"), cfg)
+            self.assertEqual(result.record["registration_reference"], "single_other_slab")
+            self.assertFalse(result.record["registration_used_analysis_slab"])
+            for key in (
+                "register_ref_before",
+                "register_ref_after",
+                "register_ref_after_warped",
+            ):
+                self.assertTrue(Path(result.paths[key]).is_file(), msg=key)
+
     def test_cli_help(self):
         from ariake_octa.pdr_nve.cli import build_parser
 
         help_text = build_parser().format_help()
         self.assertIn("--scan-size-mm", help_text)
+        self.assertIn("--register-before", help_text)
         self.assertIn("RAW", help_text)
 
 

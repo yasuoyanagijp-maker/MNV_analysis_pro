@@ -48,13 +48,27 @@ def auto_lesion_roi(
     peak = float(dens.max())
     if peak <= 0:
         return None
-    thr = max(0.04, 0.30 * peak)
-    mask = dens >= thr
-    close_r = max(2, k // 8)
+    # Local excess over a wide opening: isolates NVE tufts from the regular
+    # retinal tree (case 2) while still capturing a dense NVE mesh (case 1).
+    bg_k = max(k * 3, int(round(900.0 / scale.um_per_px)))
+    if bg_k % 2 == 0:
+        bg_k += 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (bg_k, bg_k))
+    background = cv2.morphologyEx(dens, cv2.MORPH_OPEN, kernel)
+    residual = np.clip(dens - background, 0, None)
+    res_peak = float(residual.max())
+    if res_peak > 0.02 and res_peak > 0.15 * peak:
+        mask = residual >= max(0.015, 0.28 * res_peak)
+    else:
+        mask = dens >= max(0.04, 0.28 * peak)
+    # Close at ~0.35 mm so the lesion is an envelope, not a vessel-shaped ribbon.
+    close_um = 350.0
+    close_r = max(3, int(round(close_um / scale.um_per_px)))
     mask = binary_closing(mask, disk(close_r))
     min_px = max(64, int(round(min_component_mm2 / (scale.mm_per_px**2))))
     mask = remove_small_objects(mask, min_size=min_px, connectivity=2)
-    mask = remove_small_holes(mask, area_threshold=min_px)
+    hole_px = max(min_px, int(round((0.15**2) / (scale.mm_per_px**2))))
+    mask = remove_small_holes(mask, area_threshold=hole_px)
     if int(mask.sum()) == 0:
         return None
 
