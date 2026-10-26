@@ -93,14 +93,15 @@ def auto_lesion_roi(
         return None
 
     min_px = max(64, int(round(min_component_mm2 / (scale.mm_per_px**2))))
-    close_r = max(3, int(round(220.0 / scale.um_per_px)))
+    close_r = max(3, int(round(300.0 / scale.um_per_px)))
     hole_px = max(min_px, int(round((0.12**2) / (scale.mm_per_px**2))))
-    frame = float(nve.size)
+    target_frac = 0.12
     best = None
     best_score = -1.0
 
-    for frac in (0.45, 0.55, 0.65, 0.75):
-        mask = residual >= max(0.03, frac * res_peak)
+    # High thresholds isolate tuft cores; low ones envelope a dense NVE mesh.
+    for frac in (0.18, 0.22, 0.28, 0.34, 0.42, 0.50, 0.60):
+        mask = residual >= max(0.018, frac * res_peak)
         mask = binary_closing(mask, disk(close_r))
         mask = remove_small_objects(mask, min_size=min_px, connectivity=2)
         mask = remove_small_holes(mask, area_threshold=hole_px)
@@ -111,7 +112,6 @@ def auto_lesion_roi(
         )
         if n_lab <= 1:
             continue
-        # Rank by residual mass (tufts / dense mesh), not raw area.
         masses = []
         for idx in range(1, n_lab):
             sel = labels == idx
@@ -120,18 +120,22 @@ def auto_lesion_roi(
         keep = np.zeros_like(mask, dtype=bool)
         kept_mass = 0.0
         total_mass = sum(m[0] for m in masses) or 1.0
-        for mass, idx, area in masses:
+        for mass, idx, _area in masses:
             trial = keep | (labels == idx)
             if float(trial.mean()) > max_roi_frac:
                 continue
             keep = trial
             kept_mass += mass
-            if kept_mass >= 0.80 * total_mass:
+            if kept_mass >= 0.88 * total_mass:
                 break
         roi_frac = float(keep.mean())
         if int(keep.sum()) < min_px or roi_frac > max_roi_frac:
             continue
-        score = kept_mass / (roi_frac * frame + 1.0)
+        # Prefer a usable lesion envelope (few %) over two isolated dots.
+        size_term = 1.0 / (1.0 + abs(np.log((roi_frac + 1e-6) / target_frac)))
+        if roi_frac < 0.015:
+            size_term *= 0.25
+        score = kept_mass * size_term
         if score > best_score:
             best = keep
             best_score = score

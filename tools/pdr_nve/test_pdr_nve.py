@@ -452,6 +452,7 @@ class TestPipelineArtifacts(unittest.TestCase):
         self.assertIn("--register-before", help_text)
         self.assertIn("--roi-box", help_text)
         self.assertIn("--min-cc-mm2", help_text)
+        self.assertIn("--max-roi-frac", help_text)
         self.assertIn("RAW", help_text)
         self.assertIn("bmp", help_text.lower())
 
