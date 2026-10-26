@@ -18,6 +18,8 @@ for p in (str(ROOT), str(SRC)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from ariake_octa.common.image_loader import ImageLoader  # noqa: E402
+from ariake_octa.pdr_nve.io import load_gray_u8  # noqa: E402
 from ariake_octa.pdr_nve.metrics import (  # noqa: E402
     FORBIDDEN_SCORE_KEYS,
     assert_raw_only,
@@ -69,6 +71,65 @@ class TestScale(unittest.TestCase):
     def test_explicit_um(self):
         s = resolve_pixel_scale((64, 64), scan_size_mm=15.0, um_per_px=14.65)
         self.assertAlmostEqual(s.um_per_px, 14.65)
+
+
+class TestBmpIo(unittest.TestCase):
+    def test_load_gray_u8_bmp_roundtrip(self):
+        img = _network((96, 96))
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "octa.bmp"
+            Image.fromarray(img).save(path)
+            loaded = load_gray_u8(path)
+            self.assertEqual(loaded.shape, img.shape)
+            self.assertEqual(loaded.dtype, np.uint8)
+            np.testing.assert_allclose(loaded.astype(float), img.astype(float), atol=2)
+
+    def test_load_gray_u8_palette_bmp(self):
+        img = _network((64, 64))
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "palette.bmp"
+            Image.fromarray(img, mode="L").convert("P").save(path)
+            loaded = load_gray_u8(path)
+            self.assertEqual(loaded.shape, img.shape)
+            self.assertEqual(loaded.dtype, np.uint8)
+            # Palette quantization can shift values; structure must remain.
+            self.assertGreater(int((loaded > 20).sum()), 100)
+
+    def test_image_loader_accepts_bmp(self):
+        img = _network((48, 48))
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "device.BMP"
+            Image.fromarray(img).save(path)
+            loaded = ImageLoader.load(str(path))
+            self.assertEqual(loaded.shape, img.shape)
+            self.assertEqual(loaded.dtype, np.uint8)
+
+    def test_pipeline_accepts_bmp_pair(self):
+        before = _network((96, 96), prune=False)
+        after = _network((96, 96), prune=True)
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            bpath = td / "before.bmp"
+            apath = td / "after.bmp"
+            Image.fromarray(before).save(bpath)
+            Image.fromarray(after).save(apath)
+            out = td / "out"
+            cfg = PdrNveConfig(
+                case_id="bmp",
+                scan_size_mm=15.0,
+                pixel_width_px=96,
+                roi_mode="full",
+                register=False,
+                trim_blank_border=False,
+                trim_roi_margin=False,
+                segment_mode="adaptive",
+                output_dir=str(out),
+                precomputed_before_binary=before > 0,
+                precomputed_after_binary=after > 0,
+            )
+            result = analyze_pair(str(bpath), str(apath), cfg)
+            self.assertEqual(result.record["before_path"], str(bpath))
+            self.assertTrue(Path(result.paths["metrics_csv"]).is_file())
 
 
 class TestTrim(unittest.TestCase):
@@ -335,6 +396,7 @@ class TestPipelineArtifacts(unittest.TestCase):
         self.assertIn("--scan-size-mm", help_text)
         self.assertIn("--register-before", help_text)
         self.assertIn("RAW", help_text)
+        self.assertIn("bmp", help_text.lower())
 
 
 if __name__ == "__main__":

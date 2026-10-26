@@ -1,7 +1,7 @@
 """
 Common utilities for image loading
 
-Supports TIFF, JPEG, PNG formats with automatic bit depth conversion
+Supports TIFF, JPEG, PNG, BMP formats with automatic bit depth conversion
 """
 
 from pathlib import Path
@@ -15,7 +15,7 @@ class ImageLoader:
     """
     画像読み込みユーティリティ
 
-    対応形式: TIFF, JPEG, PNG
+    対応形式: TIFF, JPEG, PNG, BMP (装置の en-face 書き出し)
     自動変換: 16-bit → 8-bit
     """
 
@@ -44,9 +44,11 @@ class ImageLoader:
         # TIFF形式
         if suffix in [".tif", ".tiff"]:
             image = tifffile.imread(str(path))
-        # JPEG/PNG形式
-        elif suffix in [".jpg", ".jpeg", ".png"]:
-            image = np.array(Image.open(str(path)))
+        # JPEG/PNG/BMP (device OCTA exports are often Windows BMP)
+        elif suffix in [".jpg", ".jpeg", ".png", ".bmp", ".dib"]:
+            with Image.open(str(path)) as im:
+                im.load()
+                image = np.array(im)
         else:
             raise ValueError(f"サポートされていない画像形式: {suffix}")
 

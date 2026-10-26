@@ -15,12 +15,20 @@ from .scale import PixelScale
 PathLike = Union[str, Path]
 
 
+_RASTER_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".dib"}
+
+
 def load_gray_u8(path: PathLike) -> np.ndarray:
-    """Load TIFF/JPEG/PNG/BMP as 8-bit grayscale (H×W)."""
+    """Load TIFF/JPEG/PNG/BMP as 8-bit grayscale (H×W).
+
+    Device OCTA en-face exports are often Windows BMP (8-bit palette or
+    24-bit). Palette images are converted to luminance, not left as
+    palette indices.
+    """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Image not found: {p}")
-    image = np.array(Image.open(p))
+    image = _read_raster(p)
     if image.ndim == 3:
         image = np.dot(image[..., :3], [0.299, 0.587, 0.114])
     if image.dtype == np.uint16:
@@ -29,6 +37,52 @@ def load_gray_u8(path: PathLike) -> np.ndarray:
     if image.ndim != 2:
         raise ValueError(f"Expected 2D grayscale after conversion, got {image.shape}")
     return image
+
+
+def _read_raster(path: Path) -> np.ndarray:
+    """Read a raster with Pillow, then OpenCV, then tifffile."""
+    errors = []
+    try:
+        with Image.open(path) as im:
+            im.load()
+            if im.mode in {"P", "PA", "RGBA", "LA", "RGB", "CMYK"}:
+                im = im.convert("L")
+            return np.asarray(im)
+    except Exception as exc:
+        errors.append(f"Pillow: {exc}")
+
+    try:
+        import cv2
+
+        decoded = cv2.imdecode(
+            np.frombuffer(path.read_bytes(), dtype=np.uint8),
+            cv2.IMREAD_UNCHANGED,
+        )
+        if decoded is None or decoded.size == 0:
+            raise ValueError("cv2.imdecode returned empty")
+        return decoded
+    except Exception as exc:
+        errors.append(f"OpenCV: {exc}")
+
+    if path.suffix.lower() in {".tif", ".tiff"}:
+        try:
+            import tifffile
+
+            return np.asarray(tifffile.imread(str(path)))
+        except Exception as exc:
+            errors.append(f"tifffile: {exc}")
+
+    suffix = path.suffix.lower() or "(no extension)"
+    hint = (
+        ""
+        if suffix in _RASTER_SUFFIXES
+        else f" Expected png/tif/bmp/jpg, got {suffix}."
+    )
+    raise ValueError(
+        f"Unsupported or unreadable image {path} ({suffix}): "
+        + "; ".join(errors)
+        + hint
+    )
 
 
 def load_mask_u8(path: PathLike, shape: Optional[tuple] = None) -> np.ndarray:

@@ -26,8 +26,8 @@ def main():
         page.bgcolor = "#050510"
         page.padding = 20
 
-        before_tf = ft.TextField(label="Before image", expand=True)
-        after_tf = ft.TextField(label="After image", expand=True)
+        before_tf = ft.TextField(label="Before image (png / tif / bmp)", expand=True)
+        after_tf = ft.TextField(label="After image (png / tif / bmp)", expand=True)
         out_tf = ft.TextField(label="Output directory", value="pdr_nve_output", expand=True)
         case_tf = ft.TextField(label="Case ID", value="case", width=160)
         scan_tf = ft.TextField(label="Scan size (mm)", value="15", width=140)
@@ -55,7 +55,10 @@ def main():
                     page.update()
 
             picker.on_result = _on_result
-            picker.pick_files(allow_multiple=False)
+            picker.pick_files(
+                allow_multiple=False,
+                allowed_extensions=["png", "tif", "tiff", "jpg", "jpeg", "bmp", "dib"],
+            )
 
         def run(_e):
             status.value = "Running…"

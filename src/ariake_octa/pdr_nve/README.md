@@ -5,6 +5,7 @@ Standalone module for **neovascularization elsewhere / at the disc (NVE/NVD)** o
 - **Raw metrics only.** No 0–100 standardized scores, no maturity index, no MNV reference distributions (those are 3 × 3 / 6 × 6 mm MNV populations and do not apply here).
 - **Does not change** MNV/VD pipelines, Flet routes, or release assets.
 - Pixel size is an **input** (default 15 mm / image width ≈ 14.65 µm/px at 1024 px) and is written into every CSV.
+- Inputs may be **PNG, TIFF, JPEG, or BMP** (device en-face exports are often Windows BMP).
 
 ## Requirements
 
