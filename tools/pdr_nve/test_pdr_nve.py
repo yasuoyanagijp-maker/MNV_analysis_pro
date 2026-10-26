@@ -85,7 +85,7 @@ class TestBmpIo(unittest.TestCase):
             np.testing.assert_allclose(loaded.astype(float), img.astype(float), atol=2)
 
     def test_load_gray_u8_palette_bmp(self):
-        img = _network((64, 64))
+        img = _network((96, 96))
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "palette.bmp"
             Image.fromarray(img, mode="L").convert("P").save(path)
@@ -96,7 +96,7 @@ class TestBmpIo(unittest.TestCase):
             self.assertGreater(int((loaded > 20).sum()), 100)
 
     def test_image_loader_accepts_bmp(self):
-        img = _network((48, 48))
+        img = _network((96, 96))
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "device.BMP"
             Image.fromarray(img).save(path)
