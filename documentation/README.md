@@ -15,6 +15,7 @@ Git で管理する **ユーザー向け・理論向けマニュアル** をこ�
 | 操作の要点（Confirm Selection 等） | [ARIAKE_OCTA_操作マニュアル_簡易版.md](ARIAKE_OCTA_操作マニュアル_簡易版.md) |
 | **多施設グレーディング通知**（各サイト／Team YY・GakuNin 設計） | [collaboration.md](collaboration.md) |
 | **ROI の指定方法**（手動囲み・Erase・着色画像／余白trim） | [roi_method.md](roi_method.md) |
+| **操作ビデオ**（日本語字幕・音声なし。第1グレーダー / 第2リーダーフォルダ指定） | [videos/ARIAKE_OCTA_howto.mp4](videos/ARIAKE_OCTA_howto.mp4) / [videos/ARIAKE_OCTA_grader2_folder.mp4](videos/ARIAKE_OCTA_grader2_folder.mp4) |
 | **最終読影者・トライアッド確定**（RECHECK再解析・確認事項3点・閾値・dry-run所見） | [triad_recheck/README.md](triad_recheck/README.md)（操作手順は [USER_MANUAL.md §10.5](../USER_MANUAL.md)） |
 | ImageJ マクロ正本の置き場（予定） | [imagej-macro/README.md](imagej-macro/README.md) |
 | **Graefe 改訂**（提出・ICC・Response・S1 等） | ブランチ `graefe/major-revision-analyses` の [`documentation/graefe_revision/`](graefe_revision/)（Textbook Editor／moumaku は別リポ `dr-yanagi-content-studio`＝`GA_Consensus`。こちらでは扱わない） |

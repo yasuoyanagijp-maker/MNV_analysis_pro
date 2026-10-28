@@ -58,6 +58,14 @@ SYNC_RELEASE=true RELEASE_TAG=v1.3.0-caliber-csv-tool \
 unset GH_TOKEN
 ```
 
+トークンなしの確認（clone とファイル一覧のみ。commit / push / Release ミラーはしない）:
+
+```bash
+DRY_RUN=true ./.github/scripts/sync-distribution.sh
+```
+
+`documentation/videos/` の 2 本の操作ビデオはソース側に置き、同期スクリプトがコピーします。`rsync --delete` は当該フォルダを削除対象から外します。
+
 ## ローテーション
 
 - 期限の **1〜2 週間前**に新 PAT を作成 → `gh secret set` で差し替え → 旧トークンを GitHub 上で Revoke。

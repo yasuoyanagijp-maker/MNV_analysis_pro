@@ -13,6 +13,10 @@ on:
         description: Mirror a specific release tag (e.g. v1.2.1-mac). Leave empty to skip.
         type: string
         default: ""
+      dry_run:
+        description: List resulting files only; do not commit, push, or mirror releases
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,6 +36,7 @@ jobs:
           GH_TOKEN: ${{ secrets.DISTRIBUTION_SYNC_TOKEN }}
           SYNC_RELEASE: ${{ github.event_name == 'release' && 'true' || (inputs.mirror_release_tag != '' && 'true' || 'false') }}
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.mirror_release_tag }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           if [[ -z "${GH_TOKEN}" ]]; then
