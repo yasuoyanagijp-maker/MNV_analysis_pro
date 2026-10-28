@@ -23,6 +23,8 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 
 「Cancel」を押すと、選択をやめてダイアログを閉じます。
 
+操作の流れ全体は [操作ビデオ（第1グレーダー）](videos/ARIAKE_OCTA_howto.mp4) も参照してください。
+
 ---
 
 ## 3. 画像形式の目安
@@ -44,6 +46,8 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 ---
 
 ## 4. このあとの流れ（MNV の場合）
+
+Confirm Selection から結果保存までの画面操作は [操作ビデオ（第1グレーダー）](videos/ARIAKE_OCTA_howto.mp4) を参照。
 
 1. **Confirm Selection** で画像（またはフォルダ）を確定する。  
 2. **ROI（関心領域）画面**（画面上部に「Step 1: ROI selection」と出ます）では、左のボタンと手順に従います。  
@@ -70,7 +74,7 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 
 | 施設の状況 | 操作の流れ（要約） |
 |------------|-------------------|
-| **読影者 2 名（施設内）** | 第1: Save CSV → Export Metadata → ログアウト → 第2: Role「第2リーダー」→ **ローカル自動スキャン** → ROI（**Confirm ROI & Proceed**）→ 解析（**Confirm & Start Analysis**）→ Save CSV → **統合解析データ**（RPD≤20% で平均、超過は NA） |
+| **読影者 2 名（施設内）** | 第1: Save CSV → Export Metadata → ログアウト → 第2: Role「第2リーダー」→ **ローカル自動スキャン**（[フォルダ指定ビデオ](videos/ARIAKE_OCTA_grader2_folder.mp4)）→ ROI（**Confirm ROI & Proceed**）→ 解析（**Confirm & Start Analysis**）→ Save CSV → **統合解析データ**（RPD≤20% で平均、超過は NA） |
 | **読影者 1 名のみ** | 第1: Save CSV → Export Metadata → 結果画面のまま **`output_folder` を GakuNin RDMへ同期**（この時点ではログアウトしない）→ 中央は Institution **`TEAM_YY`**（※`YOKOHAMA_CITY_UNIV` ではない）で取得して第2読影 → **統合解析データ**（ローカル `integrated_output_*`）→ 必要なら **第2の `output_folder` だけ**を `second_reading/{施設}/` へ同期（採用 CSV は自動では上がらない）→ 作業後にログアウト |
 
 - 一般施設の GakuNin 取得は **自施設のみ**。横断選択は **`TEAM_YY` のみ**。  
@@ -102,6 +106,7 @@ MNV 解析などを始める際の **フォルダ／ファイル選択** から�
 
 | 日付 | 内容 |
 |------|------|
+| 2026-10-28 | 操作ビデオ（第1グレーダー / 第2リーダーフォルダ指定）へのリンクを復元。 |
 | 2026-08-21 | ROI に着色画像／余白trim を追記。[collaboration.md](collaboration.md)・[roi_method.md](roi_method.md) へのリンクを追加。 |
 | 2026-08-12 | 1名ルート: 同期前にログアウトしない旨を明記（「同上」の誤解を解消）。 |
 | 2026-08-12 | Bugbot 指摘反映: 同期は `output_folder` のみ・integrated 非対象、`TEAM_YY` 明示、ROI 正式ボタン名。 |

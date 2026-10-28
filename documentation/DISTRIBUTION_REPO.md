@@ -16,6 +16,8 @@
 - **簡易版**: https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/ARIAKE_OCTA_操作マニュアル_簡易版.md
 - **多施設グレーディング通知（各サイト／Team YY）**: https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/collaboration.md
 - **ROI の指定方法**: https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/roi_method.md
+- **操作ビデオ（第1グレーダー）**: https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/videos/ARIAKE_OCTA_howto.mp4
+- **操作ビデオ（第2リーダー・フォルダ指定）**: https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/videos/ARIAKE_OCTA_grader2_folder.mp4
 
 ## 初回セットアップ（1回だけ）
 
@@ -87,4 +89,10 @@ https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/docume
 
 ROI の指定方法:
 https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/roi_method.md
+
+操作ビデオ（第1グレーダー）:
+https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/videos/ARIAKE_OCTA_howto.mp4
+
+操作ビデオ（第2リーダー・フォルダ指定）:
+https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/documentation/videos/ARIAKE_OCTA_grader2_folder.mp4
 ```

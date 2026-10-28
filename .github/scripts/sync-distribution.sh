@@ -8,6 +8,7 @@ DIST_REMOTE="https://github.com/${DIST_OWNER}/${DIST_REPO}.git"
 SOURCE_REPO="${GITHUB_REPOSITORY:-${DIST_OWNER}/MNV_analysis_pro}"
 WORKROOT="${GITHUB_WORKSPACE:-$(cd "$(dirname "$0")/../.." && pwd)}"
 STAGING="$(mktemp -d)"
+DRY_RUN="${DRY_RUN:-false}"
 
 cleanup() { rm -rf "${STAGING}"; }
 trap cleanup EXIT
@@ -24,6 +25,16 @@ cp "${WORKROOT}/documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.m
 cp "${WORKROOT}/documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2_付録_マクロ本文.md" "${CONTENT}/documentation/"
 cp "${WORKROOT}/documentation/collaboration.md" "${CONTENT}/documentation/"
 cp "${WORKROOT}/documentation/roi_method.md" "${CONTENT}/documentation/"
+
+# How-to videos are source files in this repo and must be copied into the
+# distribution tree. rsync --delete previously wiped documentation/videos/
+# because staging did not include them (commit 70cbdc6 on ARIAKE_OCTA-distribution).
+# Copy only these two public operation clips (no patient data).
+VIDEOS_SRC="${WORKROOT}/documentation/videos"
+VIDEOS_DST="${CONTENT}/documentation/videos"
+mkdir -p "${VIDEOS_DST}"
+cp "${VIDEOS_SRC}/ARIAKE_OCTA_howto.mp4" "${VIDEOS_DST}/"
+cp "${VIDEOS_SRC}/ARIAKE_OCTA_grader2_folder.mp4" "${VIDEOS_DST}/"
 
 cat > "${CONTENT}/README.md" <<'EOF'
 # ARIAKE OCTA — 配布・マニュアル
@@ -50,6 +61,23 @@ cat > "${CONTENT}/README.md" <<'EOF'
 | 詳細ユーザーマニュアル V2 | [documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md](documentation/ARIAKE_OCTA_詳細ユーザーマニュアル_V2.md) |
 | 多施設グレーディング通知（各サイト／Team YY） | [documentation/collaboration.md](documentation/collaboration.md) |
 | ROI の指定方法（手動囲み・血管同定） | [documentation/roi_method.md](documentation/roi_method.md) |
+
+## 操作ビデオ
+
+インストール（Mac/Windows）の手順ではなく、**解析画面の操作**を示したものです（日本語字幕・音声なし）。
+
+| 内容 | リンク | 目安 |
+|------|--------|------|
+| 第1グレーダー（Confirm Selection → ROI → 解析 → 結果保存） | [documentation/videos/ARIAKE_OCTA_howto.mp4](documentation/videos/ARIAKE_OCTA_howto.mp4) | 約1分10秒 |
+| 第2リーダー（ローカル自動スキャン・フォルダ指定） | [documentation/videos/ARIAKE_OCTA_grader2_folder.mp4](documentation/videos/ARIAKE_OCTA_grader2_folder.mp4) | 約12秒 |
+
+**第1グレーダー**
+
+<video controls src="documentation/videos/ARIAKE_OCTA_howto.mp4"></video>
+
+**第2リーダー（フォルダ指定）**
+
+<video controls src="documentation/videos/ARIAKE_OCTA_grader2_folder.mp4"></video>
 
 ## ログイン（初回起動時）
 
@@ -83,9 +111,21 @@ git clone --depth 1 "${DIST_REMOTE}" "${CLONE}" 2>/dev/null || {
   cd - >/dev/null
 }
 
-rsync -a --delete --exclude='.git' "${CONTENT}/" "${CLONE}/"
+# P-filters keep documentation/videos/ if a copy is ever skipped, so --delete
+# cannot remove the emailed how-to paths again.
+rsync -a --delete --exclude='.git' \
+  --filter='P /documentation/videos/' \
+  --filter='P /documentation/videos/**' \
+  "${CONTENT}/" "${CLONE}/"
 
 cd "${CLONE}"
+if [[ "${DRY_RUN}" == "true" ]]; then
+  echo "==> DRY_RUN: resulting files (no commit, no push, no release mirror)"
+  find . -path './.git' -prune -o -type f -print | sed 's|^\./||' | sort
+  echo "==> DRY_RUN: git status --short"
+  git status --short
+  exit 0
+fi
 if [[ -n "${GH_TOKEN:-}" ]]; then
   git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${DIST_OWNER}/${DIST_REPO}.git"
 fi
