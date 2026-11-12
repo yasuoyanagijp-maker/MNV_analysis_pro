@@ -103,6 +103,195 @@ def _start_backend(port: int):
 
 
 _MAC_NSAPP = None
+_MAC_QUIT = threading.Event()
+_MAC_DELEGATE_IMPS = []
+_FLET_BUNDLE_ID = b"com.appveyor.flet"
+_NS_TERMINATE_CANCEL = 0
+_NS_ACTIVATE_IGNORING_OTHERS = 2  # NSApplicationActivateIgnoringOtherApps
+
+
+def _mac_nsstring(cf, utf8: bytes):
+    import ctypes
+
+    k_utf8 = 0x08000100  # kCFStringEncodingUTF8
+    cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+    cf.CFStringCreateWithCString.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.c_uint32,
+    ]
+    return cf.CFStringCreateWithCString(None, utf8, k_utf8)
+
+
+def _mac_flet_apps():
+    """Running Flet.app instances (bundle id com.appveyor.flet)."""
+    import ctypes
+
+    ns = _MAC_NSAPP
+    if not ns:
+        return []
+    objc, cf, _msg = ns["objc"], ns["cf"], ns["msg"]
+    bid = _mac_nsstring(cf, _FLET_BUNDLE_ID)
+    if not bid:
+        return []
+    cls = objc.objc_getClass(b"NSRunningApplication")
+    arr = _msg(
+        cls,
+        objc.sel_registerName(b"runningApplicationsWithBundleIdentifier:"),
+        extra_types=(ctypes.c_void_p,),
+        extra_args=(bid,),
+    )
+    if not arr:
+        return []
+    count = int(_msg(arr, objc.sel_registerName(b"count"), restype=ctypes.c_ulong) or 0)
+    apps = []
+    for i in range(count):
+        apps.append(
+            _msg(
+                arr,
+                objc.sel_registerName(b"objectAtIndex:"),
+                extra_types=(ctypes.c_ulong,),
+                extra_args=(i,),
+            )
+        )
+    return apps
+
+
+def _mac_terminate_flet_view() -> None:
+    """Close the separate Flet.app so ``open -W`` / ft.app can return."""
+    if sys.platform != "darwin":
+        return
+    import ctypes
+
+    try:
+        ns = _MAC_NSAPP
+        for app in _mac_flet_apps():
+            if ns:
+                ns["msg"](
+                    app,
+                    ns["objc"].sel_registerName(b"terminate"),
+                    restype=ctypes.c_byte,
+                )
+    except Exception:
+        pass
+    subprocess.run(
+        ["killall", "-TERM", "Flet"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _mac_activate_flet_view() -> None:
+    """Dock click on ARIAKE should focus Flet.app, not an empty Cocoa app."""
+    if sys.platform != "darwin" or _MAC_NSAPP is None:
+        return
+    import ctypes
+
+    ns = _MAC_NSAPP
+    for app in _mac_flet_apps():
+        ns["msg"](
+            app,
+            ns["objc"].sel_registerName(b"activateWithOptions:"),
+            restype=ctypes.c_byte,
+            extra_types=(ctypes.c_ulong,),
+            extra_args=(_NS_ACTIVATE_IGNORING_OTHERS,),
+        )
+
+
+def _mac_request_clean_quit() -> None:
+    """Dock Quit / Cmd+Q: do not let AppKit exit(); close Flet and unwind Python."""
+    _MAC_QUIT.set()
+    _mac_terminate_flet_view()
+    print(
+        "[Wrapper] Dock/Cmd+Q: closing Flet view so Python finally can run.",
+        flush=True,
+    )
+
+
+def _mac_install_dock_delegate(objc, app, _msg) -> object:
+    """NSApplicationDelegate: cancel AppKit terminate; reopen activates Flet."""
+    import ctypes
+
+    name = b"ARIAKEDockDelegate"
+    objc.objc_lookUpClass.restype = ctypes.c_void_p
+    objc.objc_lookUpClass.argtypes = [ctypes.c_char_p]
+    cls = objc.objc_lookUpClass(name)
+    if not cls:
+        objc.objc_allocateClassPair.restype = ctypes.c_void_p
+        objc.objc_allocateClassPair.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+        ]
+        objc.class_addMethod.restype = ctypes.c_bool
+        objc.class_addMethod.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_char_p,
+        ]
+        objc.objc_registerClassPair.argtypes = [ctypes.c_void_p]
+        nsobject = objc.objc_getClass(b"NSObject")
+        cls = objc.objc_allocateClassPair(nsobject, name, 0)
+        if not cls:
+            print("[Wrapper] objc_allocateClassPair failed; Dock Quit may skip finally.", flush=True)
+            return None
+
+        TermIMP = ctypes.CFUNCTYPE(
+            ctypes.c_ulong, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p
+        )
+
+        @TermIMP
+        def should_terminate(_obj, _sel, _sender):
+            try:
+                _mac_request_clean_quit()
+            except Exception:
+                pass
+            return _NS_TERMINATE_CANCEL
+
+        ReopenIMP = ctypes.CFUNCTYPE(
+            ctypes.c_byte,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_byte,
+        )
+
+        @ReopenIMP
+        def should_reopen(_obj, _sel, _app, _has_vis):
+            try:
+                _mac_activate_flet_view()
+            except Exception:
+                pass
+            return 1
+
+        _MAC_DELEGATE_IMPS.extend((should_terminate, should_reopen))
+        objc.class_addMethod(
+            cls,
+            objc.sel_registerName(b"applicationShouldTerminate:"),
+            ctypes.cast(should_terminate, ctypes.c_void_p),
+            b"Q@:@",
+        )
+        objc.class_addMethod(
+            cls,
+            objc.sel_registerName(b"applicationShouldHandleReopen:hasVisibleWindows:"),
+            ctypes.cast(should_reopen, ctypes.c_void_p),
+            b"c@:@c",
+        )
+        objc.objc_registerClassPair(cls)
+
+    delegate = _msg(cls, objc.sel_registerName(b"alloc"))
+    if not delegate:
+        return None
+    delegate = _msg(delegate, objc.sel_registerName(b"init"))
+    _msg(
+        app,
+        objc.sel_registerName(b"setDelegate:"),
+        extra_types=(ctypes.c_void_p,),
+        extra_args=(delegate,),
+    )
+    return delegate
 
 
 def _mac_nsapp_init() -> bool:
@@ -112,6 +301,10 @@ def _mac_nsapp_init() -> bool:
     *this* process runs a Cocoa event loop. Flet is a separate ``Flet.app``
     (``open -n -W``); its window does not count. A background-thread run loop
     also does not count — Launch Services watches the main thread.
+
+    finishLaunching makes a real Cocoa app (Dock icon + default Quit). Without
+    a delegate, Dock Quit / Cmd+Q call AppKit terminate: / exit() and skip
+    Python finally, leaving Flet.app open against a dead FastAPI thread.
     """
     global _MAC_NSAPP
     if sys.platform != "darwin":
@@ -157,7 +350,6 @@ def _mac_nsapp_init() -> bool:
             extra_types=(ctypes.c_long,),
             extra_args=(0,),
         )
-        _msg(app, objc.sel_registerName(b"finishLaunching"), restype=None)
 
         mode = ctypes.c_void_p.in_dll(cf, "kCFRunLoopDefaultMode")
         cf.CFRunLoopRunInMode.restype = ctypes.c_int32
@@ -166,7 +358,16 @@ def _mac_nsapp_init() -> bool:
             ctypes.c_double,
             ctypes.c_int,
         ]
-        _MAC_NSAPP = {"cf": cf, "mode": mode, "app": app, "objc": objc}
+        _MAC_NSAPP = {
+            "cf": cf,
+            "mode": mode,
+            "app": app,
+            "objc": objc,
+            "msg": _msg,
+            "delegate": None,
+        }
+        _MAC_NSAPP["delegate"] = _mac_install_dock_delegate(objc, app, _msg)
+        _msg(app, objc.sel_registerName(b"finishLaunching"), restype=None)
         print("[Wrapper] NSApplication finishLaunching (Dock bounce should stop).", flush=True)
         return True
     except Exception as exc:
@@ -177,17 +378,28 @@ def _mac_nsapp_init() -> bool:
 def _mac_pump_main_until(alive_fn, timeout=None) -> None:
     """Run the main-thread CFRunLoop until alive_fn is false (every launch)."""
     started = time.monotonic()
+    quit_since = None
     ns = _MAC_NSAPP
+
+    def _stop() -> bool:
+        nonlocal quit_since
+        if not alive_fn():
+            return True
+        if timeout is not None and (time.monotonic() - started) >= timeout:
+            return True
+        if _MAC_QUIT.is_set():
+            if quit_since is None:
+                quit_since = time.monotonic()
+            if time.monotonic() - quit_since >= 5.0:
+                return True
+        return False
+
     if ns is None:
-        while alive_fn():
-            if timeout is not None and (time.monotonic() - started) >= timeout:
-                break
+        while not _stop():
             time.sleep(0.05)
         return
     cf, mode = ns["cf"], ns["mode"]
-    while alive_fn():
-        if timeout is not None and (time.monotonic() - started) >= timeout:
-            break
+    while not _stop():
         cf.CFRunLoopRunInMode(mode, 0.1, 1)
 
 
@@ -325,7 +537,10 @@ if __name__ == "__main__":
         if sys.platform == "darwin":
             # ft.app blocks on asyncio + ``open Flet.app -W``. Keep CFRunLoop
             # on the main thread so bounce stops and stays stopped.
-            _run_on_worker_pump_main(lambda: ft.app(**ft_kwargs), "flet-frontend")
+            if _MAC_QUIT.is_set():
+                print("[Wrapper] Quit requested before Flet; skipping frontend.", flush=True)
+            else:
+                _run_on_worker_pump_main(lambda: ft.app(**ft_kwargs), "flet-frontend")
         else:
             ft.app(**ft_kwargs)
     except KeyboardInterrupt:

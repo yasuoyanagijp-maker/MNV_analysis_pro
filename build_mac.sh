@@ -336,7 +336,7 @@ log_step "DMG 作成"
 if [[ "$SKIP_NOTARIZE" == true ]]; then
     log_warn "DMG をスキップ（--skip-notarize。ZIP は package_mac_release.sh）"
 else
-    [[ -f "$DMG_PATH" ]] && rm -f "$DMG_PATH"
+    rm -f "$DMG_PATH" || true
     log_info "hdiutil で DMG を作成中..."
     dmg_ok=false
     for attempt in 1 2 3 4; do
@@ -351,7 +351,7 @@ else
         fi
         log_warn "hdiutil 失敗（${attempt}/4）。数秒待って再試行します。"
         sleep 8
-        [[ -f "$DMG_PATH" ]] && rm -f "$DMG_PATH"
+        rm -f "$DMG_PATH" || true
     done
     if [[ "$dmg_ok" != true || ! -f "$DMG_PATH" ]]; then
         log_error "DMG 作成に失敗しました"
