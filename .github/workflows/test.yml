@@ -29,13 +29,21 @@ jobs:
       - name: Install scientific stack used by metric tests
         run: |
           python -m pip install --upgrade pip
+          # Headless OpenCV: ubuntu-latest has no libGL; opencv-python (GUI) often
+          # fails to import and would skip the Optovue/Zeiss pipeline golden.
           python -m pip install \
             numpy==1.26.4 scipy==1.13.1 \
-            scikit-image==0.24.0 opencv-python==4.9.0.80 \
+            scikit-image==0.24.0 opencv-python-headless==4.9.0.80 \
             Pillow==10.4.0 networkx==3.2.1 shapely==2.0.7 pandas==2.1.4 \
             psutil==7.2.2 matplotlib==3.9.4 threadpoolctl
           python -m pip install --no-deps sknw==0.15
           python -m pip install --upgrade --force-reinstall numpy==1.26.4
+
+      - name: Verify cv2 and MNV pipeline import
+        env:
+          PYTHONPATH: src
+        run: |
+          python -c "import cv2; from core.mnv_pipeline import MNVPipeline; print('cv2', cv2.__version__)"
 
       - name: Run unified v1.2.5 / Optovue / RPD tests
         env:

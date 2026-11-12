@@ -42,6 +42,10 @@ def _synthetic_octa(size: int = 320):
     return img, mask
 
 
+def _running_in_ci() -> bool:
+    return os.environ.get("GITHUB_ACTIONS") == "true" or os.environ.get("CI") == "true"
+
+
 class TestSyntheticOptovueVsZeiss(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -50,6 +54,12 @@ class TestSyntheticOptovueVsZeiss(unittest.TestCase):
             import numpy  # noqa: F401
             from core.mnv_pipeline import MNVPipeline  # noqa: F401
         except Exception as exc:
+            if _running_in_ci():
+                raise AssertionError(
+                    "Optovue/Zeiss pipeline golden must run in CI "
+                    "(use opencv-python-headless on ubuntu-latest). "
+                    f"Import failed: {exc}"
+                ) from exc
             raise unittest.SkipTest(f"pipeline imports unavailable: {exc}") from exc
 
     def test_same_pixels_optovue_changes_complexity_only(self):

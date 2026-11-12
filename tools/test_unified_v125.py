@@ -59,6 +59,15 @@ class TestUnifiedVersion(unittest.TestCase):
             self.assertIn("from tools.pyinstaller_version import read_app_version", text)
             self.assertIn("VERSION", text)
 
+    def test_ci_uses_headless_opencv_so_pipeline_golden_cannot_skip(self):
+        yml = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+        self.assertIn("opencv-python-headless==4.9.0.80", yml)
+        self.assertNotIn("opencv-python==4.9.0.80", yml)
+        self.assertIn("Verify cv2 and MNV pipeline import", yml)
+        synth = (ROOT / "tools" / "test_synthetic_mnv_optovue.py").read_text(encoding="utf-8")
+        self.assertIn("_running_in_ci", synth)
+        self.assertIn("pipeline golden must run in CI", synth)
+
     def test_build_scripts_default_to_version_file(self):
         mac = (ROOT / "build_mac.sh").read_text(encoding="utf-8")
         self.assertIn('tr -d \'[:space:]\' < "${SCRIPT_DIR}/VERSION"', mac)
