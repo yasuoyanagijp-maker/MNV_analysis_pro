@@ -20,6 +20,11 @@ class TestMacDockBounceFix(unittest.TestCase):
         self.assertIn("open Flet.app", text)
         self.assertIn("Every click", text)
         self.assertIn("_mac_signal_nsapp_launched()", text)
+        self.assertIn("applicationShouldTerminate:", text)
+        self.assertIn("_NS_TERMINATE_CANCEL", text)
+        self.assertIn("_mac_request_clean_quit", text)
+        self.assertIn("applicationShouldHandleReopen:hasVisibleWindows:", text)
+        self.assertIn("com.appveyor.flet", text)
         self.assertNotRegex(text, r'"LSUIElement"\s*:')
         self.assertNotRegex(text, r'"LSBackgroundOnly"\s*:')
 
@@ -40,6 +45,16 @@ class TestMacDockBounceFix(unittest.TestCase):
 
         self.assertFalse(wrapper._mac_signal_nsapp_launched(pump=False))
         self.assertEqual(wrapper._run_on_worker_pump_main(lambda: 7, "t"), 7)
+
+    def test_clean_quit_sets_event_without_appkit(self):
+        import wrapper
+
+        wrapper._MAC_QUIT.clear()
+        wrapper._mac_request_clean_quit()
+        self.assertTrue(wrapper._MAC_QUIT.is_set())
+        wrapper._MAC_QUIT.clear()
+        wrapper._mac_terminate_flet_view()
+        wrapper._mac_activate_flet_view()
 
     def test_build_script_smoke_mentions_helper(self):
         mac = (ROOT / "build_mac.sh").read_text(encoding="utf-8")
