@@ -320,23 +320,36 @@ fi
 log_success "署名完了"
 
 # ── DMG 作成 ─────────────────────────────────────────────────────────────────
+# GitHub Actions の配布 ZIP は package_mac_release.sh が .app から作る。
+# --skip-notarize では DMG 不要。macos-15 で hdiutil が Resource busy になる
+# ことがあり、CI を落とさない。
 log_step "DMG 作成"
-
-[[ -f "$DMG_PATH" ]] && rm -f "$DMG_PATH"
-
-log_info "hdiutil で DMG を作成中..."
-hdiutil create \
-    -volname "${APP_NAME}" \
-    -srcfolder "${APP_PATH}" \
-    -ov \
-    -format UDZO \
-    "${DMG_PATH}"
-
-if [[ ! -f "$DMG_PATH" ]]; then
-    log_error "DMG 作成に失敗しました"
-    exit 1
+if [[ "$SKIP_NOTARIZE" == true ]]; then
+    log_warn "DMG をスキップ（--skip-notarize。ZIP は package_mac_release.sh）"
+else
+    [[ -f "$DMG_PATH" ]] && rm -f "$DMG_PATH"
+    log_info "hdiutil で DMG を作成中..."
+    dmg_ok=false
+    for attempt in 1 2 3 4; do
+        if hdiutil create \
+            -volname "${APP_NAME}" \
+            -srcfolder "${APP_PATH}" \
+            -ov \
+            -format UDZO \
+            "${DMG_PATH}"; then
+            dmg_ok=true
+            break
+        fi
+        log_warn "hdiutil 失敗（${attempt}/4）。数秒待って再試行します。"
+        sleep 8
+        [[ -f "$DMG_PATH" ]] && rm -f "$DMG_PATH"
+    done
+    if [[ "$dmg_ok" != true || ! -f "$DMG_PATH" ]]; then
+        log_error "DMG 作成に失敗しました"
+        exit 1
+    fi
+    log_success "DMG 作成完了: ${DMG_PATH}"
 fi
-log_success "DMG 作成完了: ${DMG_PATH}"
 
 # ── 公証 (Notarization) ───────────────────────────────────────────────────────
 if [[ "$SKIP_NOTARIZE" != true && "$BUILD_ONLY" != true ]]; then
@@ -361,9 +374,13 @@ if [[ "$SKIP_NOTARIZE" != true && "$BUILD_ONLY" != true ]]; then
     rm -f "${ZIP_PATH}"
 else
     log_warn "公証をスキップしました（--skip-notarize または開発者情報未設定）"
-    log_warn "配布前に以下を実行してください:"
-    log_warn "  xcrun notarytool submit ${DMG_PATH} --keychain-profile ARIAKE_NOTARY --wait"
-    log_warn "  xcrun stapler staple ${DMG_PATH}"
+    if [[ -f "$DMG_PATH" ]]; then
+        log_warn "配布前に以下を実行してください:"
+        log_warn "  xcrun notarytool submit ${DMG_PATH} --keychain-profile ARIAKE_NOTARY --wait"
+        log_warn "  xcrun stapler staple ${DMG_PATH}"
+    else
+        log_warn "配布 ZIP は ./package_mac_release.sh で .app から作成します。"
+    fi
 fi
 
 # ── 最終検証 ─────────────────────────────────────────────────────────────────
