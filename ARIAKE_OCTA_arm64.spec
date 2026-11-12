@@ -124,5 +124,7 @@ app = BUNDLE(
         "NSDownloadsFolderUsageDescription": (
             "ARIAKE OCTA needs Downloads access to select OCT-A image folders."
         ),
+        # Cocoa app; do not set LSUIElement/LSBackgroundOnly (those hide the Dock icon).
+        "NSPrincipalClass": "NSApplication",
     },
 )
