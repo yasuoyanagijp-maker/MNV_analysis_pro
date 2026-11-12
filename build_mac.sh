@@ -184,6 +184,15 @@ done
     "$VENV_PYTHON" -m pip install pywebview --quiet
 }
 
+# ctypes → AppKit finishLaunching. Does not launch the .app; catches ABI issues on this runner.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    if "$VENV_PYTHON" -c "import wrapper; ok=wrapper._mac_signal_nsapp_launched(pump=False); print('[dock-bounce]', ok); raise SystemExit(0 if ok else 1)"; then
+        log_success "Dock bounce helper (NSApplication finishLaunching) OK"
+    else
+        log_warn "Dock bounce helper returned false on this runner (frozen .app still includes it)"
+    fi
+fi
+
 # ── クリーン ──────────────────────────────────────────────────────────────────
 if [[ "$DO_CLEAN" == true ]]; then
     log_step "クリーン"

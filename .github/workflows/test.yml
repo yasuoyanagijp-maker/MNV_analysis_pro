@@ -55,4 +55,5 @@ jobs:
             tools.test_synthetic_mnv_optovue \
             tools.reading_center_rpd.test_compute_adopted \
             tools.test_mac_openssl_coexistence \
-            tools.test_win_ssl_bundle_align
+            tools.test_win_ssl_bundle_align \
+            tools.test_mac_dock_bounce

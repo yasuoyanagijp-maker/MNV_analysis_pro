@@ -94,6 +94,7 @@ class TestUnifiedVersion(unittest.TestCase):
         tests = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
         self.assertIn("tools.test_mac_openssl_coexistence", tests)
         self.assertIn("tools.test_win_ssl_bundle_align", tests)
+        self.assertIn("tools.test_mac_dock_bounce", tests)
 
     def test_build_scripts_default_to_version_file(self):
         mac = (ROOT / "build_mac.sh").read_text(encoding="utf-8")
