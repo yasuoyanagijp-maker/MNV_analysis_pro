@@ -35,7 +35,8 @@ jobs:
     # arm64 → macos-14 (Apple Silicon).
     # x86_64 → macos-15-intel (native Intel). macos-13 is retired;
     # macos-14 cannot produce an Intel zip (arm64 Python / PyInstaller).
-    runs-on: ${{ (github.event.inputs.target_arch == 'x86_64' || endsWith(github.ref, 'cursor/build-mac-intel-v125-0874')) && 'macos-15-intel' || 'macos-14' }}
+    # macos-14 (Sonoma) was retired 2026-11-02; Apple Silicon is macos-15.
+    runs-on: ${{ (github.event.inputs.target_arch == 'x86_64' || endsWith(github.ref, 'cursor/build-mac-intel-v125-0874')) && 'macos-15-intel' || 'macos-15' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
