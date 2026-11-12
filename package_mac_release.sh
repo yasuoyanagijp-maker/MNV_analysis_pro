@@ -7,7 +7,7 @@
 # Usage:
 #   ./package_mac_release.sh --arm64              # ARIAKE_OCTA_mac.zip
 #   ./package_mac_release.sh --intel              # ARIAKE_OCTA_macOS_Intel_vX.Y.Z.zip
-#   ./package_mac_release.sh --arm64 --version 1.2.4
+#   ./package_mac_release.sh --arm64 --version 1.2.5
 # =============================================================================
 set -euo pipefail
 
@@ -15,7 +15,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="ARIAKE_OCTA"
 APP_PATH="${SCRIPT_DIR}/dist/${APP_NAME}.app"
 DIST_DIR="${SCRIPT_DIR}/dist"
-VERSION="1.2.4d"
+VERSION="$(tr -d '[:space:]' < "${SCRIPT_DIR}/VERSION")"
+VERSION="${ARIAKE_APP_VERSION:-${ARIAKE_MAC_APP_VERSION:-$VERSION}}"
 TARGET_ARCH="arm64"
 
 while [[ $# -gt 0 ]]; do

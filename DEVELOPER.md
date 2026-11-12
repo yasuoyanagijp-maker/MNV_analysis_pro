@@ -129,7 +129,40 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 
 ---
 
-## 10. macOS 配布ビルド（v1.2.4 以降）
+## 10. 配布ビルド（v1.2.5 — Windows / Intel Mac / Apple Silicon 共通）
+
+版番号の正本はリポジトリ直下の **`VERSION`**（いま `1.2.5`）。Mac spec も Windows spec も `tools/pyinstaller_version.py` から読む。ログイン画面に同じ `v1.2.5` が出る。
+
+**GitHub Releases は CI から作らない。** 成果物は Actions artifact。柳の確認後にタグと配布 ZIP を出す。
+
+| 項目 | 内容 |
+|------|------|
+| 版 | `VERSION` = **1.2.5**（環境変数 `ARIAKE_APP_VERSION` で上書き可） |
+| ソース | 1 本。Windows Flet にも **3 mm (Optovue)** / **3 mm (Zeiss HD)** |
+| Apple Silicon ZIP | Actions **Build macOS release** → `target_arch=arm64`（`macos-14`）→ `ARIAKE_OCTA_mac_v1.2.5.zip` |
+| Intel Mac ZIP | 同 workflow → `target_arch=x86_64`（**`macos-15-intel`**。`macos-14` では Intel zip にならない）→ `ARIAKE_OCTA_macOS_Intel_v1.2.5.zip` |
+| Windows ZIP | Actions **Build Windows release**（`windows-latest`、Python 3.12）→ `ARIAKE_OCTA_win_v1.2.5.zip` |
+| `attach_to_release` | 既定 **false** |
+| 数値テスト | Actions **Cross-platform metric tests**（`ubuntu-latest`）。同じ fixture → 同じ Complexity 層 |
+| Linux クラウド | `.app` / `.exe` は作れない。上の GHA をマージ後に `workflow_dispatch` |
+
+ローカル Mac:
+
+```bash
+./build_mac.sh --skip-notarize --clean --arm64   # または --intel
+./package_mac_release.sh --arm64 --version 1.2.5
+```
+
+ローカル Windows:
+
+```powershell
+.\build_win.ps1 -Clean
+# dist\ARIAKE_OCTA_win_v1.2.5.zip
+```
+
+CSV 列名（`MAJOR_METRICS`）と `DEFAULT_RPD_PCT=20` は変えない。
+
+### 10.0 以前の macOS 配布メモ（v1.2.4 系）
 
 | 項目 | 内容 |
 |------|------|
@@ -138,9 +171,9 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 | codesign 検証 | `tools/verify_mac_codesign_ready.sh` — Frameworks に dist-info が無いこと + `codesign --verify` |
 | アーキ検証 | `tools/verify_mac_app_arch.sh dist/ARIAKE_OCTA.app arm64`（または `x86_64`）。fat/universal や逆アーキ混入で **fail** |
 | venv 検証 | `tools/require_mac_python_arch.sh .venv/bin/python x86_64` — `--intel` 前に必須 |
-| ZIP 同梱 | `./package_mac_release.sh --arm64 --version 1.2.4` → `dist/ARIAKE_OCTA_mac.zip` |
-| Intel ZIP | `./package_mac_release.sh --intel --version 1.2.4` → `dist/ARIAKE_OCTA_macOS_Intel_v1.2.4.zip` |
-| CI | `.github/workflows/build-mac.yml`（`v*-mac` タグ = arm64 / `workflow_dispatch` x86_64 = **macos-15-intel**） |
+| ZIP 同梱 | `./package_mac_release.sh --arm64 --version 1.2.5` → `dist/ARIAKE_OCTA_mac_v1.2.5.zip` |
+| Intel ZIP | `./package_mac_release.sh --intel --version 1.2.5` → `dist/ARIAKE_OCTA_macOS_Intel_v1.2.5.zip` |
+| CI | `.github/workflows/build-mac.yml`（`workflow_dispatch` arm64 = **macos-14** / x86_64 = **macos-15-intel**。タグ push では Release を作らない） |
 | OpenSSL | Python `_ssl` は 1.1、OpenCV は 3。`tools/mac_openssl_coexistence.py` が混在を直す（1.1 への一括付け替えは禁止） |
 | 署名 | 研究配布は ad-hoc（`-`）。**Hardened Runtime を付けない**（Connection Error 防止） |
 | インストール | 同梱 `インストール.command` が xattr + ad-hoc 再署名を実行 |
@@ -221,8 +254,8 @@ Actions → **Build macOS release** → Run workflow:
 |------|-----|
 | Branch | `main`（本変更マージ後）またはこの PR ブランチ |
 | `target_arch` | **x86_64** |
-| `app_version` | `1.2.4` |
-| `attach_to_release` | true（既存 `v1.2.4-mac` に asset 追加。tag 打ち直し不要） |
+| `app_version` | `1.2.5` |
+| `attach_to_release` | **false**（Release を作らない。artifact のみ） |
 
 `macos-14` で `x86_64` を選ぶと失敗する（arm64 Python）。
 

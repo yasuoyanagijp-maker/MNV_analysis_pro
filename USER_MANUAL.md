@@ -260,7 +260,7 @@ GakuNin RDM（プロジェクト配下）/
 
 Optovue 3mm の Complexity では、Trunk の分布が基準に無いため Trunk 項は **50** のままです。Seafan と Medusa は、画像から出る Trunk の形で判定します。Caliber Uniformity、病態分類、Caliber U2 は Zeiss HD 3mm の基準のままです。式とパーセンタイルは詳細マニュアル **§6.3.1** を参照してください。
 
-インストール済みの **Mac v1.2.4**（Apple Silicon と Intel）と **Windows v1.2.3** には、アプリ一式を入れ替えずにこの画面を足すパッチがあります。Releases の `v1.2.4-optovue-3mm-patch` から OS に合う ZIP を取り、中の「パッチの説明.txt」に従って適用してください。
+**v1.2.5** 以降は Windows / Intel Mac / Apple Silicon が同じソースです。起動ウィザードに **3 mm (Optovue)** が最初から入っています（Windows も同じ）。まだ GitHub Releases に v1.2.5 ZIP が無いときは、インストール済みの **Mac v1.2.4** と **Windows v1.2.3** 向けに、従来どおり Releases の `v1.2.4-optovue-3mm-patch` を使えます。
 
 ### 8.2 画像・フォルダの指定
 
@@ -563,6 +563,7 @@ Optovue 3mm の Complexity では、Trunk の分布が基準に無いため Trun
 
 | 日付 | 内容 |
 |------|------|
+| 2026-11-12 | **v1.2.5**: Windows / Intel Mac / Apple Silicon を同一ソース・同一版番号に揃える。Windows Flet にも **3 mm (Optovue)**。CSV 列名と RPD 20% は変更なし。ZIP は未公開（柳確認後）。 |
 | 2026-10-23 | フォルダ選択が一覧空になるとき、Desktop の読み取り失敗を Home / アプリデータへ切り替え、画面にパス貼り付け欄を出す。§8.2 に Optional path の案内を追記。 |
 | 2026-10-19 | 起動ウィザードの 3 mm を **Optovue** と **Zeiss HD** に分割。§8.1.1 に選択画面・確認画面と操作動画を追加。インストール済み Mac v1.2.4 / Windows v1.2.3 向けパッチは Releases の `v1.2.4-optovue-3mm-patch`。 |
 | 2026-08-29 | Connection Error（Mac）: 第一対応は新ZIPではなく `xattr` + ad-hoc `codesign --sign -`。`xattr` だけでは不十分。病院業務用 Windows のファイアウォールは別原因。 |

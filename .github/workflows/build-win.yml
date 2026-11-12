@@ -1,0 +1,91 @@
+name: Build Windows release
+
+# Windows x64 EXE from the same source as Mac (VERSION = 1.2.5).
+# Does not create GitHub Releases. Artifacts stay on Actions until Yanagi publishes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_version:
+        description: Release version (e.g. 1.2.5). Empty = VERSION file.
+        type: string
+        default: "1.2.5"
+      attach_to_release:
+        description: Upload zip onto an existing GitHub Release (default off; do not publish from CI)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          ver="${{ inputs.app_version }}"
+          ver="${ver#v}"
+          if [[ -z "$ver" ]]; then
+            ver="$(tr -d '[:space:]' < VERSION)"
+          fi
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+          echo "Unified app version ${ver}"
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: x64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Build EXE and ZIP
+        shell: pwsh
+        env:
+          ARIAKE_APP_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          .\build_win.ps1 -Clean
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-x64-v${{ steps.ver.outputs.version }}
+          path: |
+            dist/ARIAKE_OCTA_win_v${{ steps.ver.outputs.version }}.zip
+            dist/ARIAKE_OCTA.zip
+          if-no-files-found: error
+
+      - name: Attach zip to existing GitHub Release
+        if: inputs.attach_to_release == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ steps.ver.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v${APP_VERSION}-win"
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            TAG="v${APP_VERSION}"
+          fi
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release v${APP_VERSION}-win / v${APP_VERSION} does not exist; zip stays in Actions artifacts only."
+            exit 0
+          fi
+          gh release upload "$TAG" dist/ARIAKE_OCTA_win_v${APP_VERSION}.zip dist/ARIAKE_OCTA.zip \
+            --clobber --repo "${{ github.repository }}"
+          echo "Uploaded Windows zip to ${TAG} (existing release only; CI does not create Releases)."

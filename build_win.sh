@@ -27,6 +27,11 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 BUILD_DIR="${SCRIPT_DIR}/build"
 SPEC_FILE="${SCRIPT_DIR}/ARIAKE_OCTA_win.spec"
 PYTHON_EXE="python"
+APP_VERSION="$(tr -d '[:space:]' < "${SCRIPT_DIR}/VERSION")"
+APP_VERSION="${ARIAKE_APP_VERSION:-$APP_VERSION}"
+APP_VERSION="${APP_VERSION#v}"
+export ARIAKE_APP_VERSION="${APP_VERSION}"
+log_info "Unified app version: ${APP_VERSION}"
 
 # 仮想環境の自動検出
 if [ -f "${SCRIPT_DIR}/.venv/Scripts/python.exe" ]; then
@@ -125,18 +130,21 @@ log_success "PyInstaller ビルド完了: ${EXE_PATH}"
 
 # ── ZIP 圧縮 ──────────────────────────────────────────────────────────────────
 log_step "ZIP 圧縮"
+ZIP_VERSIONED="${DIST_DIR}/${APP_NAME}_win_v${APP_VERSION}.zip"
 ZIP_OUT="${DIST_DIR}/${APP_NAME}.zip"
-rm -f "$ZIP_OUT"
+rm -f "$ZIP_OUT" "$ZIP_VERSIONED"
 
 # Windows では zip コマンドがない場合があるため、powershell をフォールバックに使用
 if command -v zip &>/dev/null; then
-    (cd "$DIST_DIR" && zip -r "${APP_NAME}.zip" "${APP_NAME}")
+    (cd "$DIST_DIR" && zip -r "${APP_NAME}_win_v${APP_VERSION}.zip" "${APP_NAME}")
+    cp -f "$ZIP_VERSIONED" "$ZIP_OUT"
 else
     log_info "zip コマンドが見つからないため、PowerShell で圧縮します..."
-    powershell.exe -Command "Compress-Archive -Path '${DIST_DIR}/${APP_NAME}/*' -DestinationPath '${ZIP_OUT}' -Force"
+    powershell.exe -Command "Compress-Archive -Path '${DIST_DIR}/${APP_NAME}' -DestinationPath '${ZIP_VERSIONED}' -Force; Copy-Item '${ZIP_VERSIONED}' '${ZIP_OUT}'"
 fi
 
-log_success "ZIP 作成完了: ${ZIP_OUT}"
+log_success "ZIP 作成完了: ${ZIP_VERSIONED}"
+log_success "Alias ZIP: ${ZIP_OUT}"
 
 # ── 完了サマリー ──────────────────────────────────────────────────────────────
 echo ""
@@ -146,7 +154,8 @@ echo -e "${BOLD}${GREEN}╚═════════════════�
 echo ""
 echo -e "  出力フォルダ: ${DIST_DIR}/${APP_NAME}"
 echo -e "  実行ファイル: ${EXE_PATH}"
-echo -e "  配布用 ZIP  : ${ZIP_OUT}"
+echo -e "  配布用 ZIP  : ${ZIP_VERSIONED}"
+echo -e "  別名 ZIP    : ${ZIP_OUT}"
 echo ""
 echo "インストール手順:"
 echo "  1. ${APP_NAME}.zip を展開します。"

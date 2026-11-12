@@ -14,7 +14,10 @@ from core.pattern_metrics import (
     load_mnv_classification_ref,
     trunk_term_for_complexity,
 )
-from utils.mnv_size_class import explicit_mnv_size_class
+from utils.mnv_size_class import (
+    explicit_mnv_size_class,
+    resolve_mnv_complexity_size_class,
+)
 
 
 class TestOptovue3mmDevice(unittest.TestCase):
@@ -65,6 +68,37 @@ class TestOptovue3mmDevice(unittest.TestCase):
             classify_morphology_final(60, 50, "MEDUSA", "small_3mm")["subtype"],
             "Medusa",
         )
+
+    def test_complexity_pca_same_features_differ_by_stratum(self):
+        from core.pattern_metrics import calculate_complexity_pca
+
+        kwargs = dict(
+            euler_center=4.0,
+            euler_periphery=6.0,
+            loop_total=22.0,
+            junction_density=15.5,
+            tortuosity_center=1.20,
+            tortuosity_periphery=1.10,
+            fd_global=1.11,
+            trunk_score=50.0,
+        )
+        optovue = calculate_complexity_pca(size_class="optovue_3mm", **kwargs)
+        zeiss = calculate_complexity_pca(size_class="small_3mm", **kwargs)
+        self.assertNotAlmostEqual(optovue, zeiss, places=4)
+        # Linux reference (numpy 1.26.4). Same input must match on Mac/Windows.
+        self.assertAlmostEqual(optovue, 47.96209019582987, places=10)
+        self.assertAlmostEqual(zeiss, 94.70098580409832, places=10)
+
+    def test_pipeline_helper_matches_ui_tokens(self):
+        self.assertEqual(
+            resolve_mnv_complexity_size_class(3.0, "optovue", image_width=320),
+            "optovue_3mm",
+        )
+        self.assertEqual(
+            resolve_mnv_complexity_size_class(3.0, "zeiss_hd", image_width=320),
+            "small_3mm",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

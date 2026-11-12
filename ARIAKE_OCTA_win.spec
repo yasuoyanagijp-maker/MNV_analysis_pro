@@ -1,17 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
-# ARIAKE_OCTA_win.spec — Windows 用
+# ARIAKE_OCTA_win.spec — Windows 用（Mac と同じソース・同じ VERSION）
 import sys
 import os
 import PIL
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
+project_root = os.getcwd()
+sys.path.insert(0, project_root)
+from tools.pyinstaller_version import read_app_version
+
+APP_VERSION = read_app_version(project_root)
+print(f"[ARIAKE_OCTA_win.spec] unified app version {APP_VERSION}")
+
 # ── 設定 ────────────────────────────────────────────────────────
 # デバッグ時は True にすると、EXE 実行時に背後で黒いコンソールが開きます
 DEBUG_MODE = False
 
 block_cipher = None
-project_root = os.getcwd()
 
 # ── libtiff.dll の自動探索ロジック ──────────────────────────────
 def collect_libtiff():
@@ -66,6 +72,7 @@ datas = [
     ("main_app.py", "."),
     ("src", "src"),
     ("resources", "resources"),
+    ("VERSION", "."),
 ]
 
 # venv の site-packages パスを取得（tifffile などのコピー用）

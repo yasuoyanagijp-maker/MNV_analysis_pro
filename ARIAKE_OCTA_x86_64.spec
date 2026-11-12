@@ -9,8 +9,9 @@ block_cipher = None
 project_root = os.getcwd()
 sys.path.insert(0, project_root)
 from tools.mac_pyinstaller_filters import collect_pkg_without_metadata, filter_analysis_metadata
+from tools.pyinstaller_version import read_app_version
 
-MAC_APP_VERSION = os.environ.get("ARIAKE_MAC_APP_VERSION", "1.2.4d")
+MAC_APP_VERSION = read_app_version(project_root)
 
 # venv（Python 3.9）の Pillow 内にある libtiff を使用する
 venv_site_packages = os.path.join(project_root, '.venv/lib/python3.9/site-packages')
@@ -20,6 +21,7 @@ datas = [
     (os.path.join(project_root, 'src'), 'src'),
     (os.path.join(project_root, 'resources'), 'resources'),
     (os.path.join(project_root, 'main_app.py'), '.'),
+    (os.path.join(project_root, 'VERSION'), '.'),
 ]
 
 # Streamlit関連のメタデータとフロントエンドを追加

@@ -1,0 +1,48 @@
+name: Cross-platform metric tests
+
+# Linux reference: same synthetic/fixture input → same Complexity stratum and PCA numbers.
+# Does not build Mac/Windows binaries (see build-mac.yml / build-win.yml).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-unittests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install scientific stack used by metric tests
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            numpy==1.26.4 scipy==1.13.1 \
+            scikit-image==0.24.0 opencv-python==4.9.0.80 \
+            Pillow==10.4.0 networkx==3.2.1 shapely==2.0.7 pandas==2.1.4 \
+            psutil==7.2.2 matplotlib==3.9.4 threadpoolctl
+          python -m pip install --no-deps sknw==0.15
+          python -m pip install --upgrade --force-reinstall numpy==1.26.4
+
+      - name: Run unified v1.2.5 / Optovue / RPD tests
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m unittest \
+            tools.test_optovue_3mm_device \
+            tools.test_unified_v125 \
+            tools.test_synthetic_mnv_optovue \
+            tools.reading_center_rpd.test_compute_adopted
