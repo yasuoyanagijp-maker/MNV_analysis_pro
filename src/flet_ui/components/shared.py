@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Awaitable, Callable, List, Optional
 import uuid
 
+from src.utils.app_version import format_app_version_label
 from src.utils.local_http import local_async_client, login_via_local_api
 
 # Custom Theme Colors
@@ -19,7 +20,7 @@ TEXT_MUTED = "#8B9BB4"
 APP_DISPLAY_NAME = "ARIAKE OCTA Pro"
 APP_WINDOW_TITLE = "ARIAKE OCTA Pro - Advanced Retinal Analysis"
 APP_LOGIN_TITLE = "ARIAKE OCTA Pro"
-APP_LOGIN_SUBTITLE = "Researcher Access"
+APP_LOGIN_SUBTITLE = f"Researcher Access  ·  {format_app_version_label()}"
 
 
 def session_discard(session, key: str) -> None:

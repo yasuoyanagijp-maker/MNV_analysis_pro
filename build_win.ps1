@@ -11,6 +11,10 @@ $DIST_DIR = Join-Path $SCRIPT_DIR "dist"
 $BUILD_DIR = Join-Path $SCRIPT_DIR "build"
 $SPEC_FILE = Join-Path $SCRIPT_DIR "ARIAKE_OCTA_win.spec"
 $PYTHON_EXE = "python"
+$APP_VERSION = (Get-Content (Join-Path $SCRIPT_DIR "VERSION") -Raw).Trim()
+if ($env:ARIAKE_APP_VERSION) { $APP_VERSION = $env:ARIAKE_APP_VERSION.Trim().TrimStart("v") }
+$env:ARIAKE_APP_VERSION = $APP_VERSION
+Write-Host "[INFO] Unified app version: $APP_VERSION"
 
 if (Test-Path (Join-Path $SCRIPT_DIR ".venv\Scripts\python.exe")) {
     $PYTHON_EXE = Join-Path $SCRIPT_DIR ".venv\Scripts\python.exe"
@@ -75,7 +79,8 @@ if (-not (Test-Path $EXE_PATH)) {
 Write-Host "[SUCCESS] Build completed: $EXE_PATH"
 
 $INTERNAL_DIR = Join-Path $DIST_DIR "$APP_NAME\_internal"
-$requiredDlls = @("python312.dll", "python3.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll", "MSVCP140.dll")
+$pyTag = (& $PYTHON_EXE -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')").Trim()
+$requiredDlls = @("python$pyTag.dll", "python3.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll", "MSVCP140.dll")
 $missingDlls = @()
 foreach ($dll in $requiredDlls) {
     if (-not (Test-Path (Join-Path $INTERNAL_DIR $dll))) {
@@ -90,9 +95,14 @@ if ($missingDlls.Count -gt 0) {
 Write-Host "[INFO] Runtime DLL check passed (_internal contains python312.dll and MSVC runtime)."
 
 Write-Host "[INFO] Creating ZIP..."
+$ZIP_VERSIONED = Join-Path $DIST_DIR "${APP_NAME}_win_v$APP_VERSION.zip"
 $ZIP_OUT = Join-Path $DIST_DIR "$APP_NAME.zip"
-if (Test-Path $ZIP_OUT) { Remove-Item $ZIP_OUT }
+foreach ($zip in @($ZIP_VERSIONED, $ZIP_OUT)) {
+    if (Test-Path $zip) { Remove-Item $zip }
+}
 # Package the folder so extraction yields ARIAKE_OCTA\ARIAKE_OCTA.exe + _internal\
-Compress-Archive -Path (Join-Path $DIST_DIR $APP_NAME) -DestinationPath $ZIP_OUT
-Write-Host "[SUCCESS] ZIP created: $ZIP_OUT"
+Compress-Archive -Path (Join-Path $DIST_DIR $APP_NAME) -DestinationPath $ZIP_VERSIONED
+Copy-Item $ZIP_VERSIONED $ZIP_OUT
+Write-Host "[SUCCESS] ZIP created: $ZIP_VERSIONED"
+Write-Host "[SUCCESS] Alias ZIP: $ZIP_OUT"
 Write-Host "[HINT] Distribute the ZIP as-is. Recipient must extract the whole ARIAKE_OCTA folder (keep _internal next to the .exe)."

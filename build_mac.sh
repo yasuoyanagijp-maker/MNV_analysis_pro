@@ -43,11 +43,13 @@ DEVELOPER_ID="Developer ID Application: Your Name (XXXXXXXXXX)"
 KEYCHAIN_PROFILE="ARIAKE_NOTARY"             # notarytool store-credentials で設定した名前
 APP_NAME="ARIAKE_OCTA"                        # .app / .dmg のベース名
 APP_BUNDLE_ID="com.ariake.octa"              # Bundle Identifier
-APP_VERSION="${ARIAKE_MAC_APP_VERSION:-1.2.4d}"
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── パス設定 ──────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_VERSION="${ARIAKE_APP_VERSION:-${ARIAKE_MAC_APP_VERSION:-$(tr -d '[:space:]' < "${SCRIPT_DIR}/VERSION")}}"
+export ARIAKE_APP_VERSION="${APP_VERSION}"
+export ARIAKE_MAC_APP_VERSION="${APP_VERSION}"
 VENV_PYTHON="${SCRIPT_DIR}/.venv/bin/python"
 VENV_PIP="${SCRIPT_DIR}/.venv/bin/pip"
 DIST_DIR="${SCRIPT_DIR}/dist"

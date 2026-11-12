@@ -11,13 +11,13 @@ on:
           - x86_64
         default: arm64
       app_version:
-        description: Release version (e.g. 1.2.4d)
+        description: Release version (e.g. 1.2.5). Empty = VERSION file.
         type: string
-        default: "1.2.4d"
+        default: "1.2.5"
       attach_to_release:
-        description: Upload zip onto existing GitHub Release v{version}-mac
+        description: Upload zip onto existing GitHub Release (default off; do not publish from CI)
         type: boolean
-        default: true
+        default: false
   push:
     tags:
       - "v*-mac"
@@ -40,7 +40,12 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "target=${{ inputs.target_arch }}" >> "$GITHUB_OUTPUT"
-            echo "version=${{ inputs.app_version }}" >> "$GITHUB_OUTPUT"
+            ver="${{ inputs.app_version }}"
+            ver="${ver#v}"
+            if [[ -z "$ver" ]]; then
+              ver="$(tr -d '[:space:]' < VERSION)"
+            fi
+            echo "version=${ver}" >> "$GITHUB_OUTPUT"
           else
             echo "target=arm64" >> "$GITHUB_OUTPUT"
             ver="${GITHUB_REF_NAME#v}"
@@ -74,6 +79,7 @@ jobs:
       - name: Build .app (ad-hoc, no notarization)
         run: |
           chmod +x build_mac.sh tools/verify_mac_app_arch.sh tools/strip_mac_codesign_poison.sh tools/verify_mac_codesign_ready.sh tools/require_mac_python_arch.sh tools/mac_openssl_coexistence.py tools/mac_adhoc_codesign.sh package_mac_release.sh
+          export ARIAKE_APP_VERSION="${{ steps.arch.outputs.version }}"
           export ARIAKE_MAC_APP_VERSION="${{ steps.arch.outputs.version }}"
           if [[ "${{ steps.arch.outputs.target }}" == "arm64" ]]; then
             ./build_mac.sh --skip-notarize --clean --arm64
@@ -129,42 +135,9 @@ jobs:
           gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file /tmp/release-notes.md
           echo "Appended Intel zip bullet to ${TAG} notes."
 
-      - name: Publish GitHub Release (tag push only)
+      - name: Skip GitHub Release on tag push
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BUILD_TARGET: ${{ steps.arch.outputs.target }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          NOTES_FILE="$(mktemp)"
-          VER="${GITHUB_REF_NAME#v}"
-          VER="${VER%-mac}"
-          NOTES_TEMPLATE="${GITHUB_WORKSPACE}/.github/release-notes/v${VER}-body.md"
-          if [[ ! -f "${NOTES_TEMPLATE}" ]]; then
-            NOTES_TEMPLATE="${GITHUB_WORKSPACE}/.github/release-notes/v1.2.4d-body.md"
-          fi
-          if [[ -f "${NOTES_TEMPLATE}" ]]; then
-            cp "${NOTES_TEMPLATE}" "${NOTES_FILE}"
-          else
-            cat > "${NOTES_FILE}" << 'EOF'
-          ## macOS release
-
-          See `Macインストール手順.txt` in the zip. Install via **right-click → Open** on `インストール.command`, or use the terminal block in `.github/release-notes/v1.2.4-mac-body.md`.
-
-          ## Artifacts
-          EOF
-            if [[ "${BUILD_TARGET}" == "arm64" ]]; then
-              cat >> "${NOTES_FILE}" << 'EOF'
-          - Apple Silicon (M1/M2/M3/M4): `ARIAKE_OCTA_mac.zip` (arm64 only)
-          EOF
-            else
-              cat >> "${NOTES_FILE}" << 'EOF'
-          - Intel Mac: `ARIAKE_OCTA_macOS_Intel_v*.zip`
-          EOF
-            fi
-            sed -i '' 's/^          //' "${NOTES_FILE}"
-          fi
-          gh release create "$TAG" dist/*.zip \
-            --title "macOS Release ${TAG}" \
-            --notes-file "${NOTES_FILE}" \
-            --repo "${{ github.repository }}"
+          echo "Tag ${GITHUB_REF_NAME}: zip stays in Actions artifacts."
+          echo "CI does not create GitHub Releases. After Yanagi confirms, publish from the notes in .github/release-notes/."
+          ls -lh dist/*.zip

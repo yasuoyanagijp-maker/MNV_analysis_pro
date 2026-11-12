@@ -32,7 +32,12 @@ from core.caliber_u2 import (
     calculate_maturity_index,
     resolve_caliber_u2_size_class,
 )
-from utils.mnv_size_class import OPTOVUE_3MM, explicit_mnv_size_class
+from utils.mnv_size_class import (
+    OPTOVUE_3MM,
+    SMALL_IMAGE_THRESHOLD,
+    explicit_mnv_size_class,
+    resolve_mnv_complexity_size_class,
+)
 from core.pattern_metrics import (
     calculate_complexity_pca,
     calculate_stability_metrics,
@@ -52,8 +57,8 @@ from utils.step_timer import StepTimer
 
 from .vessel_detection import MNVPreprocessor
 
-# 小画像判定の閾値（mainstreamer と共通。変更時は両方で参照するため1箇所で定義）
-SMALL_IMAGE_THRESHOLD = 800
+# Re-exported: mainstreamer / color_mask import SMALL_IMAGE_THRESHOLD from here.
+# Canonical value lives in utils.mnv_size_class so Win/Mac share one number.
 
 # 解像度別フィルタデフォルト（analyze() 内で画像幅に応じて選択。ユーザー指定時は上書きしない）
 FILTER_PARAMS_SMALL = {
@@ -1101,22 +1106,17 @@ class MNVPipeline:
 
         # 画像サイズに応じて参照クラスを切り替え（ユーザー入力の scale_mm を優先）
         # 3mm (Optovue) は complexity / 形態だけ optovue_3mm。3mm (Zeiss HD) は small_3mm。
-        scale_is_3mm = (
-            self.scale_mm is not None and abs(float(self.scale_mm) - 3.0) < 0.01
+        # Win/Mac/Linux share resolve_mnv_complexity_size_class (same input → same stratum).
+        try:
+            image_width = scale_manager.image_width
+        except AttributeError:
+            image_width = 0
+        spatial_analyzer.size_class = resolve_mnv_complexity_size_class(
+            self.scale_mm,
+            self.size_class_override,
+            image_width=image_width,
+            small_image_threshold=SMALL_IMAGE_THRESHOLD,
         )
-        if scale_is_3mm and self.size_class_override == OPTOVUE_3MM:
-            spatial_analyzer.size_class = OPTOVUE_3MM
-        elif scale_is_3mm:
-            spatial_analyzer.size_class = "small_3mm"
-        else:
-            try:
-                image_width = scale_manager.image_width
-            except AttributeError:
-                image_width = 0
-            if image_width > SMALL_IMAGE_THRESHOLD or self.scale_mm >= 6.0:
-                spatial_analyzer.size_class = "large"
-            else:
-                spatial_analyzer.size_class = "small"
 
         spatial_results = spatial_analyzer.analyze(
             distance_map, thick_vessel_map, roi_mask
