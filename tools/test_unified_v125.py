@@ -85,6 +85,7 @@ class TestUnifiedVersion(unittest.TestCase):
         mac = (ROOT / "build_mac.sh").read_text(encoding="utf-8")
         self.assertIn("--ssl-smoke", mac)
         self.assertIn("mac_openssl_coexistence.py", mac)
+        self.assertIn("DMG をスキップ（--skip-notarize", mac)
         yml = (ROOT / ".github" / "workflows" / "build-mac.yml").read_text(encoding="utf-8")
         self.assertIn("macos-15-intel", yml)
         self.assertIn("|| 'macos-15' }}", yml)
