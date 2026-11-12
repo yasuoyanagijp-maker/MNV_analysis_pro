@@ -9,55 +9,89 @@
   • Macインストール手順.txt … 本ファイル
 
 --------------------------------------------------------------------------------
+■ はじめに
+--------------------------------------------------------------------------------
+
+Apple の公証は使っていません。Safari などでダウンロードした ZIP は、
+展開後のファイルに macOS の隔離属性（quarantine）が付いたままになることが
+あります。そのままだと「インストール.command」が開きません。
+
+チップに合う ZIP を使ってください。
+  • Apple Silicon（M1 / M2 / M3 / M4）→ ARIAKE_OCTA_mac_v1.2.5.zip
+  • Intel Mac → ARIAKE_OCTA_macOS_Intel_v1.2.5.zip
+Apple Silicon に Intel 用 ZIP は入れないでください。
+Intel Mac でも、macOS 15 以降の開き方は Apple Silicon と同じです。
+
+--------------------------------------------------------------------------------
 ■ インストール方法
 --------------------------------------------------------------------------------
 
 1. ダウンロードした ZIP をダブルクリックして展開してください。
 
-2. 展開されたフォルダを開き、「インストール.command」を
-   **右クリック（または Control + クリック）→「開く」** を選んで実行してください。
+2. 展開されたフォルダを Finder で開いてください。
+   「ARIAKE_OCTA.app」と「インストール.command」が同じフォルダにあることを
+   確認します。
 
-   ※ 初回は macOS のセキュリティにより、ダブルクリックだけでは
-     「開発元を確認できないため開けません」と表示されることがあります。
-     その場合も **右クリック →「開く」** でインストールを続行できます。
+3. 次の（A）または（B）で「インストール.command」を実行してください。
+   macOS 15（Sequoia）以降は（A）が確実です。
 
-3. 画面の案内に従うと、Applications フォルダへ自動インストールされ、
+【（A）ターミナル方式（推奨・確実）】
+
+   フォルダへ移動するコマンド（cd）は不要です。
+
+   ① Launchpad または Spotlight から「ターミナル」を開く。
+   ② 次を入力する（「-cr」のあと、必ず半角スペースを入れる。
+      まだ Enter は押さない）:
+
+        xattr -cr 
+
+   ③ Finder の展開フォルダ（ARIAKE_OCTA.app が入っているフォルダ）を、
+      ターミナルの窓へドラッグ＆ドロップする。
+      パスが自動で付きます。例:
+
+        xattr -cr /Users/自分の名前/Downloads/ARIAKE_OCTA_mac_v1.2.5
+
+   ④ Enter を押す。
+   ⑤ Finder に戻り、「インストール.command」をダブルクリックする。
+
+【（B）システム設定方式】
+
+   ① 「インストール.command」を一度ダブルクリックする（ブロックされます）。
+   ② Apple メニュー → システム設定 → プライバシーとセキュリティ。
+   ③ ページの下の方に、ブロックした旨と「このまま開く」が出ます。
+   ④ 「このまま開く」を押す。
+   ⑤ 確認で「開く」を押す。
+   ⑥ 求められたら、Mac のログインパスワードを入力する
+      （アプリのパスワードではありません）。
+
+【macOS 14 以前】
+   右クリック（または Control + クリック）→「開く」でも起動できます。
+   macOS 15 以降では、この方法だけでは開かないことがあります。
+
+4. 画面の案内に従うと、Applications フォルダへ自動インストールされ、
    完了後にアプリが起動します。
+   すでに入っている場合は、上書きの確認で Enter を押してください。
 
-   インストーラーは Apple の公証を使いません。代わりにこの Mac 上で
-   隔離属性の解除（xattr）とアドホック再署名（codesign --sign -）を行います。
+   インストーラーは、この Mac 上で隔離属性の解除（xattr）と
+   アドホック再署名（codesign --sign -）を行います。
 
-4. 次回以降は、Launchpad または Applications フォルダの
+5. 次回以降は、Launchpad または Applications フォルダの
    「ARIAKE_OCTA」から起動できます。
 
 --------------------------------------------------------------------------------
 ■ うまく開けない場合
 --------------------------------------------------------------------------------
 
-• 「インストール.command」と「ARIAKE_OCTA.app」が同じフォルダにあるか確認してください。
+• 「インストール.command」と「ARIAKE_OCTA.app」が同じフォルダにあるか
+  確認してください。
 
-• v1.2.3 で **起動直後** に落ちる / codesign が
-  「bundle format unrecognized … fastapi-0.110.0.dist-info」と出る場合（前原型）:
-  リポジトリ同梱の **v1.2.3_Mac再署名.command** を右クリック →「開く」
-  （既定: /Applications/ARIAKE_OCTA.app）。dist-info 除去後に ad-hoc 再署名します。
-  ※ **ログイン後** Connection Error（瀧澤型・Intel）には効きません → v1.2.4 ZIP が必要。
+• 以前の版（v1.2.3 など）をお使いだった場合は、本 ZIP（v1.2.5）で
+  上書きインストールしてください。
 
-• システム設定 → プライバシーとセキュリティ で、ブロックされた場合は
-  「このまま開く」等の許可を試してください。
-
-• ターミナルから（展開したフォルダで。cd のパスは展開場所に合わせる）:
-
-    cd （展開したフォルダのパス）
-    xattr -cr .
-    xattr -cr ARIAKE_OCTA.app
-    rm -rf /Applications/ARIAKE_OCTA.app
-    cp -R ARIAKE_OCTA.app /Applications/
-    xattr -cr /Applications/ARIAKE_OCTA.app
-    codesign --force --deep --sign - /Applications/ARIAKE_OCTA.app
-    open /Applications/ARIAKE_OCTA.app
-
-    ※ codesign でパスワードを聞かれたら Mac のログインパスワードです（ariake2024 ではありません）。
-    ※ Apple M 系の Mac では Intel 用 ZIP を使わないでください。
+• codesign で「bundle format unrecognized」と shapely/.dylibs と出たときは、
+  ターミナルで codesign --deep を繰り返さないでください。
+  （A）の xattr のあと、「インストール.command」をもう一度ダブルクリックすると、
+  署名できる形にしてから再署名します。
 
 --------------------------------------------------------------------------------
 ■ ログインで「Connection Error: All connection attempts failed」と出る場合
@@ -66,19 +100,10 @@
 パスワードや施設コードの入力ミスではありません。
 ログイン画面は出ていても、同じ Mac 内の解析エンジンに届いていない状態です。
 
-**v1.2.3 の Connection Error（瀧澤型・Intel 木住野型）:**
-  v1.2.3_Mac再署名.command では直りません（spawn + Hardened Runtime が原因）。
-  **v1.2.4-mac**（Apple Silicon）または **Intel v1.2.4 ZIP** をお使いください。
+（A）の xattr を行ったうえで、「インストール.command」をもう一度実行し、
+Applications へ上書きしてください。
 
-**v1.2.4 以降**で既に Applications に入っている場合:
-アプリを起動し直してください（公証は不要です）:
-
-    xattr -cr /Applications/ARIAKE_OCTA.app
-    codesign --force --deep --sign - /Applications/ARIAKE_OCTA.app
-    open /Applications/ARIAKE_OCTA.app
-
-「bundle format unrecognized」と shapely/.dylibs と出たときは、上の codesign を
-繰り返さないでください。同梱の「インストール.command」を右クリック →「開く」で
-入れ直すと、.dylibs を署名できる形にしてから再署名します。
+「bundle format unrecognized」と出たら codesign --deep を繰り返さず、
+「インストール.command」で入れ直してください。
 
 ================================================================================

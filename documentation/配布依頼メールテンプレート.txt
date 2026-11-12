@@ -72,43 +72,32 @@ https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/blob/main/USER_M
 ※ ImageJ 等での画像変換は通常不要です。OCT-A 画像をそのままご利用いただけます。
 
 ================================================================================
-■ Mac版 — インストール方法（通常）
+■ Mac版 — インストール方法（macOS 15 Sequoia 以降。Intel / Apple Silicon 共通）
 ================================================================================
 
 1. 添付の ZIPファイルをダブルクリックして展開してください。
-2. 展開されたフォルダ内の「インストール.command」を、右クリック（または Control + クリック）→「開く」で実行してください。
-   ※初回は macOS のセキュリティにより、ダブルクリックだけでは開けない場合があります。
-3. 画面の案内に従うと、Applications フォルダへ自動インストールされ、完了後にアプリが起動します。
-4. 次回以降は、Launchpad または Applications フォルダの「ARIAKE_OCTA」から起動できます。
+2. 展開フォルダに「ARIAKE_OCTA.app」と「インストール.command」があることを確認してください。
+3. 次の（A）または（B）で「インストール.command」を実行してください。macOS 15 以降は（A）が確実です。
 
-■ うまくインストールできない場合（ターミナルでの手順）
+（A）ターミナル方式（推奨・確実）※ cd は不要です
+  ① ターミナルを開く（Launchpad →「ターミナル」）。
+  ② xattr -cr  と入力する（「-cr」のあと半角スペース。まだ Enter は押さない）。
+  ③ Finder の展開フォルダをターミナルへドラッグ＆ドロップし、Enter を押す。
+  ④ Finder に戻り、「インストール.command」をダブルクリックする。
 
-上記の方法でインストールできない場合は、以下の手順をお試しください。
+（B）システム設定方式
+  ① 「インストール.command」を一度ダブルクリックする（ブロックされます）。
+  ② システム設定 → プライバシーとセキュリティ。
+  ③ ページ下部の「このまま開く」→ 確認の「開く」→ Mac のログインパスワード。
 
-1. ターミナルを起動します（Launchpad →「ターミナル」）。
-2. 展開したフォルダに移動します（フォルダをターミナルウィンドウへドラッグ＆ドロップするとパスが入力されます）。
+macOS 14 以前は、右クリック（または Control + クリック）→「開く」でも起動できます。
 
-cd （展開したフォルダのパス）
-
-3. 以下のコマンドを順に入力して Enter を押してください。
-
-xattr -cr ARIAKE_OCTA.app
-cp -r ARIAKE_OCTA.app /Applications/
-xattr -cr /Applications/ARIAKE_OCTA.app
-codesign --force --deep --sign - /Applications/ARIAKE_OCTA.app
-open /Applications/ARIAKE_OCTA.app
-
-4. インストールが完了し、アプリが起動します。
+4. 画面の案内に従うと、Applications フォルダへ自動インストールされ、完了後にアプリが起動します。
+5. 次回以降は、Launchpad または Applications フォルダの「ARIAKE_OCTA」から起動できます。
 
 （codesign --sign - はこの Mac 向けのアドホック再署名です。Apple の公証は不要です。
-ログインで Connection Error になる場合は、上の xattr と codesign だけを
-すでに入っている /Applications/ARIAKE_OCTA.app に対して実行してください。）
-
-補足：「インストール.command」自体が開けない場合は、先に以下を実行してから ./インストール.command をお試しください。
-
-xattr -cr インストール.command
-chmod +x インストール.command
-./インストール.command
+ログインで Connection Error になる場合は、（A）のあと「インストール.command」をもう一度
+実行して上書きしてください。）
 
 ================================================================================
 ■ Windows版 — インストール方法
@@ -228,8 +217,8 @@ Mac 版 v1.2.3 の配布物に、署名処理と相性の悪い内部フォル�
 
 修正済みの **Mac 版 v1.2.4** を添付いたします（M3 Mac 向け Apple Silicon 版）。
 お手数ですが、以前の ARIAKE_OCTA.app は Applications から削除したうえで、
-添付 ZIP を展開し、「インストール.command」を **右クリック →「開く」** で
-実行してください。
+添付 ZIP を展開し、ターミナルで xattr -cr  のあと展開フォルダをドラッグして
+Enter、「インストール.command」をダブルクリックしてください（macOS 15 以降）。
 
 ダウンロード URL（公開配布）:
 https://github.com/yasuoyanagijp-maker/ARIAKE_OCTA-distribution/releases

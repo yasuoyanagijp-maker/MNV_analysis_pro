@@ -94,6 +94,16 @@ if ($missingDlls.Count -gt 0) {
 }
 Write-Host "[INFO] Runtime DLL check passed (_internal contains python312.dll and MSVC runtime)."
 
+$alignSsl = Join-Path $SCRIPT_DIR "tools\win_ssl_bundle_align.py"
+if (Test-Path $alignSsl) {
+    Write-Host "[INFO] Aligning bundled OpenSSL DLLs to this Python..."
+    & $PYTHON_EXE $alignSsl --internal $INTERNAL_DIR --ssl-smoke
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERROR] OpenSSL DLL align failed."
+        exit $LASTEXITCODE
+    }
+}
+
 Write-Host "[INFO] Creating ZIP..."
 $ZIP_VERSIONED = Join-Path $DIST_DIR "${APP_NAME}_win_v$APP_VERSION.zip"
 $ZIP_OUT = Join-Path $DIST_DIR "$APP_NAME.zip"

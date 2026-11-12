@@ -230,20 +230,22 @@ if [[ "$SIGN_ONLY" != true ]]; then
     fi
 fi
 
-# ── OpenSSL 1.1 と 3 の共存 ────────────────────────────────────────────────
-# Python 3.9 の _ssl.so は libcrypto.1.1、OpenCV は libssl.3 / libcrypto.3。
-# 以前は _ssl.so に合わせて全バイナリを 1.1 に付け替えており、cv2 import が
-# Symbol not found: _ASYNC_WAIT_CTX_get_status で落ちていた。
-# 互換バージョン（Mach-O compatibility version）を正とし、混在させない。
-log_step "OpenSSL 1.1 / 3 共存（cv2 を 1.1 に付け替えない）"
+# ── OpenSSL 1.1 と 3 の共存 + _ssl がリンクしたペアを Frameworks へ ─────
+# Python 3.9 の _ssl.so はビルド環境により libcrypto.1.1 または libcrypto.3。
+# OpenCV は libssl.3 / libcrypto.3（しばしば 3.2.0）。Intel Actions の
+# Python 3.9 が OpenSSL 3.3+ のとき、PyInstaller が OpenCV の 3.2 を拾うと
+# import ssl が X509_STORE_get1_objects 欠落で落ちる。
+# 互換バージョン（Mach-O compatibility version）を正とし、1.1 へ一括付け替えない。
+# 続けて _ssl 用の libssl/libcrypto ペアで Frameworks を上書きする。
+log_step "OpenSSL 1.1 / 3 共存と _ssl 用 dylib の揃え"
 OPENSSL_FIX="${SCRIPT_DIR}/tools/mac_openssl_coexistence.py"
 if [[ -f "$OPENSSL_FIX" ]]; then
     FIX_PY="${VENV_PYTHON}"
     if [[ ! -x "$FIX_PY" ]]; then
         FIX_PY="python3"
     fi
-    "$FIX_PY" "$OPENSSL_FIX" --fix "$APP_PATH" --verify "$APP_PATH"
-    log_success "OpenSSL 1.1 と 3 を共存させた"
+    "$FIX_PY" "$OPENSSL_FIX" --fix "$APP_PATH" --verify "$APP_PATH" --ssl-smoke
+    log_success "OpenSSL を共存させ、_ssl 用 dylib を検証した"
 else
     log_warn "mac_openssl_coexistence.py が見つかりません（スキップ）"
 fi

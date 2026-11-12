@@ -1,7 +1,9 @@
 #!/bin/bash
 # ARIAKE OCTA — Optovue 3mm パッチ（macOS）
 # 対象: インストール済み v1.2.4（Apple Silicon / Intel 共通。中身は Python と参照 JSON）
-# 右クリック →「開く」で実行。引数で .app の場所を渡せる。
+# macOS 15 以降: （A）xattr -cr  のあとこのフォルダをドラッグしてからダブルクリック。
+# または（B）システム設定 → プライバシーとセキュリティ →「このまま開く」。
+# macOS 14 以前: 右クリック →「開く」でも可。引数で .app の場所を渡せる。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

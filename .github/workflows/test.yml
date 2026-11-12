@@ -53,4 +53,6 @@ jobs:
             tools.test_optovue_3mm_device \
             tools.test_unified_v125 \
             tools.test_synthetic_mnv_optovue \
-            tools.reading_center_rpd.test_compute_adopted
+            tools.reading_center_rpd.test_compute_adopted \
+            tools.test_mac_openssl_coexistence \
+            tools.test_win_ssl_bundle_align

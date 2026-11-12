@@ -68,6 +68,32 @@ class TestUnifiedVersion(unittest.TestCase):
         self.assertIn("_running_in_ci", synth)
         self.assertIn("pipeline golden must run in CI", synth)
 
+    def test_mac_install_txt_uses_sequoia_methods(self):
+        text = (ROOT / "Macインストール手順.txt").read_text(encoding="utf-8")
+        self.assertIn("v1.2.5", text)
+        self.assertIn("ターミナル方式", text)
+        self.assertIn("システム設定方式", text)
+        self.assertIn("xattr -cr", text)
+        self.assertIn("このまま開く", text)
+        cmd = (ROOT / "インストール.command").read_text(encoding="utf-8")
+        self.assertIn("[重要]", cmd)
+        self.assertIn("ターミナル方式", cmd)
+        self.assertIn("このまま開く", cmd)
+        self.assertIn("xattr -cr", cmd)
+
+    def test_mac_openssl_align_is_in_build_and_ci(self):
+        mac = (ROOT / "build_mac.sh").read_text(encoding="utf-8")
+        self.assertIn("--ssl-smoke", mac)
+        self.assertIn("mac_openssl_coexistence.py", mac)
+        yml = (ROOT / ".github" / "workflows" / "build-mac.yml").read_text(encoding="utf-8")
+        self.assertIn("macos-15-intel", yml)
+        self.assertIn("|| 'macos-15' }}", yml)
+        win = (ROOT / "build_win.ps1").read_text(encoding="utf-8")
+        self.assertIn("win_ssl_bundle_align.py", win)
+        tests = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+        self.assertIn("tools.test_mac_openssl_coexistence", tests)
+        self.assertIn("tools.test_win_ssl_bundle_align", tests)
+
     def test_build_scripts_default_to_version_file(self):
         mac = (ROOT / "build_mac.sh").read_text(encoding="utf-8")
         self.assertIn('tr -d \'[:space:]\' < "${SCRIPT_DIR}/VERSION"', mac)

@@ -79,8 +79,10 @@ def _readme(pkg: dict) -> str:
     if pkg["platform"] == "mac":
         how = (
             "1. ARIAKE OCTA を終了する。\n"
-            "2. このフォルダの「パッチ適用.command」を右クリック →「開く」。\n"
-            "   初回はダブルクリックだと macOS に止められることがあります。\n"
+            "2. macOS 15 以降: ターミナルに xattr -cr  と入力（末尾スペース）し、\n"
+            "   このフォルダをドラッグして Enter。そのあと「パッチ適用.command」を\n"
+            "   ダブルクリック。または システム設定 → プライバシーとセキュリティ →\n"
+            "   「このまま開く」。macOS 14 以前は右クリック →「開く」でも可。\n"
             "3. 通常は /Applications/ARIAKE_OCTA.app に適用されます。\n"
             "   別の場所にある場合は、このフォルダでターミナルを開き、次を実行します。\n"
             "   bash パッチ適用.command /Applications/ARIAKE_OCTA.app\n"

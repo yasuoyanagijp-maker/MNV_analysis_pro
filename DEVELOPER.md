@@ -139,7 +139,7 @@ uploads/             # 実行時アップロード先（.gitignore 想定）
 |------|------|
 | 版 | `VERSION` = **1.2.5**（環境変数 `ARIAKE_APP_VERSION` で上書き可） |
 | ソース | 1 本。Windows Flet にも **3 mm (Optovue)** / **3 mm (Zeiss HD)** |
-| Apple Silicon ZIP | Actions **Build macOS release** → `target_arch=arm64`（`macos-14`）→ `ARIAKE_OCTA_mac_v1.2.5.zip` |
+| Apple Silicon ZIP | Actions **Build macOS release** → `target_arch=arm64`（**`macos-15`**）→ `ARIAKE_OCTA_mac_v1.2.5.zip` |
 | Intel Mac ZIP | 同 workflow → `target_arch=x86_64`（**`macos-15-intel`**。`macos-14` では Intel zip にならない）→ `ARIAKE_OCTA_macOS_Intel_v1.2.5.zip` |
 | Windows ZIP | Actions **Build Windows release**（`windows-latest`、Python 3.12）→ `ARIAKE_OCTA_win_v1.2.5.zip` |
 | `attach_to_release` | 既定 **false** |
@@ -173,8 +173,8 @@ CSV 列名（`MAJOR_METRICS`）と `DEFAULT_RPD_PCT=20` は変えない。
 | venv 検証 | `tools/require_mac_python_arch.sh .venv/bin/python x86_64` — `--intel` 前に必須 |
 | ZIP 同梱 | `./package_mac_release.sh --arm64 --version 1.2.5` → `dist/ARIAKE_OCTA_mac_v1.2.5.zip` |
 | Intel ZIP | `./package_mac_release.sh --intel --version 1.2.5` → `dist/ARIAKE_OCTA_macOS_Intel_v1.2.5.zip` |
-| CI | `.github/workflows/build-mac.yml`（`workflow_dispatch` arm64 = **macos-14** / x86_64 = **macos-15-intel**。タグ push では Release を作らない） |
-| OpenSSL | Python `_ssl` は 1.1、OpenCV は 3。`tools/mac_openssl_coexistence.py` が混在を直す（1.1 への一括付け替えは禁止） |
+| CI | `.github/workflows/build-mac.yml`（`workflow_dispatch` arm64 = **macos-15** / x86_64 = **macos-15-intel**。タグ push では Release を作らない） |
+| OpenSSL | Python `_ssl` はビルド環境により 1.1 または 3。OpenCV は 3。`tools/mac_openssl_coexistence.py` が 1.1/3 の名前混在を直し、続けて **`_ssl` がリンクした libssl/libcrypto のペア**を Frameworks へ上書きする（OpenCV の古い libcrypto.3 = 3.2.0 を Intel で拾うと `X509_STORE_get1_objects` 欠落）。1.1 への一括付け替えは禁止 |
 | 署名 | 研究配布は ad-hoc（`-`）。**Hardened Runtime を付けない**（Connection Error 防止） |
 | インストール | 同梱 `インストール.command` が xattr + ad-hoc 再署名を実行 |
 | 公証 | 研究配布は不要（`--skip-notarize`） |
@@ -268,7 +268,7 @@ Actions → **Build macOS release** → Run workflow:
 | codesign `fastapi-*.dist-info` | 古い main。`git pull` で #44 以降を確認 |
 | Intel Mac で `incorrect executable format` | arm64 zip を送った |
 
-配布: `open dist/` → `ARIAKE_OCTA_macOS_Intel_v1.2.4.zip`。木住野先生向けは右クリック →「開く」で `インストール.command`。
+配布: `open dist/` → `ARIAKE_OCTA_macOS_Intel_v1.2.5.zip`。macOS 15 以降は `Macインストール手順.txt` の（A）ターミナル `xattr -cr` または（B）「このまま開く」。
 
 ---
 
