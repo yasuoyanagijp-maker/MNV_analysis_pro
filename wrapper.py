@@ -101,6 +101,128 @@ def _start_backend(port: int):
     proc.start()
     return proc
 
+
+_MAC_NSAPP = None
+
+
+def _mac_nsapp_init() -> bool:
+    """Create NSApplication and finishLaunching on the main thread.
+
+    Every click of ARIAKE_OCTA.app from /Applications bounces the Dock until
+    *this* process runs a Cocoa event loop. Flet is a separate ``Flet.app``
+    (``open -n -W``); its window does not count. A background-thread run loop
+    also does not count — Launch Services watches the main thread.
+    """
+    global _MAC_NSAPP
+    if sys.platform != "darwin":
+        return False
+    if _MAC_NSAPP is not None:
+        return True
+    try:
+        import ctypes
+
+        ctypes.cdll.LoadLibrary(
+            "/System/Library/Frameworks/AppKit.framework/AppKit"
+        )
+        objc = ctypes.cdll.LoadLibrary("/usr/lib/libobjc.A.dylib")
+        cf = ctypes.cdll.LoadLibrary(
+            "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
+        )
+
+        objc.sel_registerName.restype = ctypes.c_void_p
+        objc.sel_registerName.argtypes = [ctypes.c_char_p]
+        objc.objc_getClass.restype = ctypes.c_void_p
+        objc.objc_getClass.argtypes = [ctypes.c_char_p]
+
+        def _msg(obj, sel, restype=ctypes.c_void_p, extra_types=(), extra_args=()):
+            proto = ctypes.CFUNCTYPE(
+                restype, ctypes.c_void_p, ctypes.c_void_p, *extra_types
+            )
+            fn = proto(("objc_msgSend", objc))
+            return fn(obj, sel, *extra_args)
+
+        nsapp_cls = objc.objc_getClass(b"NSApplication")
+        if not nsapp_cls:
+            print("[Wrapper] NSApplication class missing; Dock bounce may continue.", flush=True)
+            return False
+        app = _msg(nsapp_cls, objc.sel_registerName(b"sharedApplication"))
+        if not app:
+            print("[Wrapper] NSApplication.sharedApplication failed.", flush=True)
+            return False
+        # NSApplicationActivationPolicyRegular = 0 (keep our Dock icon).
+        _msg(
+            app,
+            objc.sel_registerName(b"setActivationPolicy:"),
+            restype=ctypes.c_long,
+            extra_types=(ctypes.c_long,),
+            extra_args=(0,),
+        )
+        _msg(app, objc.sel_registerName(b"finishLaunching"), restype=None)
+
+        mode = ctypes.c_void_p.in_dll(cf, "kCFRunLoopDefaultMode")
+        cf.CFRunLoopRunInMode.restype = ctypes.c_int32
+        cf.CFRunLoopRunInMode.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_double,
+            ctypes.c_int,
+        ]
+        _MAC_NSAPP = {"cf": cf, "mode": mode, "app": app, "objc": objc}
+        print("[Wrapper] NSApplication finishLaunching (Dock bounce should stop).", flush=True)
+        return True
+    except Exception as exc:
+        print(f"[Wrapper] Dock bounce signal failed: {exc}", flush=True)
+        return False
+
+
+def _mac_pump_main_until(alive_fn, timeout=None) -> None:
+    """Run the main-thread CFRunLoop until alive_fn is false (every launch)."""
+    started = time.monotonic()
+    ns = _MAC_NSAPP
+    if ns is None:
+        while alive_fn():
+            if timeout is not None and (time.monotonic() - started) >= timeout:
+                break
+            time.sleep(0.05)
+        return
+    cf, mode = ns["cf"], ns["mode"]
+    while alive_fn():
+        if timeout is not None and (time.monotonic() - started) >= timeout:
+            break
+        cf.CFRunLoopRunInMode(mode, 0.1, 1)
+
+
+def _mac_signal_nsapp_launched(*, pump: bool = True) -> bool:
+    """Init NSApp + one main-thread pump. ``pump`` kept for the Mac build smoke."""
+    ok = _mac_nsapp_init()
+    if ok and _MAC_NSAPP is not None:
+        _MAC_NSAPP["cf"].CFRunLoopRunInMode(_MAC_NSAPP["mode"], 0.05, 1)
+        if not pump:
+            return True
+    return ok
+
+
+def _run_on_worker_pump_main(fn, name: str):
+    """Run fn off-main; keep pumping Cocoa on the main thread (every Dock click)."""
+    if sys.platform != "darwin":
+        return fn()
+    box = {"exc": None, "rv": None}
+
+    def _target():
+        try:
+            box["rv"] = fn()
+        except Exception as exc:
+            box["exc"] = exc
+            traceback.print_exc()
+
+    worker = threading.Thread(target=_target, name=name, daemon=True)
+    worker.start()
+    _mac_pump_main_until(worker.is_alive)
+    worker.join(timeout=5)
+    if box["exc"] is not None:
+        raise box["exc"]
+    return box["rv"]
+
+
 if __name__ == "__main__":
     multiprocessing.freeze_support()
     
@@ -124,6 +246,8 @@ if __name__ == "__main__":
 
     if sys.platform == "darwin":
         multiprocessing.set_start_method("spawn", force=True)
+        # Every /Applications click: this process is the bouncing Dock icon.
+        _mac_signal_nsapp_launched()
 
     # ── ENVIRONMENT CONFIGURATION ──────────────────────────────────────────
     os.environ.setdefault("ARIAKE_ACCESS_KEY", "ariake2024")
@@ -153,12 +277,19 @@ if __name__ == "__main__":
     try:
         from src.utils.local_ports import wait_for_tcp_port
 
-        api_ready = wait_for_tcp_port(
-            api_port, timeout=90.0, is_alive=api_proc.is_alive
-        )
+        def _wait_api():
+            return wait_for_tcp_port(
+                api_port, timeout=90.0, is_alive=api_proc.is_alive
+            )
+
+        api_ready = _run_on_worker_pump_main(_wait_api, "api-wait")
     except ImportError:
-        time.sleep(2)
-        api_ready = True
+        if sys.platform == "darwin":
+            _mac_pump_main_until(lambda: True, timeout=2.0)
+            api_ready = True
+        else:
+            time.sleep(2)
+            api_ready = True
     if not api_ready:
         print(
             "[Wrapper] WARNING: FastAPI did not become ready. Login may show "
@@ -191,7 +322,12 @@ if __name__ == "__main__":
             if renderer == "html":
                 renderer = "canvaskit"
             ft_kwargs["web_renderer"] = renderer
-        ft.app(**ft_kwargs)
+        if sys.platform == "darwin":
+            # ft.app blocks on asyncio + ``open Flet.app -W``. Keep CFRunLoop
+            # on the main thread so bounce stops and stays stopped.
+            _run_on_worker_pump_main(lambda: ft.app(**ft_kwargs), "flet-frontend")
+        else:
+            ft.app(**ft_kwargs)
     except KeyboardInterrupt:
         print("\n[Wrapper] KeyboardInterrupt received.", flush=True)
     except Exception as e:
