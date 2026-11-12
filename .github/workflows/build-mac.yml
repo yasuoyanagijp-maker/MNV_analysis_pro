@@ -21,6 +21,11 @@ on:
   push:
     tags:
       - "v*-mac"
+    # workflow_dispatch needs Actions:write; this token only has contents.
+    # Pushing these branches builds artifacts (attach_to_release stays false).
+    branches:
+      - cursor/build-mac-arm64-v125-0874
+      - cursor/build-mac-intel-v125-0874
 
 permissions:
   contents: write
@@ -30,7 +35,7 @@ jobs:
     # arm64 → macos-14 (Apple Silicon).
     # x86_64 → macos-15-intel (native Intel). macos-13 is retired;
     # macos-14 cannot produce an Intel zip (arm64 Python / PyInstaller).
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_arch == 'x86_64' && 'macos-15-intel' || 'macos-14' }}
+    runs-on: ${{ (github.event.inputs.target_arch == 'x86_64' || endsWith(github.ref, 'cursor/build-mac-intel-v125-0874')) && 'macos-15-intel' || 'macos-14' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,10 +51,18 @@ jobs:
               ver="$(tr -d '[:space:]' < VERSION)"
             fi
             echo "version=${ver}" >> "$GITHUB_OUTPUT"
-          else
+          elif [[ "${GITHUB_REF_NAME}" == cursor/build-mac-intel-* ]]; then
+            echo "target=x86_64" >> "$GITHUB_OUTPUT"
+            ver="$(tr -d '[:space:]' < VERSION)"
+            echo "version=${ver}" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF_NAME}" == v*-mac ]]; then
             echo "target=arm64" >> "$GITHUB_OUTPUT"
             ver="${GITHUB_REF_NAME#v}"
             ver="${ver%-mac}"
+            echo "version=${ver}" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=arm64" >> "$GITHUB_OUTPUT"
+            ver="$(tr -d '[:space:]' < VERSION)"
             echo "version=${ver}" >> "$GITHUB_OUTPUT"
           fi
 

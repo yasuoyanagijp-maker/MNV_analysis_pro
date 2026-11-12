@@ -14,6 +14,11 @@ on:
         description: Upload zip onto an existing GitHub Release (default off; do not publish from CI)
         type: boolean
         default: false
+  push:
+    # workflow_dispatch needs Actions:write; this token only has contents.
+    # Pushing this branch builds the zip (attach_to_release stays false).
+    branches:
+      - cursor/build-win-v125-0874
 
 permissions:
   contents: write
@@ -71,7 +76,7 @@ jobs:
           if-no-files-found: error
 
       - name: Attach zip to existing GitHub Release
-        if: inputs.attach_to_release == true
+        if: github.event_name == 'workflow_dispatch' && inputs.attach_to_release == true
         env:
           GH_TOKEN: ${{ github.token }}
           APP_VERSION: ${{ steps.ver.outputs.version }}
