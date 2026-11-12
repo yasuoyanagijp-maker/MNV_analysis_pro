@@ -14,6 +14,12 @@ on:
         description: Upload zip onto an existing GitHub Release (default off; do not publish from CI)
         type: boolean
         default: false
+  push:
+    # workflow_dispatch needs Actions:write; this token only has contents.
+    # Pushing this branch builds the zip (attach_to_release stays false).
+    # Do not merge this trigger YAML to main or to the docs/SSL PR.
+    branches:
+      - cursor/build-win-v125-a1f4
 
 permissions:
   contents: write
