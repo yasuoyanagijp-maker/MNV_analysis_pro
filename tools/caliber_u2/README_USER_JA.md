@@ -20,7 +20,7 @@ MNV バッチ CSV に **Standardized Caliber Uniformity Score** と **Standardiz
 
 ## macOS（Apple Silicon arm64）
 1. ZIP を展開
-2. 初回は Gatekeeper で「開発元を確認できない」と出る場合あり → 右クリック → 開く、または `xattr -cr compute_caliber_u2_from_csv`
+2. 初回は Gatekeeper で「開発元を確認できない」と出る場合あり → ターミナルで `xattr -cr `（末尾スペース）のあとファイルをドラッグ、または macOS 15 では システム設定 → プライバシーとセキュリティ →「このまま開く」。macOS 14 以前は右クリック → 開くでも可。
 3. 実行例:
 
 ```bash

@@ -59,6 +59,15 @@ def collect_python_runtime_dlls():
                 break
     return out
 
+def collect_python_openssl_dlls():
+    """Ship the OpenSSL DLLs this Python's _ssl.pyd was built against.
+
+    collect_all(cv2) may also add an older libcrypto-3.dll. Post-build
+    tools/win_ssl_bundle_align.py overwrites _internal with this pair.
+    """
+    from tools.win_ssl_bundle_align import iter_python_openssl_dlls
+    return [(str(path), ".") for path in iter_python_openssl_dlls(Path(sys.base_prefix))]
+
 # ── PyInstaller が見る Python 環境 ────────────────────────────────
 # ビルドを実行したインタプリタ（例: build_win.ps1 が選ぶ .venv かシステムの python）の
 # site-packages 全体が「候補」になるが、バンドルに入るのは次だけ:
@@ -83,7 +92,7 @@ if venv_path:
     if os.path.exists(os.path.join(site_packages, 'tifffile')):
         datas.append((os.path.join(site_packages, 'tifffile'), 'tifffile'))
 
-binaries = collect_libtiff() + collect_python_runtime_dlls()
+binaries = collect_libtiff() + collect_python_runtime_dlls() + collect_python_openssl_dlls()
 
 hiddenimports = [
     'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto', 'uvicorn.protocols.http.auto', 

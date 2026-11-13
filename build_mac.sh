@@ -184,6 +184,15 @@ done
     "$VENV_PYTHON" -m pip install pywebview --quiet
 }
 
+# ctypes → AppKit finishLaunching. Does not launch the .app; catches ABI issues on this runner.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    if "$VENV_PYTHON" -c "import wrapper; ok=wrapper._mac_signal_nsapp_launched(pump=False); print('[dock-bounce]', ok); raise SystemExit(0 if ok else 1)"; then
+        log_success "Dock bounce helper (NSApplication finishLaunching) OK"
+    else
+        log_warn "Dock bounce helper returned false on this runner (frozen .app still includes it)"
+    fi
+fi
+
 # ── クリーン ──────────────────────────────────────────────────────────────────
 if [[ "$DO_CLEAN" == true ]]; then
     log_step "クリーン"
@@ -230,20 +239,22 @@ if [[ "$SIGN_ONLY" != true ]]; then
     fi
 fi
 
-# ── OpenSSL 1.1 と 3 の共存 ────────────────────────────────────────────────
-# Python 3.9 の _ssl.so は libcrypto.1.1、OpenCV は libssl.3 / libcrypto.3。
-# 以前は _ssl.so に合わせて全バイナリを 1.1 に付け替えており、cv2 import が
-# Symbol not found: _ASYNC_WAIT_CTX_get_status で落ちていた。
-# 互換バージョン（Mach-O compatibility version）を正とし、混在させない。
-log_step "OpenSSL 1.1 / 3 共存（cv2 を 1.1 に付け替えない）"
+# ── OpenSSL 1.1 と 3 の共存 + _ssl がリンクしたペアを Frameworks へ ─────
+# Python 3.9 の _ssl.so はビルド環境により libcrypto.1.1 または libcrypto.3。
+# OpenCV は libssl.3 / libcrypto.3（しばしば 3.2.0）。Intel Actions の
+# Python 3.9 が OpenSSL 3.3+ のとき、PyInstaller が OpenCV の 3.2 を拾うと
+# import ssl が X509_STORE_get1_objects 欠落で落ちる。
+# 互換バージョン（Mach-O compatibility version）を正とし、1.1 へ一括付け替えない。
+# 続けて _ssl 用の libssl/libcrypto ペアで Frameworks を上書きする。
+log_step "OpenSSL 1.1 / 3 共存と _ssl 用 dylib の揃え"
 OPENSSL_FIX="${SCRIPT_DIR}/tools/mac_openssl_coexistence.py"
 if [[ -f "$OPENSSL_FIX" ]]; then
     FIX_PY="${VENV_PYTHON}"
     if [[ ! -x "$FIX_PY" ]]; then
         FIX_PY="python3"
     fi
-    "$FIX_PY" "$OPENSSL_FIX" --fix "$APP_PATH" --verify "$APP_PATH"
-    log_success "OpenSSL 1.1 と 3 を共存させた"
+    "$FIX_PY" "$OPENSSL_FIX" --fix "$APP_PATH" --verify "$APP_PATH" --ssl-smoke
+    log_success "OpenSSL を共存させ、_ssl 用 dylib を検証した"
 else
     log_warn "mac_openssl_coexistence.py が見つかりません（スキップ）"
 fi
@@ -317,24 +328,100 @@ if [[ -x "$VERIFY_READY" ]]; then
 fi
 log_success "署名完了"
 
-# ── DMG 作成 ─────────────────────────────────────────────────────────────────
-log_step "DMG 作成"
-
-[[ -f "$DMG_PATH" ]] && rm -f "$DMG_PATH"
-
-log_info "hdiutil で DMG を作成中..."
-hdiutil create \
-    -volname "${APP_NAME}" \
-    -srcfolder "${APP_PATH}" \
-    -ov \
-    -format UDZO \
-    "${DMG_PATH}"
-
-if [[ ! -f "$DMG_PATH" ]]; then
-    log_error "DMG 作成に失敗しました"
-    exit 1
+# Frozen GUI smoke: Flet 0.28 signal.signal used to crash off the main thread
+# (Yanagi Apple Silicon, quit-path ZIP). Windowed console=False sends Python
+# prints to Contents/MacOS/aria_launcher.log, not this redirect. Wait until
+# "Starting Flet" (after wait_for_tcp_port, up to 90s) so ft.app actually ran.
+if [[ "$(uname -s)" == "Darwin" && -x "${APP_PATH}/Contents/MacOS/ARIAKE_OCTA" ]]; then
+    log_step "Frozen launch smoke (Flet off-main signal)"
+    SMOKE_LOG="${TMPDIR:-/tmp}/ariake_launch_smoke.log"
+    LAUNCHER_LOG="${APP_PATH}/Contents/MacOS/aria_launcher.log"
+    : >"$SMOKE_LOG"
+    rm -f "$LAUNCHER_LOG"
+    smoke_has() {
+        grep -q "$1" "$SMOKE_LOG" 2>/dev/null && return 0
+        [[ -f "$LAUNCHER_LOG" ]] && grep -q "$1" "$LAUNCHER_LOG" 2>/dev/null
+    }
+    smoke_dump() {
+        echo "----- stdout/stderr redirect -----"
+        tail -n 80 "$SMOKE_LOG" || true
+        echo "----- aria_launcher.log -----"
+        tail -n 80 "$LAUNCHER_LOG" || true
+    }
+    set +e
+    "${APP_PATH}/Contents/MacOS/ARIAKE_OCTA" >"$SMOKE_LOG" 2>&1 &
+    smoke_pid=$!
+    reached=false
+    crashed=false
+    for _ in $(seq 1 90); do
+        if smoke_has "signal only works in main thread"; then
+            crashed=true
+            break
+        fi
+        if smoke_has "Starting Flet"; then
+            reached=true
+            sleep 5
+            if smoke_has "signal only works in main thread"; then
+                crashed=true
+            fi
+            break
+        fi
+        if ! kill -0 "$smoke_pid" 2>/dev/null; then
+            break
+        fi
+        sleep 1
+    done
+    kill "$smoke_pid" 2>/dev/null
+    wait "$smoke_pid" 2>/dev/null
+    killall -TERM Flet ARIAKE_OCTA 2>/dev/null
+    set -e
+    if smoke_has "signal only works in main thread"; then
+        crashed=true
+    fi
+    if [[ "$crashed" == true ]]; then
+        log_error "frozen launch: Flet signal.signal failed off the main thread"
+        smoke_dump
+        exit 1
+    fi
+    if [[ "$reached" != true ]]; then
+        log_error "frozen launch never reached Starting Flet (ft.app did not run)"
+        smoke_dump
+        exit 1
+    fi
+    log_success "frozen launch reached Flet without off-main signal crash"
 fi
-log_success "DMG 作成完了: ${DMG_PATH}"
+
+# ── DMG 作成 ─────────────────────────────────────────────────────────────────
+# GitHub Actions の配布 ZIP は package_mac_release.sh が .app から作る。
+# --skip-notarize では DMG 不要。macos-15 で hdiutil が Resource busy になる
+# ことがあり、CI を落とさない。
+log_step "DMG 作成"
+if [[ "$SKIP_NOTARIZE" == true ]]; then
+    log_warn "DMG をスキップ（--skip-notarize。ZIP は package_mac_release.sh）"
+else
+    rm -f "$DMG_PATH" || true
+    log_info "hdiutil で DMG を作成中..."
+    dmg_ok=false
+    for attempt in 1 2 3 4; do
+        if hdiutil create \
+            -volname "${APP_NAME}" \
+            -srcfolder "${APP_PATH}" \
+            -ov \
+            -format UDZO \
+            "${DMG_PATH}"; then
+            dmg_ok=true
+            break
+        fi
+        log_warn "hdiutil 失敗（${attempt}/4）。数秒待って再試行します。"
+        sleep 8
+        rm -f "$DMG_PATH" || true
+    done
+    if [[ "$dmg_ok" != true || ! -f "$DMG_PATH" ]]; then
+        log_error "DMG 作成に失敗しました"
+        exit 1
+    fi
+    log_success "DMG 作成完了: ${DMG_PATH}"
+fi
 
 # ── 公証 (Notarization) ───────────────────────────────────────────────────────
 if [[ "$SKIP_NOTARIZE" != true && "$BUILD_ONLY" != true ]]; then
@@ -359,9 +446,13 @@ if [[ "$SKIP_NOTARIZE" != true && "$BUILD_ONLY" != true ]]; then
     rm -f "${ZIP_PATH}"
 else
     log_warn "公証をスキップしました（--skip-notarize または開発者情報未設定）"
-    log_warn "配布前に以下を実行してください:"
-    log_warn "  xcrun notarytool submit ${DMG_PATH} --keychain-profile ARIAKE_NOTARY --wait"
-    log_warn "  xcrun stapler staple ${DMG_PATH}"
+    if [[ -f "$DMG_PATH" ]]; then
+        log_warn "配布前に以下を実行してください:"
+        log_warn "  xcrun notarytool submit ${DMG_PATH} --keychain-profile ARIAKE_NOTARY --wait"
+        log_warn "  xcrun stapler staple ${DMG_PATH}"
+    else
+        log_warn "配布 ZIP は ./package_mac_release.sh で .app から作成します。"
+    fi
 fi
 
 # ── 最終検証 ─────────────────────────────────────────────────────────────────
