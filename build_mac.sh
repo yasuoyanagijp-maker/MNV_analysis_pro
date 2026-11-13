@@ -328,6 +328,52 @@ if [[ -x "$VERIFY_READY" ]]; then
 fi
 log_success "署名完了"
 
+# Frozen GUI smoke: Flet 0.28 signal.signal used to crash off the main thread
+# (Yanagi Apple Silicon, quit-path ZIP). Fail the build on that traceback.
+# Headless runners may not open Flet.app; that is a warn, not a fail.
+if [[ "$(uname -s)" == "Darwin" && -x "${APP_PATH}/Contents/MacOS/ARIAKE_OCTA" ]]; then
+    log_step "Frozen launch smoke (Flet off-main signal)"
+    SMOKE_LOG="${TMPDIR:-/tmp}/ariake_launch_smoke.log"
+    : >"$SMOKE_LOG"
+    set +e
+    "${APP_PATH}/Contents/MacOS/ARIAKE_OCTA" >"$SMOKE_LOG" 2>&1 &
+    smoke_pid=$!
+    reached=false
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+        if grep -q "signal only works in main thread" "$SMOKE_LOG" 2>/dev/null; then
+            break
+        fi
+        if grep -q "Starting Flet" "$SMOKE_LOG" 2>/dev/null; then
+            reached=true
+            sleep 2
+            break
+        fi
+        if ! kill -0 "$smoke_pid" 2>/dev/null; then
+            break
+        fi
+        sleep 1
+    done
+    kill "$smoke_pid" 2>/dev/null
+    wait "$smoke_pid" 2>/dev/null
+    killall -TERM Flet ARIAKE_OCTA 2>/dev/null
+    set -e
+    if grep -q "signal only works in main thread" "$SMOKE_LOG"; then
+        log_error "frozen launch: Flet signal.signal failed off the main thread"
+        cat "$SMOKE_LOG" || true
+        exit 1
+    fi
+    if [[ "$reached" == true ]]; then
+        log_success "frozen launch reached Flet without off-main signal crash"
+    else
+        log_warn "frozen launch did not print Starting Flet (display may be missing)"
+        tail -n 80 "$SMOKE_LOG" || true
+        if grep -q "Traceback" "$SMOKE_LOG"; then
+            log_error "frozen launch traceback before Flet"
+            exit 1
+        fi
+    fi
+fi
+
 # ── DMG 作成 ─────────────────────────────────────────────────────────────────
 # GitHub Actions の配布 ZIP は package_mac_release.sh が .app から作る。
 # --skip-notarize では DMG 不要。macos-15 で hdiutil が Resource busy になる

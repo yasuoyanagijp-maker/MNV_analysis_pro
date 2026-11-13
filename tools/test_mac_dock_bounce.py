@@ -25,6 +25,8 @@ class TestMacDockBounceFix(unittest.TestCase):
         self.assertIn("_mac_request_clean_quit", text)
         self.assertIn("applicationShouldHandleReopen:hasVisibleWindows:", text)
         self.assertIn("com.appveyor.flet", text)
+        self.assertIn("def _mac_allow_signal_off_main", text)
+        self.assertIn("signal only works in main thread", text)
         self.assertNotRegex(text, r'"LSUIElement"\s*:')
         self.assertNotRegex(text, r'"LSBackgroundOnly"\s*:')
 
@@ -59,6 +61,34 @@ class TestMacDockBounceFix(unittest.TestCase):
     def test_build_script_smoke_mentions_helper(self):
         mac = (ROOT / "build_mac.sh").read_text(encoding="utf-8")
         self.assertIn("_mac_signal_nsapp_launched", mac)
+        self.assertIn("signal only works in main thread", mac)
+        self.assertIn("Starting Flet", mac)
+
+    def test_signal_patch_allows_worker_thread(self):
+        import asyncio
+        import signal
+        import threading
+
+        import wrapper
+
+        wrapper._mac_allow_signal_off_main()
+        err = []
+
+        def _worker():
+            async def _app_async():
+                # Flet 0.28 flet/app.py app_async
+                signal.signal(signal.SIGINT, lambda *_a: None)
+                return True
+
+            try:
+                asyncio.run(_app_async())
+            except ValueError as exc:
+                err.append(str(exc))
+
+        t = threading.Thread(target=_worker, name="flet-signal-test")
+        t.start()
+        t.join(timeout=5)
+        self.assertEqual(err, [])
 
 
 if __name__ == "__main__":
