@@ -184,7 +184,7 @@ CSV 列名（`MAJOR_METRICS`）と `DEFAULT_RPD_PCT=20` は変えない。
 1. **起動前 SIGKILL（前原型）:** `Contents/Frameworks/*.dist-info`（例: `fastapi-0.110.0.dist-info`）が codesign `--deep` を壊し、署名無効のまま CODESIGNING Invalid Page。既インストールなら `v1.2.3_Mac再署名.command`。新配布は v1.2.4 ZIP。
 2. **ログイン後 Connection Error（瀧澤型・Intel 木住野型）:** Hardened Runtime + multiprocessing spawn（PR #43 で thread 起動・HR なし ad-hoc）。**新しい zip が必要**（再署名だけでは足りない）。
 3. **起動直後に cv2 / Connection Error（OpenSSL 混在）:** v1.2.4-mac の `build_mac.sh` が OpenCV の `libssl.3.dylib` を `libcrypto.1.1.dylib` に付け替え、`_ASYNC_WAIT_CTX_get_status` で落ちる。既インストールなら `python3 tools/mac_openssl_coexistence.py --fix /Applications/ARIAKE_OCTA.app --sign`。新配布は本修正後の ZIP。
-4. **Dock アイコンが起動中のまま跳ね続ける（毎回）:** `/Applications` から毎回。PyInstaller の `ARIAKE_OCTA.app` は NSApplication を走らせない。Flet は別プロセス `open Flet.app -n -W`。外側のメインスレッドが FastAPI 待ち / `ft.app` で塞がると bounce が止まらない。`finishLaunching` のあと、待ちと Flet をワーカーに出しメインで CFRunLoop を回す。Dock Quit / Cmd+Q は AppKit の `terminate:`/`exit()` をキャンセルし、`Flet.app` を閉じてから Python `finally` で終わる（そうしないと Flet が死んだ FastAPI に残る）。Intel / Apple Silicon 同じ。LSUIElement は付けない。
+4. **Dock アイコンが起動中のまま跳ね続ける（毎回）:** `/Applications` から毎回。PyInstaller の `ARIAKE_OCTA.app` は NSApplication を走らせない。Flet は別プロセス `open Flet.app -n -W`。外側のメインスレッドが FastAPI 待ち / `ft.app` で塞がると bounce が止まらない。`finishLaunching` のあと、待ちと Flet をワーカーに出しメインで CFRunLoop を回す。Flet 0.28 の `signal.signal` はメイン以外で `ValueError` になるので、ワーカーでは no-op（Dock Quit / Cmd+Q は NSApplicationDelegate）。Dock Quit / Cmd+Q は AppKit の `terminate:`/`exit()` をキャンセルし、`Flet.app` を閉じてから Python `finally` で終わる（そうしないと Flet が死んだ FastAPI に残る）。Intel / Apple Silicon 同じ。LSUIElement は付けない。
 
 アーキ混在は **なし**（v1.2.3-mac arm64: 624 本 / x86_64 0）。flet-macos.tar.gz 内 Flet.app は universal2（正常）。
 

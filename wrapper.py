@@ -413,10 +413,41 @@ def _mac_signal_nsapp_launched(*, pump: bool = True) -> bool:
     return ok
 
 
+_MAC_SIGNAL_PATCHED = False
+
+
+def _mac_allow_signal_off_main() -> None:
+    """Let Flet call ``signal.signal`` from the worker that runs ``ft.app``.
+
+    Flet 0.28 ``app_async`` does ``signal.signal(SIGINT, ...)`` which raises
+    ``ValueError: signal only works in main thread`` off-main. ``ft.app`` must
+    stay on a worker so the main thread can pump CFRunLoop (Dock bounce).
+    Frozen .app quit is Dock / Cmd+Q via NSApplicationDelegate, not SIGINT.
+    """
+    global _MAC_SIGNAL_PATCHED
+    if _MAC_SIGNAL_PATCHED:
+        return
+    import signal as signal_mod
+
+    orig = signal_mod.signal
+
+    def _safe_signal(sig, handler):
+        if threading.current_thread() is not threading.main_thread():
+            try:
+                return signal_mod.getsignal(sig)
+            except Exception:
+                return orig
+        return orig(sig, handler)
+
+    signal_mod.signal = _safe_signal
+    _MAC_SIGNAL_PATCHED = True
+
+
 def _run_on_worker_pump_main(fn, name: str):
     """Run fn off-main; keep pumping Cocoa on the main thread (every Dock click)."""
     if sys.platform != "darwin":
         return fn()
+    _mac_allow_signal_off_main()
     box = {"exc": None, "rv": None}
 
     def _target():
@@ -536,7 +567,8 @@ if __name__ == "__main__":
             ft_kwargs["web_renderer"] = renderer
         if sys.platform == "darwin":
             # ft.app blocks on asyncio + ``open Flet.app -W``. Keep CFRunLoop
-            # on the main thread so bounce stops and stays stopped.
+            # on the main thread so bounce stops. signal.signal is no-op'd
+            # off-main inside _run_on_worker_pump_main (Flet 0.28 app_async).
             if _MAC_QUIT.is_set():
                 print("[Wrapper] Quit requested before Flet; skipping frontend.", flush=True)
             else:
