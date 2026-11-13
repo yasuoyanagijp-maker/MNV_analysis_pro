@@ -63,6 +63,8 @@ class TestMacDockBounceFix(unittest.TestCase):
         self.assertIn("_mac_signal_nsapp_launched", mac)
         self.assertIn("signal only works in main thread", mac)
         self.assertIn("Starting Flet", mac)
+        self.assertIn("aria_launcher.log", mac)
+        self.assertIn("seq 1 90", mac)
 
     def test_signal_patch_allows_worker_thread(self):
         import asyncio

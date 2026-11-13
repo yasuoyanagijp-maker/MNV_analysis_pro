@@ -329,23 +329,41 @@ fi
 log_success "署名完了"
 
 # Frozen GUI smoke: Flet 0.28 signal.signal used to crash off the main thread
-# (Yanagi Apple Silicon, quit-path ZIP). Fail the build on that traceback.
-# Headless runners may not open Flet.app; that is a warn, not a fail.
+# (Yanagi Apple Silicon, quit-path ZIP). Windowed console=False sends Python
+# prints to Contents/MacOS/aria_launcher.log, not this redirect. Wait until
+# "Starting Flet" (after wait_for_tcp_port, up to 90s) so ft.app actually ran.
 if [[ "$(uname -s)" == "Darwin" && -x "${APP_PATH}/Contents/MacOS/ARIAKE_OCTA" ]]; then
     log_step "Frozen launch smoke (Flet off-main signal)"
     SMOKE_LOG="${TMPDIR:-/tmp}/ariake_launch_smoke.log"
+    LAUNCHER_LOG="${APP_PATH}/Contents/MacOS/aria_launcher.log"
     : >"$SMOKE_LOG"
+    rm -f "$LAUNCHER_LOG"
+    smoke_has() {
+        grep -q "$1" "$SMOKE_LOG" 2>/dev/null && return 0
+        [[ -f "$LAUNCHER_LOG" ]] && grep -q "$1" "$LAUNCHER_LOG" 2>/dev/null
+    }
+    smoke_dump() {
+        echo "----- stdout/stderr redirect -----"
+        tail -n 80 "$SMOKE_LOG" || true
+        echo "----- aria_launcher.log -----"
+        tail -n 80 "$LAUNCHER_LOG" || true
+    }
     set +e
     "${APP_PATH}/Contents/MacOS/ARIAKE_OCTA" >"$SMOKE_LOG" 2>&1 &
     smoke_pid=$!
     reached=false
-    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-        if grep -q "signal only works in main thread" "$SMOKE_LOG" 2>/dev/null; then
+    crashed=false
+    for _ in $(seq 1 90); do
+        if smoke_has "signal only works in main thread"; then
+            crashed=true
             break
         fi
-        if grep -q "Starting Flet" "$SMOKE_LOG" 2>/dev/null; then
+        if smoke_has "Starting Flet"; then
             reached=true
-            sleep 2
+            sleep 5
+            if smoke_has "signal only works in main thread"; then
+                crashed=true
+            fi
             break
         fi
         if ! kill -0 "$smoke_pid" 2>/dev/null; then
@@ -357,21 +375,20 @@ if [[ "$(uname -s)" == "Darwin" && -x "${APP_PATH}/Contents/MacOS/ARIAKE_OCTA" ]
     wait "$smoke_pid" 2>/dev/null
     killall -TERM Flet ARIAKE_OCTA 2>/dev/null
     set -e
-    if grep -q "signal only works in main thread" "$SMOKE_LOG"; then
+    if smoke_has "signal only works in main thread"; then
+        crashed=true
+    fi
+    if [[ "$crashed" == true ]]; then
         log_error "frozen launch: Flet signal.signal failed off the main thread"
-        cat "$SMOKE_LOG" || true
+        smoke_dump
         exit 1
     fi
-    if [[ "$reached" == true ]]; then
-        log_success "frozen launch reached Flet without off-main signal crash"
-    else
-        log_warn "frozen launch did not print Starting Flet (display may be missing)"
-        tail -n 80 "$SMOKE_LOG" || true
-        if grep -q "Traceback" "$SMOKE_LOG"; then
-            log_error "frozen launch traceback before Flet"
-            exit 1
-        fi
+    if [[ "$reached" != true ]]; then
+        log_error "frozen launch never reached Starting Flet (ft.app did not run)"
+        smoke_dump
+        exit 1
     fi
+    log_success "frozen launch reached Flet without off-main signal crash"
 fi
 
 # ── DMG 作成 ─────────────────────────────────────────────────────────────────
